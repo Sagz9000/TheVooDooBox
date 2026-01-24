@@ -1,62 +1,41 @@
-# TheVooDooBox: Interactive Malware Analysis Engine
+# TheVooDooBox
 
 > **"From Logging to Streaming"**
 
-TheVooDooBox is a research prototype designed to replicate the **real-time, interactive experience** of platforms Unlike traditional sandboxes (Cuckoo/CAPE) that rely on batch processing and post-execution logs, TheVooDooBox focuses on instantaneous "Kernel-to-Pixel" streaming.
+TheVooDooBox is a next-generation malware analysis engine that provides **real-time, interactive** insight into malware behavior ("Kernel-to-Pixel Streaming").
 
-## 🚀 Key Features
+## 📚 Documentation
 
-*   **Live Interaction**: Control the malware execution flow. Click buttons, solve CAPTCHAs, and explore the file system *while* the malware is running.
-*   **Real-Time Telemetry**: See "Process Created", "DNS Request", and "File Dropped" events on your dashboard the moment they happen (milliseconds latency).
-*   **Kernel-Level Monitoring**: A custom Windows Kernel Driver ("The Eye") captures events at the source, bypassing user-mode hooks.
-*   **High-Performance Bridge**: A Rust-based backend ("Hyper-Bridge") ingests millions of driver events and streams them via WebSockets to the UI.
-*   **Ghidra Intelligence**: Integrated static analysis. Automatically decompile functions and view assembly for any uploaded binary, cross-referencing static findings with dynamic behavior.
+The full documentation is available in the `docs/` directory. For a complete guide to all available documents, see the [**Documentation Index**](docs/00_INDEX.md).
 
-## 🖼️ Gallery
+### Core Guides
+1.  [**Overview & Vision**](docs/01_OVERVIEW.md)
+2.  [**Architecture & Logic**](docs/02_ARCHITECTURE.md)
+3.  [**Installation Guide**](docs/05_INSTALLATION.md)
+4.  [**User Guide**](docs/07_USER_GUIDE.md)
 
-### Analysis Queue & Task Management
-![Analysis Queue](./pictures/queueanalys.png)
+### Technical Deep Dives
+*   [**AI Analyst & RAG**](docs/03_AI_RAG.md)
+*   [**Sandbox & Agent Internals**](docs/04_SANDBOX_AND_AGENT.md)
+*   [**VNC & SPICE Integration**](docs/08_VNC_SPICE_INTEGRATION.md)
+*   [**Reporting & AI Analysis**](docs/09_REPORTING_AI.md)
 
-### Live Forensic Timeline
-![Detonation Timeline](./pictures/consolestream.png)
+### Extended Resources
+*   [**Scripts Reference**](docs/06_SCRIPTS.md)
+*   [**Agent Build & Deploy**](docs/10_AGENT_BUILD_DEPLOY.md)
+*   [**Agent Deployment**](docs/11_AGENT_DEPLOYMENT.md)
+*   [**Agent Troubleshooting**](docs/12_AGENT_TROUBLESHOOTING.md)
+*   [**Ollama Testing**](docs/13_OLLAMA_TESTING.md)
+*   [**Sandbox Guide**](docs/14_SANDBOX_GUIDE.md)
 
-### Detailed Analysis Report
-![Analyst Report](./pictures/reportview.png)
+## 🚀 Quick Start
 
-### Analyst Multi-Window Workspace
-![Lab View](./pictures/labview.png)
+For those familiar with the stack:
 
-## 🏗️ Architecture
+1.  **Clone**: `git clone https://github.com/Sagz9000/TheVooDooBox.git`
+2.  **Config**: `cp .env.example .env`
+3.  **Run**: `docker-compose up -d --build`
+4.  **Analysis**: Access UI at `http://localhost:3000`
 
-```mermaid
-graph TD
-    subgraph "Guest VM (Windows)"
-        Malware[Malware.exe] --> Kernel
-        Kernel --> Driver["'The Eye' (Kernel Driver)"]
-        Driver -- "VirtIO Serial (Raw Bytes)" --> VirtIO[VirtIO Port]
-    end
-
-    subgraph "Host (Docker)"
-        VirtIO --> Socket[QEMU Socket]
-        Socket --> Bridge["'Hyper-Bridge' (Rust)"]
-        Bridge -- "WebSockets (JSON)" --> API
-    end
-
-    subgraph "Analyst Browser"
-        API --> UI[React Dashboard]
-        VNC[VNC/Spice] <--> UI
-    end
-```
-
-## 🛠️ Technology Stack
-
-*   **Kernal Driver**: C/C++ (Windows Driver Kit)
-*   **Backend Bridge**: Rust (Tokio, Actix)
-*   **Frontend**: React, TypeScript, TailwindCSS
-*   **Infrastructure**: QEMU/KVM, Docker, Postgres
-
-## 🚦 Status: PROTOTYPE (Functional)
-The system is now functional, providing real-time telemetry and forensic analysis capabilities.
-
-## 📥 Getting Started
-(Coming Soon)
+---
+*Maintained by the VoodooBox Research Team.*

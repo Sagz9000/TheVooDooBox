@@ -5,7 +5,7 @@ To verify the Ollama server is accessible and working:
 
 ```bash
 # Test Ollama connectivity
-curl http://192.168.50.98:11434/api/generate -d '{
+curl http://192.168.1.101:11434/api/generate -d '{
   "model": "llama3",
   "prompt": "Analyze this malware behavior: A process named svchost.exe spawned cmd.exe which then created powershell.exe. Is this suspicious?",
   "stream": false
@@ -23,7 +23,7 @@ curl http://192.168.50.98:11434/api/generate -d '{
 ```
 
 ## Integration Test via Mallab UI
-1. Start the Hyper-Bridge backend (already configured with `OLLAMA_URL=http://192.168.50.98:11434`)
+1. Start the Hyper-Bridge backend (already configured with `OLLAMA_URL=http://192.168.1.101:11434`)
 2. Navigate to the Analysis Arena
 3. Collect some process/event data
 4. Click "Run AI Threat Analysis"
@@ -32,22 +32,19 @@ curl http://192.168.50.98:11434/api/generate -d '{
 ## Troubleshooting
 
 ### Connection Refused
-```bash
-# Check if Ollama is running
-curl http://192.168.50.98:11434/api/tags
+1. Start the Hyper-Bridge backend (already configured with `OLLAMA_URL=http://192.168.1.101:11434`)
+2. Use the "AI Analyst" button in the Analysis Arena.
 
-# Verify network connectivity
-ping 192.168.50.98
-```
-
-### Model Not Found
-```bash
-# List available models
-curl http://192.168.50.98:11434/api/tags
-
-# Pull llama3 if needed
-curl http://192.168.50.98:11434/api/pull -d '{"name": "llama3"}'
-```
+### Diagnostic Checklist
+- [ ] Ping the Ollama server: `ping 192.168.1.101`
+- [ ] Test the API list endpoint:
+  ```bash
+  curl http://192.168.1.101:11434/api/tags
+  ```
+- [ ] If no models appear, pull the required model:
+  ```bash
+  curl http://192.168.1.101:11434/api/pull -d '{"name": "llama3"}'
+  ```
 
 ### Slow Response
 - Ollama inference can take 5-30 seconds depending on hardware

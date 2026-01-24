@@ -7,7 +7,7 @@ $ErrorActionPreference = "Stop"
 # Interactive Configuration
 if ($ServerAddr -eq "") {
     Write-Host ""
-    $DefaultIP = "192.168.50.196:9001"
+    $DefaultIP = "192.168.1.100:9001"
     $InputIP = Read-Host "Please enter the Agent Server Address (Enter for default: $DefaultIP)"
     if ($InputIP -eq "") {
         $ServerAddr = $DefaultIP

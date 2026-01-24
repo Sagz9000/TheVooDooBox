@@ -22,6 +22,12 @@ The **TheVooDooBox Windows Agent** is a lightweight telemetry collector that run
 │  │  - Network Scanner                │  │
 │  │  - Memory Forensics               │  │
 │  └───────────────┬───────────────────┘  │
+│                  │                      │
+│  ┌───────────────┴───────────────────┐  │
+│  │  Sysmon (Forensic Context)        │  │
+│  │  - DNS & Registry Tracking        │  │
+│  │  - Real-time Correlation          │  │
+│  └───────────────┬───────────────────┘  │
 │                  │ TCP Stream           │
 │                  │ (Port 9001)          │
 └──────────────────┼──────────────────────┘
@@ -79,21 +85,29 @@ target/x86_64-pc-windows-msvc/release/voodoobox-agent-windows.exe
 ```
 
 ### Step 2: Deploy to Sandbox VM
-Copy the binary to your Windows VM, then run the installation script **inside the VM**:
+Copy the binary and scripts to your Windows VM, then run the installation script **inside the VM**:
 
 ```powershell
 # Transfer the binary and scripts to the VM
 # Then, inside the VM:
-.\scripts\install_agent.ps1 -ServerIP "192.168.50.1" -ServerPort 9001 -AutoStart
+.\scripts\install_agent.ps1 -ServerIP "192.168.1.1" -ServerPort 9001 -AutoStart
 ```
 
 **Parameters:**
-- `ServerIP`: IP address of the Hyper-Bridge server (default: `192.168.50.1`)
+- `ServerIP`: IP address of the Hyper-Bridge server (default: `192.168.1.1`)
 - `ServerPort`: TCP port for agent connections (default: `9001`)
 - `InstallPath`: Installation directory (default: `C:\TheVooDooBox`)
 - `AutoStart`: Configure as Windows service/scheduled task (default: `$true`)
 
-### Step 3: Verify Connection
+### Step 3: Forensic Instrumentation (Sysmon)
+For enhanced forensic depth (DNS logs, detailed registry mods), install Sysmon with our optimized config:
+
+```powershell
+# Inside the VM:
+.\sandbox_scripts\install_sysmon.ps1
+```
+
+### Step 4: Verify Connection
 Check the Hyper-Bridge logs:
 ```bash
 docker logs voodoobox-hyper-bridge-1
@@ -111,7 +125,7 @@ For quick testing without installation:
 
 ```powershell
 # Set the server address
-$env:AGENT_SERVER_ADDR = "192.168.50.1:9001"
+$env:AGENT_SERVER_ADDR = "192.168.1.1:9001"
 
 # Run the agent
 .\voodoobox-agent-windows.exe
@@ -121,12 +135,12 @@ $env:AGENT_SERVER_ADDR = "192.168.50.1:9001"
 The agent can be configured via environment variables or a `config.json` file:
 
 **Environment Variables:**
-- `AGENT_SERVER_ADDR`: Server address (e.g., `192.168.50.1:9001`)
+- `AGENT_SERVER_ADDR`: Server address (e.g., `192.168.1.1:9001`)
 
 **config.json** (optional):
 ```json
 {
-  "server_addr": "192.168.50.1:9001",
+  "server_addr": "192.168.1.1:9001",
   "auto_reconnect": true,
   "scan_interval_sec": 4,
   "watch_paths": [
@@ -204,7 +218,7 @@ The agent will automatically detect and use the kernel bridge if available.
 ## Troubleshooting
 
 ### Agent won't connect
-- Verify network connectivity: `Test-NetConnection -ComputerName 192.168.50.1 -Port 9001`
+- Verify network connectivity: `Test-NetConnection -ComputerName 192.168.1.1 -Port 9001`
 - Check firewall rules on both VM and host
 - Ensure Hyper-Bridge is running: `docker ps | grep hyper-bridge`
 

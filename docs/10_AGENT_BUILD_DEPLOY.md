@@ -49,7 +49,7 @@ Copy-Item target\release\voodoobox-agent-windows.exe \\VM-IP\C$\TheVooDooBox\
 # 3. Paste into C:\TheVooDooBox\ on the VM
 
 # Option C: Use the install script
-.\scripts\install_agent.ps1 -ServerIP "192.168.50.1"
+.\scripts\install_agent.ps1 -ServerIP "192.168.1.1"
 ```
 
 ---
@@ -100,14 +100,14 @@ If you don't want to build from source, I can provide a pre-built binary.
 Invoke-WebRequest -Uri "https://github.com/Sagz9000/TheVooDooBox/releases/download/v3.0.0/voodoobox-agent-windows.exe" -OutFile voodoobox-agent.exe
 
 # Transfer to VM and install
-.\scripts\install_agent.ps1 -ServerIP "192.168.50.1"
+.\scripts\install_agent.ps1 -ServerIP "192.168.1.1"
 ```
 
 ---
 
 ## 📦 Automated Installation Script (Persistence)
 
-We provide a script to setup the agent as a persistent service on the VM:
+A script is provided to setup the agent as a persistent service on the VM:
 
 1. Copy the `releases/` folder (containing `voodoobox-agent-windows.exe` and `install.ps1`) to the VM.
 2. Run the installer as Administrator:
@@ -135,7 +135,7 @@ cd C:\Path\To\Files
 cd C:\TheVooDooBox
 
 # Set server address
-$env:AGENT_SERVER_ADDR = "192.168.50.1:9001"
+$env:AGENT_SERVER_ADDR = "192.168.1.1:9001"
 
 # Run agent
 .\voodoobox-agent.exe
@@ -144,7 +144,7 @@ $env:AGENT_SERVER_ADDR = "192.168.50.1:9001"
 **Expected Output:**
 ```
 TheVooDooBox Windows Agent (Active Eye) - v3.0.0
-Connected to Hyper-Bridge @ 192.168.50.1:9001
+Connected to Hyper-Bridge @ 192.168.1.1:9001
 ```
 
 ### Verify Backend Connection
@@ -191,7 +191,7 @@ sudo apt-get install mingw-w64
 docker ps | grep hyper-bridge
 
 # Verify network connectivity from VM
-Test-NetConnection -ComputerName 192.168.50.1 -Port 9001
+Test-NetConnection -ComputerName 192.168.1.1 -Port 9001
 
 # Check firewall rules ON HOST (Admin PowerShell)
 New-NetFirewallRule -DisplayName "TheVooDooBox Agent Listener" -Direction Inbound -LocalPort 9001 -Protocol TCP -Action Allow
