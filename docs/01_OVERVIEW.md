@@ -34,9 +34,26 @@ TheVooDooBox changes this paradigm:
 2.  **Human-in-the-Loop**: If malware pauses for user input, you provide it.
 3.  **Dynamic Telemetry**: A custom Kernel Driver ("The Eye") sits in the guest VM kernel, streaming events through a high-throughput VirtIO serial bridge directly to your browser. This bypasses user-mode hooks and anti-analysis checks that often defeat standard monitoring tools.
 
+## The Sandbox: Hybrid Research Environment
+
+TheVooDooBox sandboxes are not just "disposable containers"—they are full-featured **Windows Malware Analysis** environments.
+
+### 🔬 FlareVM Integration
+Each sandbox is recommended to be built using the **FlareVM** distribution (by Mandiant/Google). This ensures that every VM in your lab comes pre-equipped with the industry-standard tools (Debuggers, Ghidra, x64dbg, etc.) needed for deep manual follow-up.
+
+### 🎭 Automation + Manual Depth
+Unlike static sandboxes, TheVooDooBox supports a dual-mode workflow:
+1.  **Automated Detonation**: Submit a sample, and the platform handles the snapshot rollback, execution, and AI triage automatically.
+2.  **Manual Triage**: At any point during a session, you can take over the mouse and keyboard to perform manual research. 
+3.  **Timed Telemetry Logging**: When submitting a sample, you can define a **Max Time** for the session. During this window, even if you are interacting manually, "The Eye" kernel driver continues to aggregate and stream forensic telemetry to the database for analysis.
+
+### 🔓 Independent Usage
+The sandboxes are resilient. If you prefer to work entirely outside the VoodooBox UI, the VMs function as standalone Proxmox analysis nodes. You can RDP into them, use local tools, and manage snapshots via the Proxmox GUI directly without breaking the VoodooBox backend state.
+
 ## Key Features
 
+*   **FlareVM Powered**: Pre-standardized with the most powerful open-source forensic toolsets.
 *   **Live Interaction**: Full mouse and keyboard control over the guest VM.
 *   **The Eye (Kernel Driver)**: A bespoke Windows kernel driver that captures elusive behaviors like remote thread injection and driver loading.
 *   **Ghidra Integration**: Automated static analysis pipeline that decompiles binary functions and correlates them with dynamic behavioral events.
-*   **AI Analyst**: An integrated LLM (Large Language Model) assistant that provides real-time context, explains suspicious API calls, and summarizes forensic impact based on the active event stream.
+*   **AI Analyst**: An integrated LLM Assistant that provides real-time context and summarizes forensic impact.
