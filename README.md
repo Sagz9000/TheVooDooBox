@@ -57,4 +57,4 @@ Traditional sandboxes like Cuckoo or CAPE are "black boxes" designed for high-vo
 *   **Hardware Native**: Purpose-built for the **Proxmox/KVM stack** with a high-speed WebSocket-to-TCP console relay, providing significantly lower latency than standard VNC implementations.
 
 ---
-*Maintained by the VoodooBox Research Team.*
+*Maintained by the VoodooBox Research Team...me JP*
