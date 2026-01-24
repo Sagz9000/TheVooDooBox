@@ -28,6 +28,13 @@ These scripts are intended to run **inside** the Guest VM.
 ### `deploy_agent.ps1`
 *   **Purpose**: A lighter deployment script often used for rapid testing or "drop-and-execute" scenarios.
 
+## 🐍 Knowledge & AI Scripts (`/scripts`)
+
+### `ingest_posters.py`
+*   **Purpose**: Processes SANS Forensic Posters (PDFs) from the `/sans_posters` directory and populates the **ChromaDB** vector database.
+*   **Usage**: `python ./scripts/ingest_posters.py`
+*   **Requires**: `pypdf`, `chromadb` python libraries.
+
 ### `install_sysmon.ps1`
 *   **Purpose**: Downloads and installs Sysmon64 with the project's recommended forensic configuration (`sysmon_config.xml`).
 

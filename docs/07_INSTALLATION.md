@@ -71,7 +71,18 @@ The `hyper-bridge` backend uses these credentials to authenticate via the `PVEAP
 4.  **Verify**
     Visit `http://localhost:3000` (or your server IP). You should see the login/dashboard capability.
 
-## 3. Sandbox Setup (Guest)
+## 5. Optional: Knowledge Base Ingestion
+
+To ground the AI Analyst in real-world forensic knowledge, you can ingest SANS Forensic Posters into the vector database.
+
+1.  Create a `sans_posters/` folder in the project root.
+2.  Place your forensic PDFs inside.
+3.  Run the ingestion from the host:
+    ```bash
+    python ./scripts/ingest_posters.py
+    ```
+
+## 6. Sandbox Setup (Guest)
 
 1.  **Prepare the Windows VM**.
 2.  **Install the Agent & Instrumentation**:

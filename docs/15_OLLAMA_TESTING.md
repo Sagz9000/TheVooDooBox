@@ -41,9 +41,13 @@ curl http://192.168.1.101:11434/api/generate -d '{
   ```bash
   curl http://192.168.1.101:11434/api/tags
   ```
-- [ ] If no models appear, pull the required model:
+- [ ] If no models appear, pull the required models:
   ```bash
-  curl http://192.168.1.101:11434/api/pull -d '{"name": "llama3"}'
+  # For Forensic Triage & Chat
+  curl http://192.168.1.101:11434/api/pull -d '{"name": "qwen2.5-coder:14b"}'
+  
+  # For Vector DB Embeddings (RAG)
+  curl http://192.168.1.101:11434/api/pull -d '{"name": "nomic-embed-text:v1.5"}'
   ```
 
 ### Slow Response

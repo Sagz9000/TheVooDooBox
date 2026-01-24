@@ -101,15 +101,67 @@ Used for the "Live Observation" feature to give the analyst a quick pulse-check 
 Act as a SANS-certified Forensic Analyst (GCFA/GREM) and VooDooBox Intelligence Core.
 STRICT ANTI-HALLUCINATION: Analyze ONLY the provided process telemetry and event logs.
 DO NOT invent malicious behaviors. If the logs are benign, report them as benign. 
-
-### 1. Identification Phase (Forensic Analysis)
-Analyze the telemetry for:
-- Anomalous Lineage
-- Persistence Mechanisms
-- LOLBins
-- Injection
-- MITRE ATT&CK Mapping
 ```
+
+## 🚀 Ollama & Model Optimization
+
+TheVooDooBox is specifically tuned for **self-hosted local inference** using Ollama. While it supports cloud APIs, the core engine has been optimized for the **`qwen2.5-coder:14b`** model (and its smaller 7B variant).
+
+### 1. Context Window Stewardship
+Local 14B models can struggle with massive log dumps. We preserve context accuracy by:
+*   **Process Lineage Tracing**: Instead of sending all 10,000+ driver events, we build a transitive closure of "Malware descendants." Only events from these relevant PIDs are sent, reducing noise by up to 90%.
+*   **Deduplication**: Repeated events (like constant registry polling) are rolled up into single entries with hit counts.
+
+### 2. Prompt Architecture for Qwen-Coder
+The prompts were engineered to exploit the specific strengths of the Qwen-Coder architecture:
+*   **Zero-Filler Protocol**: The clinical, "forensic terminal" persona minimizes token usage on conversational pleasantries, focusing the GPU throughput on technical analysis.
+*   **Structural Grounding**: Qwen-Coder's ability to handle structured data is utilized by forcing output into strict Markdown tables and JSON schemas, which the model excels at compared to standard chat models.
+*   **Hybrid Injection**: Static code findings (decompiled snippets) are prioritized alongside dynamic events, allowing the model to perform "Chain-of-Analysis" (e.g., matching a static function call to a live driver event).
+
+### 3. Backend Tunings
+*   **Strict JSON Mode**: The backend enforces `format: json` at the Ollama API level to prevent parsing failures on local hardware.
+*   **Extended Timeouts**: Default timeouts are set to 600 seconds (`AI_TIMEOUT_SECONDS`) to accommodate 14B inference on mid-range GPUs.
+*   **Vector DB Grounding**: We use a local **ChromaDB** to query MITRE ATT&CK techniques, providing the model with a "second-brain" knowledge base that bypasses its internal cutoff limits.
+
+## ⚠️ Known Limitations
+
+While `qwen2.5-coder:14b` is a highly capable local model, users should be aware of the following:
+*   **Inconsistency with Large Intake**: If the aggregated log volume exceeds the model's effective attention window, the quality of the forensic narrative may degrade or fluctuate.
+*   **Prompt Sensitivity**: Local models are more sensitive to prompt phrasing than massive cloud counterparts. Minor variations in log formatting can occasionally lead to JSON parsing errors on lower-quantized versions.
+
+## ☁️ Cloud Alternative: Gemini API
+
+For users who require maximum consistency or do not have the GPU resources for local inference, TheVooDooBox supports the **Gemini 1.5 Pro/Flash** API.
+
+### Trade-offs
+*   **Internet Requirement**: Using Gemini requires the host server (where the Hyper-Bridge runs) to have outbound internet access. **Note**: The Windows Sandboxes remain isolated; only the backend communicates with the Google API.
+*   **High Performance**: Gemini handles massive context windows with significantly higher consistency than local 14B models.
+*   **Privacy**: Using cloud LLMs involves sending forensic metadata (process names, registry paths) to a third-party provider. 
+
+To enable, simply add your `GEMINI_API_KEY` to the `.env` file and restart the services.
+
+## 🧠 Vector Database & Knowledge Build
+
+To provide the AI Analyst with industry-standard forensic knowledge, TheVooDooBox utilizes a local **ChromaDB** instance as its "Long-Term Memory."
+
+### 1. The Knowledge Base
+The system is designed to ingest high-quality forensic intelligence into a **ChromaDB** collection using the **`nomic-embed-text:v1.5`** model for high-density semantic vectorization.
+
+### 2. Ingesting SANS Posters
+We provide an automated ingestion pipeline to process SANS forensic posters (PDFs) into the vector database.
+
+**Setup Instructions**:
+1.  Create a directory named `sans_posters/` in the project root.
+2.  Place your SANS Forensic Posters (e.g., *SANS Windows Forensics*, *SANS Malware Analysis*) in this directory.
+3.  Run the ingestion script from your host machine (with access to the ChromaDB port):
+    ```bash
+    python ./scripts/ingest_posters.py
+    ```
+
+### 3. How the AI Uses It
+During a chat session or automated report generation, the backend performs a semantic search against this database using the user's query or the observed malware behaviors.
+*   **Example**: If the binary performs "Process Hollowing," the RAG pipeline retrieves the relevant sections from the SANS posters explaining how hollowing works and what registry/memory artifacts it leaves behind.
+*   **Benefit**: This grounds the LLM in peer-reviewed forensic methodology, significantly reducing hallucination and providing "Senior Researcher" levels of technical accuracy.
 
 ## Features
 
