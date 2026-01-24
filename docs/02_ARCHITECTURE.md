@@ -20,6 +20,8 @@ graph TD
         Agent -- "Heartbeats & Commands" --> VirtIO
     end
 
+    note over VirtIO, Socket: Transport Mode: Out-of-Band (VirtIO Serial) OR In-Band (TCP)
+
     subgraph "Host Server (Dockerized)"
         Socket[QEMU Guest Socket]
         Bridge["Hyper-Bridge (Rust)"]
@@ -58,7 +60,16 @@ graph TD
     } DRIVER_EVENT;
     ```
 
-### 2. Hyper-Bridge (Backend)
+### 2. Transport Modes: In-Band vs. Out-of-Band
+TheVooDooBox supports two primary communication channels between the Guest Agent and the Hyper-Bridge:
+
+*   **In-Band (TCP/IP)**: The default configuration. The Agent connects to the backend over a standard network interface (e.g., `192.168.1.1:9001`). This is simple to setup but visible to advanced malware monitoring the network stack.
+*   **Out-of-Band (VirtIO Serial)**: The "Gold Standard" for stealth. Communication occurs over a virtual serial hardware device.
+    *   **Bypasses `tcpip.sys`**: Data never enters the Windows network stack.
+    *   **Hardware Layer**: QEMU/VirtIO maps the Guest's serial port to a Unix Domain Socket on the host. 
+    *   **Stealth**: Telemetry traffic is invisible to packet sniffers (Wireshark) and firewall logs within the VM.
+
+### 3. Hyper-Bridge (Backend)
 *   **Tech Stack**: Rust (Actix-Web, Tokio, SQLx).
 *   **Concurrency**: Uses a centralized `EventBus` (Tokio Broadcast Channel) to fan-out kernel events to:
     1.  **WebSocket Actors**: Connected frontend clients.

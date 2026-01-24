@@ -14,7 +14,8 @@ For a production-grade lab, we recommend the following setup within your **Proxm
 *   **Dedicated Firewall (pfSense/OPNsense)**: Use a dedicated firewall VM to act as the gateway for your analysis environment.
 *   **VLAN Segmentation**: Place all sandbox VMs in a strictly isolated VLAN. Use firewall rules to block all traffic from this VLAN to your internal LAN or other infrastructure.
 *   **VPN Outbound**: If you require the malware to communicate with the internet (to monitor Command & Control), route the sandbox VLAN through a **VPN provider** at the firewall level. This prevents your public IP from being exposed to threat actors.
-*   **Disabled Guest-to-Host Networking**: Prevent the guest from communicating with the Host Server's IP address. Communication should primarily happen via the **VirtIO Serial** interface, which is an out-of-band communication channel and significantly harder for malware to pivot through.
+*   **Disabled Guest-to-Host Networking**: Prevent the guest from communicating with the Host Server's IP address. Communication should primarily happen via the **VirtIO Serial** interface.
+    *   **In-Band vs. Out-of-Band**: By default, the agent uses TCP (In-Band) for ease of setup. However, for maximum stealth, we recommend using the **VirtIO Serial Bridge** (Out-of-Band). This bypasses the Windows network stack entirely, making telemetry traffic invisible to malware-level packet sniffers.
 
 ## What is TheVooDooBox?
 
