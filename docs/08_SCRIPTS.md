@@ -28,6 +28,15 @@ These scripts are intended to run **inside** the Guest VM.
 ### `deploy_agent.ps1`
 *   **Purpose**: A lighter deployment script often used for rapid testing or "drop-and-execute" scenarios.
 
+### `install_sysmon.ps1`
+*   **Purpose**: Downloads and installs Sysmon64 with the project's recommended forensic configuration (`sysmon_config.xml`).
+
+### `enforce_security.ps1`
+*   **Purpose**: "Un-hardens" the VM. Disables Windows Defender, Updates, and Firewalls to ensure malware runs unhindered.
+
+### `install_driver.ps1`
+*   **Purpose**: Standalone installer for the `voodoobox_eye.sys` kernel driver. Handles test-signing enablement (`bcdedit`) and service registration.
+
 ## 🐍 Knowledge & AI Scripts (`/TheVooDooBox-main/scripts`)
 
 ### `ingest_posters.py`
