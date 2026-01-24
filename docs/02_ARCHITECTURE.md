@@ -46,7 +46,7 @@ graph TD
 ### 1. "The Eye" (Kernel Anti-Tamper)
 *   **Role**: **Self-Protection Only**.
 *   **Mechanism**: Uses `IOCTL_PROTECT_PROCESS` to prevent the Agent service from being terminated by malware.
-*   **Telemetry Source**: The User-Mode Agent consumes **Sysmon** events for process creation and network activity, ensuring stability and compatibility. It supplements this with **Native Telemetry** (File Hashing, Screenshots, DNS Cache).
+*   **Telemetry Source**: The User-Mode Agent consumes **Sysmon** events for process creation and network activity, ensuring stability and compatibility. It supplements this with **Native Telemetry** (File Hashing, Screenshots, DNS Cache). *Future Goal: Migrate entirely to custom Kernel Callbacks (Path B).*
 
 ### 2. Transport Modes: In-Band vs. Out-of-Band
     ```c
