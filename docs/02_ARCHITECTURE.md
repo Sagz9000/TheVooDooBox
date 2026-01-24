@@ -8,36 +8,43 @@ TheVooDooBox operates on a highly efficient "Stream-Analysis" architecture, sepa
 graph TD
     subgraph "Guest VM (Windows 10)"
         Kernel[Windows Kernel]
-        Driver["'The Eye' (Kernel Driver)"]
+        Driver["'The Eye' (Kernel Anti-Tamper)"]
         Sysmon[Sysmon Service]
         Agent[VoodooBox Agent Service]
         VirtIO[VirtIO Serial Port]
 
-        Kernel -- "Callback Events" --> Driver
+        Kernel -- "Process Protection" --> Driver
+        Driver -- "Anti-Tamper Lock" --> Agent
         Kernel -- "Event Logs" --> Sysmon
-        Sysmon -- "Forensic JSON" --> Agent
-        Driver -- "Raw Event Structs" --> VirtIO
-        Agent -- "Heartbeats & Commands" --> VirtIO
+        Sysmon -- "Forensic XML" --> Agent
+        Agent -- "Native (DNS/Screenshots)" --> Agent
+        Agent -- "Telemetry & Heartbeats" --> VirtIO
     end
+
+    VirtIO -- "Unix Domain Socket (Out-of-Band)" --> Socket
 
     subgraph "Host Server (Dockerized)"
         Socket[QEMU Guest Socket]
         Bridge["Hyper-Bridge (Rust)"]
         DB[(PostgreSQL)]
         Ghidra[Ghidra Service]
+        MCP[MCP Server (Python)]
 
-        VirtIO -- "Unix Domain Socket (Out-of-Band)" --> Socket
-        Socket -- "Byte Stream" --> Bridge
+        Socket -- "Stream" --> Bridge
         Bridge -- "Persist Events" --> DB
         Bridge -- "Tasks" --> Ghidra
+        MCP -- "Tools/Control" --> Bridge
+        MCP -- "Static Analysis" --> Ghidra
     end
 
     subgraph "Analyst Frontend"
         API[WebSocket API]
         UI[React Dashboard]
+        LLM[Agentic AI (Claude/Ollama)]
         
         Bridge -- "JSON/WS Events" --> API
         API --> UI
+        LLM -- "Tool Calls" --> MCP
     end
 ```
 
