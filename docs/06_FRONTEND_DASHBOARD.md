@@ -1,6 +1,6 @@
 # Frontend Dashboard: The Analyst Interface
 
-TheVooDooBox Frontend is a high-performance, real-time React application designed to provide malware analysts with a "Pixel-Perfect" window into the sandbox telemetry.
+TheVooDooBox Frontend is a real-time React application designed to provide malware analysts with a "Pixel-Perfect" window into the sandbox telemetry.
 
 ## 🏗️ Architecture & Tech Stack
 
