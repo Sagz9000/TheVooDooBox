@@ -2,6 +2,8 @@
 
 TheVooDooBox employs a specialized AI Analyst to act as a "Force Multiplier" for human researchers. Instead of just dumping logs, the system uses a **Hybrid RAG (Retrieval-Augmented Generation)** approach to synthesize both active behavior and static code analysis into a coherent forensic narrative.
 
+![AI Kill Chain Reconstruction](../TheVooDooBox-main/pictures/aianalysis.png)
+
 ## The Theory: Hybrid Context
 
 Traditional RAG often retrieves random chunks of text. Our approach is structured:
@@ -58,7 +60,12 @@ The JSON context sent to the LLM looks like this:
 }
 ```
 
+![AI Forensic Verdict Summary](../TheVooDooBox-main/pictures/execaisummary.png)
+
 ## System Prompts
+...
+![AI Detailed Executive Summary](../TheVooDooBox-main/pictures/execsummary.png)
+...
 
 TheVooDooBox uses three distinct system prompts tailored for different analysis stages.
 

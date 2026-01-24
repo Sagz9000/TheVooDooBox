@@ -26,6 +26,8 @@ sequenceDiagram
     HB-->>UI: Mark "Analysis Complete"
 ```
 
+![Headless Ghidra Decompiler](../TheVooDooBox-main/pictures/ghidra.png)
+
 ## 🤖 Using Ghidra with AI Chat
 
 The most powerful feature of this integration is the ability to ask the **AI Analyst** questions about the code while watching it execute.
@@ -39,6 +41,8 @@ Because the AI "knows" the code, you can ask specific technical questions:
 *   *"Does the decompiled code for `FUN_00401234` explain why we see network activity to this IP?"*
 *   *"Is there any obfuscation or string encryption loop in the `main` function?"*
 *   *"Look at the Ghidra findings; does this binary attempt to detect a debugger?"*
+
+![Static Bin-Explorer](../TheVooDooBox-main/pictures/moreghidra.png)
 
 ### 3. Verification
 The AI Analyst will cross-reference the **Dynamic Behavior** (e.g., *"Process spawned cmd.exe"*) with the **Static Logic** (e.g., *"Function X calls ShellExecuteA"*) to provide a confident forensic verdict.

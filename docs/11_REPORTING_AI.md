@@ -43,7 +43,11 @@ Once the AI report is finalized, the `genpdf` engine generates a forensic docume
 *   **Process Tree**: A visual representation of the execution flow, highlighting suspicious PIDs in red.
 *   **Artifact List**: Categorized list of Indicators of Compromise (IOCs) for rapid security team response.
 
+![Forensic Report View](../TheVooDooBox-main/pictures/reportview.png)
+
 ## 5. Persistence & Retrieval
+
+![Generated PDF Report](../TheVooDooBox-main/pictures/aigeneratedindicatorreport.png)
 
 All reports are stored in the PostgreSQL `analysis_reports` table and the PDF files are saved locally to the `/reports` directory. Analysts can retrieve previous reports via:
 *   **UI**: Clicking "View Report" on any completed task.

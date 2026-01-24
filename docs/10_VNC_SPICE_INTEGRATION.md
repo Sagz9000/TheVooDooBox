@@ -25,6 +25,8 @@ sequenceDiagram
     Bridge-->>Analyst: Bi-directional Stream Active
 ```
 
+![Raw Console Stream](../TheVooDooBox-main/pictures/consolestream.png)
+
 ## 2. Proxmox API Layer (`proxmox.rs`)
 
 The `ProxmoxClient` handles the initial authentication and ticket generation.

@@ -2,6 +2,8 @@
 
 TheVooDooBox Frontend is a real-time React application designed to provide malware analysts with a "Pixel-Perfect" window into the sandbox telemetry.
 
+![Lab Overview](../TheVooDooBox-main/pictures/labview.png)
+
 ## 🏗️ Architecture & Tech Stack
 
 *   **Framework**: [React](https://react.dev/) 18+ with [TypeScript](https://www.typescriptlang.org/).
@@ -24,6 +26,8 @@ The core workspace for an active malware dissection.
 *   **Telemetry Feed**: A high-speed scrolling list of kernel events (Processes, Files, Network).
 *   **Process Tree**: A dynamic visualization of the process lineage (Parent -> Child relationships).
 *   **MCP Console**: Interface to trigger manual lab actions like snapshot rollbacks.
+
+![Analysis Arena Telemetry](../TheVooDooBox-main/pictures/telemetry.png)
 
 ### 3. Report View (`ReportView.tsx`)
 The final forensic summary for a completed task.
