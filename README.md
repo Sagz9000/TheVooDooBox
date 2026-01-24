@@ -3,7 +3,7 @@
 # TheVooDooBox
 
 > **"From Logging to Streaming"**
-"The Voodoo who-do, what you don't dare-to people." > Malware analysis is inherently a risk no one should have to take alone. TheVooDooBox acts as your automated orchestrator, handling the "don't dare-to" tasks by isolating the execution and interaction layers within a hardened Proxmox environment. By automating the detonation and behavioral capture, it strips the "voodoo" from malicious code—leaving only the actionable intelligence behind.
+"The Voodoo who-do, what you don't dare-to people." > Malware analysis is inherently a risk no one should have to take alone. TheVooDooBox acts as your automated orchestrator, handling the "don't dare-to" tasks by isolating the execution and interaction layers within a hardened Proxmox environment. By automating the detonation and behavioral capture, it strips the "voodoo" from malicious code...leaving only the actionable intelligence behind.
 
 It provides a real-time window into the malware's execution, allowing analysts to:
 *   **Watch** the infection execute live via a high-performance VNC/Spice stream.
