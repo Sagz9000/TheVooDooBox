@@ -45,3 +45,5 @@ Welcome to TheVooDooBox Documentation. Use the links below to navigate the techn
     *   *Cross-Compilation*: How to build the Rust agent for Windows targets.
 *   [**14. Agent Troubleshooting**](14_AGENT_TROUBLESHOOTING.md)
     *   *Debug*: Solutions for common agent connectivity and execution issues.
+*   [**18. Backend Logging**](18_BACKEND_LOGGING.md)
+    *   *Ops*: Monitoring Hyper-Bridge health and configuring RUST_LOG levels.
