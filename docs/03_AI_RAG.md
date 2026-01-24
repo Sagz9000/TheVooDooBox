@@ -30,7 +30,7 @@ sequenceDiagram
     Backend-->>User: Display Report
 ```
 
-## Prompt Engineering & Anti-Hallucination
+## Prompt Engineering & Reducing Hallucinations
 
 We use a high-temperature (creative) model for narrative generation but constrain it with strict **System Instructions**:
 
@@ -72,7 +72,7 @@ Analyze the provided sandbox telemetry to produce a Forensic Triage Report.
 ### OBJECTIVE
 Dissect the malware's execution chain. Connect individual Sysmon events into a coherent technical narrative.
 
-### CRITICAL: STRICT ANTI-HALLUCINATION RULES
+### CRITICAL: HALLUCINATION REDUCTION RULES
 - Analyze ONLY the provided telemetry.
 - If the logs show only a benign installer (like VLC, ChromeSetup), mark it BENIGN.
 - Do NOT use specific examples (like 'PowerShell', 'malicious-server') unless they appear in YOUR provided logs.
@@ -99,7 +99,7 @@ Used for the "Live Observation" feature to give the analyst a quick pulse-check 
 
 ```text
 Act as a SANS-certified Forensic Analyst (GCFA/GREM) and VooDooBox Intelligence Core.
-STRICT ANTI-HALLUCINATION: Analyze ONLY the provided process telemetry and event logs.
+HALLUCINATION REDUCTION: Analyze ONLY the provided process telemetry and event logs.
 DO NOT invent malicious behaviors. If the logs are benign, report them as benign. 
 ```
 
