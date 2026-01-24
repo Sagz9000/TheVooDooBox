@@ -1,4 +1,4 @@
-# TheVooDooBox
+# <img src="frontend/public/logo.png" width="40" height="40" alt="TheVooDooBox Logo"> TheVooDooBox
 
 > **"From Logging to Streaming"**
 "The Voodoo who-do, what you don't dare-to people." > Malware analysis is inherently a risk no one should have to take alone. TheVooDooBox acts as your automated orchestrator, handling the "don't dare-to" tasks by isolating the execution and interaction layers within a hardened Proxmox environment. By automating the detonation and behavioral capture, it strips the "voodoo" from malicious code—leaving only the actionable intelligence behind.
