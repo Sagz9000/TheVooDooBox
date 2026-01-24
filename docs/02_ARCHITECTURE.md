@@ -28,7 +28,7 @@ graph TD
         Bridge["Hyper-Bridge (Rust)"]
         DB[(PostgreSQL)]
         Ghidra[Ghidra Service]
-        MCP[MCP Server (Python)]
+        MCP["MCP Server (Python)"]
 
         Socket -- "Stream" --> Bridge
         Bridge -- "Persist Events" --> DB
@@ -40,7 +40,7 @@ graph TD
     subgraph "Analyst Frontend"
         API[WebSocket API]
         UI[React Dashboard]
-        LLM[Agentic AI (Claude/Ollama)]
+        LLM["Agentic AI (Claude/Ollama)"]
         
         Bridge -- "JSON/WS Events" --> API
         API --> UI
