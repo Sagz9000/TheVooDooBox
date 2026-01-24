@@ -2,6 +2,9 @@
 
 To provide the **Pixel** part of our "Kernel-to-Pixel" vision, TheVooDooBox integrates directly with Proxmox's remote console APIs. This allows analysts to interact with malware in real-time without needing direct network access to the guest VM.
 
+> [!WARNING]
+> **STABILITY DISCLAIMER**: The VNC/SPICE integration is currently considered **experimental** and may be buggy. Due to the complex nature of how Proxmox handles WebSocket-to-TCP proxying and the sensitive timing requirements of the SPICE protocol, sessions may occasionally disconnect or fail to initialize correctly. If issues persist, consider using the standalone Proxmox console as a fallback.
+
 ## 1. Connection Workflow
 
 The connection process follows a three-step handshake between the Frontend, the Hyper-Bridge, and the Proxmox Host.
