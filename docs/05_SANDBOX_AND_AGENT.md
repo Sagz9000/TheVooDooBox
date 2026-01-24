@@ -75,7 +75,15 @@ While custom kernel telemetry is powerful, it is also unstable. For V3, we rely 
 2.  **Richness**: Native DNS, Network, and Registry correlation.
 3.  **Safety**: Reduced risk of Blue Screens (BSOD) during analysis.
 
-## 4. Forensic Instrumentation (Sysmon)
+## 4. Native Agent Telemetry
+While Sysmon handles high-volume event tracing, the Agent performs specialized forensic tasks natively:
+
+*   **File Hashing**: The agent watches critical paths (e.g., `Downloads`, `Temp`) and calculates SHA256 hashes for every new file.
+*   **Registry Persistence**: Periodically polls high-value AutoRun keys (`HKLM\...\Run`) to detect persistence mechanisms that rely on simply setting a value.
+*   **Visual Capture**: Takes periodic screenshots of the desktop to capture ransomware notes or error dialogs.
+*   **DNS Snapshots**: Captures the state of the Windows DNS Cache to identify domains that may have been queried before monitoring started.
+
+## 5. Forensic Instrumentation (Sysmon)
 
 **Sysmon is the primary telemetry source for TheVooDooBox.** The user-mode agent subscribes to the `Microsoft-Windows-Sysmon/Operational` event channel and forwards events in real-time.
 
