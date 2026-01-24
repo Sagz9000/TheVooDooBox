@@ -1,8 +1,8 @@
 # Mallab v3 Deployment Guide
 
-This guide covers the deployment of the Mallab v3 Multi-Sandbox Analysis Platform.
+> **Moved**: Please see [**07_INSTALLATION.md**](docs/07_INSTALLATION.md) for the maintainable "Single Source of Truth" regarding deployment.
 
-## 1. Proxmox Infrastructure Setup
+This file is archived and will be removed in a future release.
 
 The "Sanctuary" management system requires a Proxmox API Token with appropriate permissions (VM.Audit, VM.Config.HW, VM.PowerMgmt, VM.Snapshot).
 

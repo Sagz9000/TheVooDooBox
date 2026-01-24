@@ -63,9 +63,8 @@ The JSON context sent to the LLM looks like this:
 ![AI Forensic Verdict Summary](../TheVooDooBox-main/pictures/execaisummary.png)
 
 ## System Prompts
-...
+
 ![AI Detailed Executive Summary](../TheVooDooBox-main/pictures/execsummary.png)
-...
 
 TheVooDooBox uses three distinct system prompts tailored for different analysis stages.
 

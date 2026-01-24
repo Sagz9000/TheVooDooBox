@@ -43,11 +43,12 @@ graph TD
 
 ## Component Details
 
-### 1. "The Eye" (Kernel Driver)
-*   **Device**: `\Device\VoodooBoxEye`
-*   **Symbolic Link**: `\DosDevices\VoodooBoxEye`
-*   **Mechanism**: Uses `PsSetCreateProcessNotifyRoutineEx` for process tracking and `ObRegisterCallbacks` for handle stripping protection.
-*   **Event Struct**:
+### 1. "The Eye" (Kernel Anti-Tamper)
+*   **Role**: **Self-Protection Only**.
+*   **Mechanism**: Uses `IOCTL_PROTECT_PROCESS` to prevent the Agent service from being terminated by malware.
+*   **Telemetry Source**: The User-Mode Agent consumes **Sysmon** events for process creation and network activity, ensuring stability and compatibility.
+
+### 2. Transport Modes: In-Band vs. Out-of-Band
     ```c
     typedef struct _DRIVER_EVENT {
         ULONG EventType;      // 0=ProcCreate, 1=NetConnect, 2=RegSet

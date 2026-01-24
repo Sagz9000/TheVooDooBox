@@ -14,7 +14,9 @@ Welcome to TheVooDooBox Documentation. Use the links below to navigate the techn
 *   [**02. Architecture & Logic**](02_ARCHITECTURE.md)
     *   *Design*: Data flow from Kernel Driver to React UI, including DB schema and API specs.
 *   [**04. Hyper-Bridge & MCP**](04_HYPER_BRIDGE.md)
-    *   *Orchestration*: How the backend works as an MCP server to provide agentic AI tools.
+    *   *Orchestration*: How the backend works as an orchestration layer.
+*   [**19. MCP Server (Python)**](19_MCP_SERVER.md)
+    *   *Tooling*: The Python service exposing VM control and Ghidra tools to Agentic AI.
 *   [**06. Frontend Dashboard**](06_FRONTEND_DASHBOARD.md)
     *   *Analyst UI*: React/Vite architecture, component breakdowns, and real-time telemetry rendering.
 *   [**10. VNC & SPICE Integration**](10_VNC_SPICE_INTEGRATION.md)

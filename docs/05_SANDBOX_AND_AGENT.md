@@ -59,35 +59,25 @@ To start analysis, the backend sends:
 4.  **Spawn**: Launches process via `CreateProcess`.
 5.  **Monitor**: Returns `EXECUTION_STARTED` event.
 
-## 3. "The Eye" Kernel Driver (`voodoobox-eye.sys`)
+## 3. "The Eye" Kernel Driver (`voodoobox_eye.sys`)
 
 ### Architecture
-*   **Type**: Minifilter + Legacy Device Driver
-*   **IOCTL Interface**: `0x80002000` (Register PID), `0x80002004` (Stop Monitoring).
+*   **Type**: Kernel Mode Driver Framework (KMDF)
+*   **Role**: Anti-Tamper / Self-Protection
+*   **IOCTL Interface**: `0x222003` (Protect PID)
 
-### Event Collection
-The driver pushes events to a ring buffer shared with the user-mode Agent.
+### Anti-Tamper Mechanism
+The driver registers a `Prevent Termination` lock on the Agent process. It intercepts process handle requests and strips the `PROCESS_TERMINATE` and `PROCESS_VM_WRITE` access rights from any process attempting to interact with the Agent. This ensures that even "System" level malware cannot kill the monitoring agent.
 
-#### Captured Event Types
-
-| ID | Name | Trigger |
-|----|------|---------|
-| 1 | `PROCESS_CREATE` | `PsSetCreateProcessNotifyRoutineEx` |
-| 2 | `THREAD_CREATE` | `PsSetCreateThreadNotifyRoutine` |
-| 3 | `IMAGE_LOAD` | `PsSetLoadImageNotifyRoutine` |
-| 4 | `REGISTRY_SET` | `CmRegisterCallback` (RegNtPreSetValueKey) |
-| 5 | `FILE_CREATE` | Minifilter `IRP_MJ_CREATE` |
-
-### Kernel-to-User Transport
-The driver exposes a device object `\\.\Global\VoodooBoxEye`. The Agent reads from this device and forwards the raw bytes immediately to the VirtIO serial port.
-
-### Evasion Resistance
-*   **ObCallback**: Protects the Agent process from being terminated by malware (strips `PROCESS_TERMINATE` rights).
-*   **Direct I/O**: Does not use Windows Event Tracing (ETW), protecting against "ETW Patching" techniques common in modern malware.
+### Why No Kernel Telemetry?
+While custom kernel telemetry is powerful, it is also unstable. For V3, we rely on **Sysmon** (System Monitor) for event collection. This provides:
+1.  **Stability**: Microsoft-signed driver reliability.
+2.  **Richness**: Native DNS, Network, and Registry correlation.
+3.  **Safety**: Reduced risk of Blue Screens (BSOD) during analysis.
 
 ## 4. Forensic Instrumentation (Sysmon)
 
-While "The Eye" provides deep kernel telemetry, we complement it with **Sysmon** for high-level event correlation (DNS, Registry, File Creation).
+**Sysmon is the primary telemetry source for TheVooDooBox.** The user-mode agent subscribes to the `Microsoft-Windows-Sysmon/Operational` event channel and forwards events in real-time.
 
 ### Installation
 Sysmon must be installed in the Guest VM during the "Golden Image" preparation phase.

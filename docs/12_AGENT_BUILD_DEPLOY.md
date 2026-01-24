@@ -147,6 +147,19 @@ TheVooDooBox Windows Agent (Active Eye) - v3.0.0
 Connected to Hyper-Bridge @ 192.168.1.1:9001
 ```
 
+## 4. Automated Testing (Agent Mock)
+For development without a live VM, use the **Agent Mock**. This Rust service simulates a connected Windows Guest, sending fake heartbeats and telemetry to the backend.
+
+### Running the Mock
+1.  **Direct Run**:
+    ```bash
+    cd agent-mock
+    cargo run
+    ```
+    *   Configured to connect to `localhost:9001` by default.
+2.  **Docker**:
+    Uncomment the `mock-agent` service in `docker-compose.yaml` to spin it up automatically with the stack.
+
 ### Verify Backend Connection
 On your host machine, check the Hyper-Bridge logs:
 ```bash
