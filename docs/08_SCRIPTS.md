@@ -43,12 +43,3 @@ These scripts are intended to run **inside** the Guest VM.
 *   **Purpose**: Processes SANS Forensic Posters (PDFs) from the `/sans_posters` directory and populates the **ChromaDB** vector database.
 *   **Usage**: `python ./TheVooDooBox-main/scripts/ingest_posters.py`
 *   **Requires**: `pypdf`, `chromadb` python libraries.
-
-### `install_sysmon.ps1`
-*   **Purpose**: Downloads and installs Sysmon64 with the project's recommended forensic configuration (`sysmon_config.xml`).
-
-### `enforce_security.ps1`
-*   **Purpose**: "Un-hardens" the VM. Disables Windows Defender, Updates, and Firewalls to ensure malware runs unhindered.
-
-### `install_driver.ps1`
-*   **Purpose**: Standalone installer for the `voodoobox_eye.sys` kernel driver. Handles test-signing enablement (`bcdedit`) and service registration.
