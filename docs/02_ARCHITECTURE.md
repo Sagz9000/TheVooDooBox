@@ -20,15 +20,13 @@ graph TD
         Agent -- "Heartbeats & Commands" --> VirtIO
     end
 
-    note over VirtIO, Socket: Transport Mode: Out-of-Band (VirtIO Serial) OR In-Band (TCP)
-
     subgraph "Host Server (Dockerized)"
         Socket[QEMU Guest Socket]
         Bridge["Hyper-Bridge (Rust)"]
         DB[(PostgreSQL)]
         Ghidra[Ghidra Service]
 
-        VirtIO -- "Unix Domain Socket" --> Socket
+        VirtIO -- "Unix Domain Socket (Out-of-Band)" --> Socket
         Socket -- "Byte Stream" --> Bridge
         Bridge -- "Persist Events" --> DB
         Bridge -- "Tasks" --> Ghidra
