@@ -1,0 +1,91 @@
+services:
+  hyper-bridge:
+    build: ./backend
+    ports:
+      - "8080:8080"
+      - "9001:9001"
+    environment:
+      - PROXMOX_URL=https://192.168.50.200:8006
+      - PROXMOX_USER=root@pam
+      - PROXMOX_TOKEN_ID=MalwareLab
+      - PROXMOX_TOKEN_SECRET=${PROXMOX_TOKEN_SECRET}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OLLAMA_URL=http://192.168.50.98:11434
+      - OLLAMA_MODEL=qwen2.5-coder:14b
+      - EMBEDDING_MODEL=nomic-embed-text:v1.5
+      - CHROMADB_URL=http://chromadb:8000
+      - DATABASE_URL=${DATABASE_URL}
+      - RUST_LOG=debug
+      - HOST_IP=${HOST_IP}
+    depends_on:
+      - db
+      - chromadb
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/screenshots:/app/screenshots
+      - ./backend/reports:/app/reports
+    restart: unless-stopped
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8002:8000"
+    volumes:
+      - ./chroma_data:/chroma/chroma
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=voodoobox
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=voodoobox_telemetry
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    restart: always
+
+  ghidra:
+    build: ./ghidra
+    ports:
+      - "8005:8000"
+    volumes:
+      - ./ghidra/projects:/data/projects
+      - ./backend/uploads:/data/binaries
+    restart: unless-stopped
+
+  mcp-server:
+    build: ./mcp-server
+    environment:
+      - BACKEND_URL=http://hyper-bridge:8080
+      - GHIDRA_API=http://ghidra:8000
+      - OLLAMA_HOST=http://192.168.50.98:11434
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8001
+    ports:
+      - "8001:8001"
+    depends_on:
+      - hyper-bridge
+      - ghidra
+    restart: unless-stopped
+
+#  mock-agent:
+#    build: ./agent-mock
+#    environment:
+#      - AGENT_SERVER_ADDR=hyper-bridge:9001
+#    depends_on:
+#      - hyper-bridge
+#    restart: always
+
+volumes:
+  postgres_data:

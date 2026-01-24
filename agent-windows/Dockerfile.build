@@ -1,0 +1,30 @@
+# Single-stage build for Windows agent
+FROM rust:latest
+
+# Install Windows cross-compilation dependencies
+RUN dpkg --add-architecture amd64 && \
+    apt-get update && \
+    apt-get install -y \
+    gcc-mingw-w64-x86-64 \
+    g++-mingw-w64-x86-64 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Add Windows target
+RUN rustup target add x86_64-pc-windows-gnu
+
+# Configure cargo for cross-compilation
+RUN mkdir -p ~/.cargo && \
+    echo '[target.x86_64-pc-windows-gnu]' >> ~/.cargo/config && \
+    echo 'linker = "x86_64-w64-mingw32-gcc"' >> ~/.cargo/config && \
+    echo 'ar = "x86_64-w64-mingw32-ar"' >> ~/.cargo/config
+
+WORKDIR /build
+
+# Copy all files
+COPY . .
+
+# Build the agent
+RUN cargo build --release --target x86_64-pc-windows-gnu
+
+# The output is in target/x86_64-pc-windows-gnu/release/mallab-agent-windows.exe
+CMD ["echo", "Build complete! Extract with: docker cp <container>:/build/target/x86_64-pc-windows-gnu/release/mallab-agent-windows.exe ."]

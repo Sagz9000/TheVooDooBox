@@ -1,0 +1,20 @@
+# Compiled binaries
+*.exe
+*.obj
+*.pdb
+*.ilk
+
+# Build artifacts
+*.lib
+*.exp
+
+# Visual Studio files
+*.suo
+*.user
+*.sdf
+*.opensdf
+.vs/
+
+# Temp files
+*.tmp
+*.log

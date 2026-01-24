@@ -1,0 +1,133 @@
+[
+    {
+        "name": "Auto-Analysis & Ingest",
+        "filename": "AnalyzeAndIngest.py",
+        "category": "Analysis",
+        "description": "Performs full Ghidra auto-analysis and ingests all functions into the results database for display.",
+        "ai_trigger": "Analyze this binary and show me all functions.",
+        "inputs": []
+    },
+    {
+        "name": "MalwareScan",
+        "filename": "MalwareScan.java",
+        "category": "Analysis",
+        "description": "Scans for common malware patterns, suspicious imports, strings, and high-risk API usage.",
+        "ai_trigger": "Analyze this binary for malware indicators.",
+        "inputs": []
+    },
+    {
+        "name": "CipherScan",
+        "filename": "CipherScan.java",
+        "category": "Analysis",
+        "description": "Detects potential encryption, hashing, or obfuscation logic using bitwise operation heuristics.",
+        "ai_trigger": "Identify encryption or hashing functions.",
+        "inputs": []
+    },
+    {
+        "name": "GetFunctionCFG",
+        "filename": "GetFunctionCFG.java",
+        "category": "Graph",
+        "description": "Generates the Control Flow Graph (CFG) for a specific function.",
+        "ai_trigger": "Show me the control flow graph for function X.",
+        "inputs": [
+            {
+                "name": "function_address",
+                "type": "string",
+                "label": "Function Address"
+            }
+        ]
+    },
+    {
+        "name": "GetCallTree",
+        "filename": "GetCallTree.java",
+        "category": "Graph",
+        "description": "Generates the call tree (callees/callers) for a specific function.",
+        "ai_trigger": "Show call tree for function X.",
+        "inputs": [
+            {
+                "name": "function_address",
+                "type": "string",
+                "label": "Function Address"
+            }
+        ]
+    },
+    {
+        "name": "RenameFunction",
+        "filename": "RenameFunction.java",
+        "category": "Action",
+        "description": "Renames a function in the Ghidra project database.",
+        "ai_trigger": "Rename function X to Y.",
+        "inputs": [
+            {
+                "name": "function_address",
+                "type": "string",
+                "label": "Function Address"
+            },
+            {
+                "name": "new_name",
+                "type": "string",
+                "label": "New Name"
+            }
+        ]
+    },
+    {
+        "name": "SetComment",
+        "filename": "SetComment.java",
+        "category": "Action",
+        "description": "Adds a comment to a specific address or function.",
+        "ai_trigger": "Add comment to address X.",
+        "inputs": [
+            {
+                "name": "address",
+                "type": "string",
+                "label": "Address"
+            },
+            {
+                "name": "comment",
+                "type": "string",
+                "label": "Comment"
+            }
+        ]
+    },
+    {
+        "name": "GetXRefs",
+        "filename": "GetXRefs.java",
+        "category": "Analysis",
+        "description": "Finds all cross-references (XRefs) to a specific address.",
+        "ai_trigger": "Find references to address X.",
+        "inputs": [
+            {
+                "name": "address",
+                "type": "string",
+                "label": "Address"
+            }
+        ]
+    },
+    {
+        "name": "FunctionExport",
+        "filename": "FunctionExport.java",
+        "category": "Data",
+        "description": "Exports all functions in the binary to a JSON file.",
+        "ai_trigger": "List all functions.",
+        "inputs": []
+    },
+    {
+        "name": "DecompileFunction",
+        "filename": "DecompileFunction.java",
+        "category": "Analysis",
+        "description": "Decompiles a specific function at an address and returns C code.",
+        "ai_trigger": "Decompile function at address X.",
+        "inputs": [
+            {
+                "name": "output_file",
+                "type": "string",
+                "label": "Output File"
+            },
+            {
+                "name": "address",
+                "type": "string",
+                "label": "Function Address"
+            }
+        ]
+    }
+]

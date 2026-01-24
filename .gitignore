@@ -1,0 +1,22 @@
+# Node
+node_modules/
+dist/
+.env
+
+# Rust
+target/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Docker logs
+*.log
+
+# Data
+backend/uploads/
+backend/screenshots/
+ghidra/projects/
+chroma_data/
+sans_posters/

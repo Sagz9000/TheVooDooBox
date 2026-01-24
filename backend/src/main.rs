@@ -1,0 +1,2188 @@
+use actix_web::{get, post, delete, web, App, HttpResponse, HttpServer, Responder};
+use dotenv::dotenv;
+use std::env;
+use std::fs;
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+use chrono::Utc;
+use serde::{Deserialize, Serialize};
+use sha2::{Sha256, Digest};
+
+mod proxmox;
+mod stream;
+mod spice_relay;
+mod ai_analysis;
+mod reports;
+use ai_analysis::{generate_ai_report, AnalysisRequest, AIReport};
+
+const NOISE_PROCESSES: &[&str] = &[
+    "voodoobox-agent-windows.exe",
+    "voodoobox-agent.exe",
+    "officeclicktorun.exe",
+    "conhost.exe",
+    "svchost.exe",
+    "lsass.exe",
+    "services.exe",
+    "wininit.exe",
+    "smss.exe",
+    "csrss.exe",
+    "winlogon.exe",
+    "spoolsv.exe",
+    "searchindexer.exe",
+    "taskhostw.exe",
+    "sppsvc.exe",
+    "fontdrvhost.exe",
+    "dwm.exe",
+    "ctfmon.exe",
+    "taskmgr.exe"
+];
+
+#[get("/health")]
+async fn health_check() -> impl Responder {
+    HttpResponse::Ok().json(serde_json::json!({ "status": "ok", "service": "hyper-bridge" }))
+}
+
+#[get("/vms")]
+async fn list_all_vms(client: web::Data<proxmox::ProxmoxClient>) -> impl Responder {
+    match client.get_nodes().await {
+        Ok(nodes) => {
+            println!("[PROXMOX] Found {} nodes", nodes.len());
+            let mut all_vms = Vec::new();
+            for node in nodes {
+                println!("[PROXMOX] Fetching VMs for node: {}", node.node);
+                match client.get_vms(&node.node).await {
+                    Ok(vms) => {
+                        println!("[PROXMOX] Node {} has {} VMs", node.node, vms.len());
+                        for vm in vms {
+                            let vm_json = serde_json::json!({
+                                "vmid": vm.vmid,
+                                "name": vm.name,
+                                "status": vm.status,
+                                "node": node.node,
+                                "cpus": vm.cpus,
+                                "maxmem": vm.maxmem
+                            });
+                            all_vms.push(vm_json);
+                        }
+                    },
+                    Err(e) => {
+                         println!("[PROXMOX] Failed to fetch VMs for node {}: {}", node.node, e);
+                    }
+                }
+            }
+            println!("[PROXMOX] Returning total {} VMs to frontend", all_vms.len());
+            HttpResponse::Ok().json(all_vms)
+        }
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })),
+    }
+}
+
+#[post("/vms/{node}/{vmid}/status")]
+async fn vm_control(
+    client: web::Data<proxmox::ProxmoxClient>,
+    path: web::Path<(String, u64)>,
+    req: web::Json<serde_json::Value>
+) -> impl Responder {
+    let (node, vmid) = path.into_inner();
+    let action = req["action"].as_str().unwrap_or("start");
+    match client.vm_action(&node, vmid, action).await {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "status": "success", "action": action })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })),
+    }
+}
+
+#[post("/vms/{node}/{vmid}/revert")]
+async fn vm_revert(
+    client: web::Data<proxmox::ProxmoxClient>,
+    path: web::Path<(String, u64)>,
+    req: web::Json<serde_json::Value>
+) -> impl Responder {
+    let (node, vmid) = path.into_inner();
+    let snapshot = req["snapshot"].as_str().unwrap_or("GOLD_IMAGE");
+    match client.rollback_snapshot(&node, vmid, snapshot).await {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "status": "success", "snapshot": snapshot })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })),
+    }
+}
+
+#[post("/vms/{node}/{vmid}/vnc")]
+async fn vnc_proxy(
+    client: web::Data<proxmox::ProxmoxClient>, 
+    path: web::Path<(String, u64)>
+) -> impl Responder {
+    let (node, vmid) = path.into_inner();
+    match client.create_vnc_proxy(&node, vmid).await {
+        Ok(ticket) => HttpResponse::Ok().json(ticket),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })),
+    }
+}
+
+#[post("/vms/{node}/{vmid}/spice")]
+async fn spice_proxy(
+    client: web::Data<proxmox::ProxmoxClient>, 
+    path: web::Path<(String, u64)>
+) -> impl Responder {
+    let (node, vmid) = path.into_inner();
+    match client.create_spice_proxy(&node, vmid).await {
+        Ok(ticket) => HttpResponse::Ok().json(ticket),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })),
+    }
+}
+
+use actix_web::{HttpRequest, Error};
+use actix_web_actors::ws;
+
+#[derive(serde::Deserialize)]
+struct SpiceWsQuery {
+    host: Option<String>,
+}
+
+#[get("/vms/{node}/{vmid}/spice-ws")]
+async fn spice_websocket(
+    req: HttpRequest,
+    stream: web::Payload,
+    client: web::Data<proxmox::ProxmoxClient>,
+    path: web::Path<(String, u64)>,
+    query: web::Query<SpiceWsQuery>,
+) -> Result<HttpResponse, Error> {
+    let (node, vmid) = path.into_inner();
+    
+    // Determine target host. Use provided one or generate a new ticket.
+    let target_host = if let Some(h) = &query.host {
+        h.clone()
+    } else {
+        // Get SPICE connection details from Proxmox
+        match client.create_spice_proxy(&node, vmid).await {
+            Ok(t) => t.host.unwrap_or("localhost".to_string()),
+            Err(e) => {
+                println!("[SPICE_WS] Failed to get ticket: {}", e);
+                return Ok(HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })));
+            }
+        }
+    };
+
+    // Calculate Proxy Address
+    let proxmox_url = std::env::var("PROXMOX_URL").unwrap_or("https://localhost:8006".to_string());
+    let host_ip = proxmox_url
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .split(':')
+        .next()
+        .unwrap_or("localhost");
+    let proxy_addr = format!("{}:3128", host_ip);
+    
+    let target_port = 61000; // Always use TLS port for SPICE
+
+    println!("[SPICE_WS] Initiating relay: Proxy={}, Target={}:{}", proxy_addr, target_host, target_port);
+
+    let relay = spice_relay::SpiceRelay::new(proxy_addr, target_host, target_port);
+    ws::WsResponseBuilder::new(relay, &req, stream)
+        .protocols(&["binary"])
+        .start()
+}
+
+use tokio::net::TcpListener;
+use tokio::io::{AsyncBufReadExt, BufReader, AsyncWriteExt};
+use std::sync::Arc;
+use tokio::sync::{mpsc, Mutex};
+use std::collections::HashMap;
+
+struct AgentSession {
+    tx: mpsc::UnboundedSender<String>,
+    active_task_id: Option<String>,
+    hostname: Option<String>,
+    connected_at: std::time::Instant,
+}
+
+struct AgentManager {
+    sessions: Mutex<HashMap<String, AgentSession>>,
+}
+
+impl AgentManager {
+    fn new() -> Self {
+        Self { 
+            sessions: Mutex::new(HashMap::new()),
+        }
+    }
+
+    async fn register(&self, id: String, tx: mpsc::UnboundedSender<String>) {
+        self.sessions.lock().await.insert(id, AgentSession {
+            tx,
+            active_task_id: None,
+            hostname: None,
+            connected_at: std::time::Instant::now(),
+        });
+    }
+
+    async fn remove(&self, id: &str) {
+        self.sessions.lock().await.remove(id);
+    }
+
+    // Set task ID for a specific session (by ID or first available if none assigned)
+    async fn bind_task_to_session(&self, session_id: String, task_id: String) {
+        let mut sessions = self.sessions.lock().await;
+        if let Some(session) = sessions.get_mut(&session_id) {
+            session.active_task_id = Some(task_id.clone());
+            println!("[AGENT] Task {} bound to session {}", task_id, session_id);
+        }
+    }
+
+    // Helper to get the first active task ID found (for legacy global endpoints)
+    async fn get_any_active_task_id(&self) -> Option<String> {
+        let sessions = self.sessions.lock().await;
+        for session in sessions.values() {
+            if let Some(ref tid) = session.active_task_id {
+                return Some(tid.clone());
+            }
+        }
+        None
+    }
+
+    async fn broadcast_command(&self, cmd: &str) {
+        let sessions = self.sessions.lock().await;
+        for session in sessions.values() {
+            let _ = session.tx.send(cmd.to_string());
+        }
+    }
+
+    async fn send_command_to_session(&self, session_id: &str, cmd: &str) {
+        let sessions = self.sessions.lock().await;
+        if let Some(session) = sessions.get(session_id) {
+            let _ = session.tx.send(cmd.to_string());
+        }
+    }
+
+    pub async fn find_session_by_vm_name(&self, vm_name: &str) -> Option<String> {
+        let sessions = self.sessions.lock().await; 
+        for (id, session) in sessions.iter() {
+            if let Some(h) = &session.hostname {
+                // Determine if we want exact or loose matching.
+                // For now, let's assume exact match or contains.
+                if h.eq_ignore_ascii_case(vm_name) {
+                    return Some(id.clone());
+                }
+            }
+        }
+        None
+    }
+
+    async fn _clear_sessions(&self) {
+        let mut sessions = self.sessions.lock().await;
+        sessions.clear();
+        println!("[AGENT] All sessions cleared.");
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, sqlx::FromRow)]
+pub struct RawAgentEvent {
+    pub id: Option<i32>,
+    pub event_type: String,
+    pub process_id: i32,
+    pub parent_process_id: i32,
+    pub process_name: String,
+    pub details: String,
+    pub timestamp: i64,
+    pub task_id: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
+pub struct Task {
+    pub id: String,
+    pub filename: String,
+    pub original_filename: String,
+    pub file_hash: String,
+    pub status: String,
+    pub verdict: Option<String>,
+    pub risk_score: Option<i32>,
+    pub created_at: i64,
+    pub completed_at: Option<i64>,
+    pub verdict_manual: Option<bool>,
+}
+
+async fn start_tcp_listener(
+    broadcaster: Arc<stream::Broadcaster>, 
+    manager: Arc<AgentManager>,
+    pool: Pool<Postgres>
+) {
+    let listener = TcpListener::bind("0.0.0.0:9001").await.expect("Failed to bind TCP port 9001");
+    println!("Agent TCP Listener active on :9001");
+
+    loop {
+        let (socket, addr) = listener.accept().await.unwrap();
+        let broadcaster = broadcaster.clone();
+        let manager = manager.clone();
+        let pool = pool.clone();
+        let session_id = addr.to_string();
+        
+        tokio::spawn(async move {
+            let (rx_socket, mut tx_socket) = tokio::io::split(socket);
+            let (tx_cmd, mut rx_cmd) = mpsc::unbounded_channel::<String>();
+            
+            manager.register(session_id.clone(), tx_cmd).await;
+            println!("Agent connected: {}", session_id);
+
+            let mut reader = BufReader::new(rx_socket);
+            let mut line = String::new();
+            
+            loop {
+                tokio::select! {
+                    res = reader.read_line(&mut line) => {
+                        match res {
+                            Ok(0) => break, 
+                            Ok(_) => {
+                                let trimmed = line.trim();
+                                if let Ok(mut evt) = serde_json::from_str::<RawAgentEvent>(trimmed) {
+                                    // NOISE FILTERING
+                                    let p_name = evt.process_name.to_lowercase();
+                                    if NOISE_PROCESSES.iter().any(|&n| p_name.contains(n)) {
+                                        line.clear();
+                                        continue;
+                                    }
+
+                                // Get the current active task for THIS session
+                                let current_task_id = {
+                                    let sessions = manager.sessions.lock().await;
+                                    sessions.get(&session_id).and_then(|s| s.active_task_id.clone())
+                                };
+                                evt.task_id = current_task_id.clone();
+
+                                    if let Some(ref tid) = evt.task_id {
+                                        println!("[TELEMETRY] Captured event for Task {}: {} ({})", tid, evt.event_type, evt.process_name);
+                                    } else {
+                                        println!("[TELEMETRY] Captured global event (No Task ID): {} ({})", evt.event_type, evt.process_name);
+                                    }
+
+                                    // Broadcast enriched event
+                                    if let Ok(json) = serde_json::to_string(&evt) {
+                                        broadcaster.send_message(&json);
+                                    }
+                                    
+                                    let db_res = sqlx::query(
+                                        "INSERT INTO events (event_type, process_id, parent_process_id, process_name, details, timestamp, task_id, session_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+                                    )
+                                    .bind(&evt.event_type)
+                                    .bind(&evt.process_id)
+                                    .bind(&evt.parent_process_id)
+                                    .bind(&evt.process_name)
+                                    .bind(&evt.details)
+                                    .bind(&evt.timestamp)
+                                    .bind(&evt.task_id)
+                                    .bind(&session_id)
+                                    .execute(&pool)
+                                    .await;
+
+                                    if let Err(e) = db_res {
+                                        println!("[DATABASE] Error inserting event: {}", e);
+                                    }
+                                }
+                                line.clear();
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                    Some(cmd) = rx_cmd.recv() => {
+                        if let Err(_) = tx_socket.write_all(format!("{}\n", cmd).as_bytes()).await {
+                            break;
+                        }
+                    }
+                }
+            }
+            manager.remove(&session_id).await;
+            println!("Agent disconnected: {}", session_id);
+        });
+    }
+}
+
+#[derive(Deserialize)]
+struct TerminationRequest {
+    pid: i32,
+}
+
+#[derive(Deserialize)]
+struct ExecRequest {
+    path: String,
+    args: Option<Vec<String>>,
+    vmid: Option<u64>,
+    node: Option<String>,
+}
+
+#[derive(Deserialize)]
+pub struct PivotRequest {
+    pub path: String,
+}
+
+#[derive(Deserialize)]
+struct UrlRequest {
+    url: String,
+    analysis_duration: Option<u64>,
+    vmid: Option<u64>,
+    node: Option<String>,
+}
+
+#[post("/vms/actions/terminate")]
+async fn terminate_process(
+    manager: web::Data<Arc<AgentManager>>,
+    req: web::Json<TerminationRequest>
+) -> impl Responder {
+    let cmd = serde_json::json!({
+        "command": "KILL",
+        "pid": req.pid
+    }).to_string();
+    
+    manager.broadcast_command(&cmd).await;
+    HttpResponse::Ok().json(serde_json::json!({ "status": "sent", "pid": req.pid }))
+}
+
+#[derive(Deserialize)]
+struct TaskQuery {
+    task_id: Option<String>,
+    search: Option<String>,
+}
+
+use actix_multipart::Multipart;
+use futures::TryStreamExt;
+use std::time::Duration;
+
+#[post("/vms/actions/submit")]
+async fn submit_sample(
+    manager: web::Data<Arc<AgentManager>>,
+    client: web::Data<proxmox::ProxmoxClient>,
+    pool: web::Data<Pool<Postgres>>,
+    mut payload: Multipart,
+) -> Result<HttpResponse, actix_web::Error> {
+    let mut filename = String::new();
+    let mut original_filename = String::new();
+    let mut sha256_hash = String::new();
+    let mut analysis_duration_seconds = 300; // Default 5 minutes
+    let mut target_vmid: Option<u64> = None;
+    let mut target_node: Option<String> = None;
+    
+    // Iterate over multipart stream
+    while let Ok(Some(mut field)) = payload.try_next().await {
+        let content_disposition = field.content_disposition();
+        let name_opt = content_disposition.as_ref().and_then(|cd| cd.get_filename());
+        let field_name = content_disposition.as_ref().and_then(|cd| cd.get_name()).unwrap_or("");
+
+        if let Some(name) = name_opt {
+            original_filename = name.to_string();
+            // User requested NO renaming. Only stripping directory traversal characters for safety.
+            filename = name.replace("..", "").replace("/", "").replace("\\", "");
+            
+            let upload_dir = "./uploads";
+            let _ = std::fs::create_dir_all(upload_dir);
+            
+            let filepath = format!("{}/{}", upload_dir, filename);
+            
+            let mut f = tokio::fs::File::create(&filepath).await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+            
+            let mut hasher = Sha256::new();
+
+            while let Ok(Some(chunk)) = field.try_next().await {
+                f.write_all(&chunk).await
+                    .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+                hasher.update(&chunk);
+            }
+            
+            let result = hasher.finalize();
+            sha256_hash = format!("{:x}", result);
+        } else if field_name == "analysis_duration" {
+            let mut value_bytes = Vec::new();
+            while let Ok(Some(chunk)) = field.try_next().await {
+                value_bytes.extend_from_slice(&chunk);
+            }
+            if let Ok(value_str) = String::from_utf8(value_bytes) {
+                 if let Ok(minutes) = value_str.trim().parse::<u64>() {
+                     analysis_duration_seconds = minutes * 60;
+                     println!("[SUBMISSION] Setting analysis duration to {} seconds ({} minutes)", analysis_duration_seconds, minutes);
+                 }
+            }
+        } else if field_name == "vmid" {
+            let mut value_bytes = Vec::new();
+            while let Ok(Some(chunk)) = field.try_next().await {
+                value_bytes.extend_from_slice(&chunk);
+            }
+            if let Ok(value_str) = String::from_utf8(value_bytes) {
+                let trimmed = value_str.trim();
+                println!("[SUBMISSION] Received vmid field: '{}'", trimmed);
+                if let Ok(vmid) = trimmed.parse::<u64>() {
+                    target_vmid = Some(vmid);
+                }
+            }
+        } else if field_name == "node" {
+            let mut value_bytes = Vec::new();
+            while let Ok(Some(chunk)) = field.try_next().await {
+                value_bytes.extend_from_slice(&chunk);
+            }
+            if let Ok(value_str) = String::from_utf8(value_bytes) {
+                let node = value_str.trim().to_string();
+                println!("[SUBMISSION] Received node field: '{}'", node);
+                target_node = Some(node);
+            }
+        }
+    }
+    
+    println!("[SUBMISSION] Final selection - VMID: {:?}, Node: {:?}", target_vmid, target_node);
+    
+    if filename.is_empty() {
+        return Ok(HttpResponse::BadRequest().body("No file uploaded"));
+    }
+    
+    let host_ip = std::env::var("HOST_IP").unwrap_or_else(|_| "192.168.50.196".to_string()); // Default to user's IP
+    let download_url = format!("http://{}:8080/uploads/{}", host_ip, filename);
+    
+    // Create Task Record
+    // Use timestamp as ID to guarantee uniqueness and avoid collision bugs
+    let created_at = Utc::now().timestamp_millis();
+    let task_id = created_at.to_string();
+    
+    let _ = sqlx::query(
+        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at) VALUES ($1, $2, $3, $4, 'Queued', $5)"
+    )
+    .bind(&task_id)
+    .bind(&filename)
+    .bind(&original_filename)
+    .bind(&sha256_hash)
+    .bind(created_at)
+    .execute(pool.get_ref())
+    .await;
+    
+    // Check if task exists (debugging)
+    let check = sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM tasks WHERE id = $1")
+        .bind(&task_id)
+        .fetch_one(pool.get_ref())
+        .await
+        .unwrap_or(0);
+        
+    println!("[DEBUG] Task {} created. DB Row Count: {}", task_id, check);
+
+    println!("Sample uploaded: {}. Initiating Sandbox Orchestration (Task: {})...", filename, task_id);
+    
+    // Spawn Analysis Job
+    let manager = manager.get_ref().clone(); 
+    let client = client.get_ref().clone();
+    let pool = pool.get_ref().clone();
+    let url_clone = download_url.clone();
+    let task_id_clone = task_id.clone();
+    
+    actix_web::rt::spawn(async move {
+        orchestrate_sandbox(client, manager, pool, task_id_clone, url_clone, original_filename.clone(), analysis_duration_seconds, target_vmid, target_node, false).await;
+    });
+    
+    Ok(HttpResponse::Ok().json(serde_json::json!({
+        "status": "analysis_queued",
+        "task_id": task_id,
+        "filename": filename,
+        "url": download_url,
+        "message": "Orchestration started: Reverting VM -> Starting -> Detonating"
+    })))
+}
+
+async fn orchestrate_sandbox(
+    client: proxmox::ProxmoxClient,
+    manager: Arc<AgentManager>,
+    pool: Pool<Postgres>,
+    task_id: String,
+    target_url: String, // Can be download URL or Detonation URL
+    original_filename: String,
+    duration_seconds: u64,
+    manual_vmid: Option<u64>,
+    manual_node: Option<String>,
+    is_url_task: bool
+) {
+    // 1. Identify Sandbox VM
+    let mut node_name = String::new();
+    let mut vmid = 0;
+    let mut vm_name = String::new();
+    let snapshot = "clean_sand";
+
+    if let (Some(mvmid), Some(mnode)) = (manual_vmid, manual_node) {
+        println!("[ORCHESTRATOR] Using MANUALLY selected VM: {} on node {}", mvmid, mnode);
+        vmid = mvmid;
+        node_name = mnode;
+        vm_name = format!("vm{}", vmid); // Fallback name
+    } else {
+        println!("[ORCHESTRATOR] Searching for available Sandbox VM (Pattern: 'sand/sandbox' or ID 300-399)...");
+        // Try to discover an available sandbox VM
+        if let Ok(nodes) = client.get_nodes().await {
+            'discovery: for node in nodes {
+                if let Ok(vms) = client.get_vms(&node.node).await {
+                    for vm in vms {
+                        let is_sandbox_range = vm.vmid >= 300 && vm.vmid < 400;
+                        let has_sandbox_name = if let Some(name) = &vm.name {
+                            let lower_name = name.to_lowercase();
+                            lower_name.contains("sand") || lower_name.contains("sandbox")
+                        } else {
+                            false
+                        };
+
+                        if is_sandbox_range || has_sandbox_name {
+                            node_name = node.node.clone();
+                            vmid = vm.vmid;
+                            vm_name = vm.name.clone().unwrap_or_else(|| format!("vm{}", vmid));
+                            println!("[ORCHESTRATOR] Auto-selected VM: {} ({}) on node {}", vmid, vm_name, node_name);
+                            break 'discovery;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if vmid == 0 {
+        println!("[ORCHESTRATOR] CRITICAL ERROR: No Sandbox VM found or specified. Aborting.");
+        let _ = sqlx::query("UPDATE tasks SET status='Failed (No VM Available)' WHERE id=$1")
+            .bind(&task_id).execute(&pool).await;
+        return;
+    }
+    
+    let node = &node_name;
+    println!("[ORCHESTRATOR] Starting analysis for Task {} on VM {} ({})", task_id, vmid, vm_name);
+
+    // Update Status: Preparing
+    let _ = sqlx::query("UPDATE tasks SET status='Preparing Environment' WHERE id=$1")
+        .bind(&task_id).execute(&pool).await;
+
+    // 2. Revert to 'clean' snapshot
+    println!("[ORCHESTRATOR] Step 1: Reverting to '{}' snapshot...", snapshot);
+    let _ = sqlx::query("UPDATE tasks SET status='Reverting Sandbox' WHERE id=$1").bind(&task_id).execute(&pool).await;
+    if let Err(e) = client.rollback_snapshot(node, vmid, snapshot).await {
+        println!("[ORCHESTRATOR] Warning: Snapshot rollback failed: {}. Attempting to Stop/Start instead.", e);
+        let _ = client.vm_action(node, vmid, "stop").await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    } else {
+        // Wait for rollback to process
+        tokio::time::sleep(Duration::from_secs(5)).await;
+    }
+    
+    // 3. Start VM
+    println!("[ORCHESTRATOR] Step 2: Starting VM...");
+    let _ = sqlx::query("UPDATE tasks SET status='Starting VM' WHERE id=$1").bind(&task_id).execute(&pool).await;
+    
+    // Environment selection or validation could happen here
+    let orchestration_start = std::time::Instant::now();
+
+    if let Err(e) = client.vm_action(node, vmid, "start").await {
+        println!("[ORCHESTRATOR] Error starting VM: {}", e);
+    }
+    
+    // 4. Wait for Agent Handshake
+    println!("[ORCHESTRATOR] Step 3: Waiting for Agent connection (max 90s)...");
+    let _ = sqlx::query("UPDATE tasks SET status='Waiting for Agent' WHERE id=$1").bind(&task_id).execute(&pool).await;
+    
+    let mut bound_session_id: Option<String> = None;
+    
+    while orchestration_start.elapsed().as_secs() < 90 {
+        // Find a session that connected AFTER orchestration started and isn't busy
+        let sessions = manager.sessions.lock().await;
+        for (id, session) in sessions.iter() {
+            if session.active_task_id.is_none() && session.connected_at >= orchestration_start {
+                bound_session_id = Some(id.clone());
+                break;
+            }
+        }
+        
+        if let Some(ref sid) = bound_session_id {
+            // Found our session!
+            println!("[ORCHESTRATOR] Session {} assigned to Task {}", sid, task_id);
+            break;
+        }
+        
+        if orchestration_start.elapsed().as_secs() % 10 == 0 {
+             println!("[ORCHESTRATOR] Still waiting for agent to connect... ({}s elapsed)", orchestration_start.elapsed().as_secs());
+        }
+        drop(sessions);
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+    
+    let session_id = match bound_session_id {
+        Some(sid) => {
+            manager.bind_task_to_session(sid.clone(), task_id.clone()).await;
+            
+            // BACKFILL TELEMETRY:
+            // Ensure any events that arrived from this session BEFORE the task was bound 
+            // are now retroactively assigned to this task.
+            println!("[ORCHESTRATOR] Backfilling task_id for early events from session {}", sid);
+            let _ = sqlx::query("UPDATE events SET task_id=$1 WHERE session_id=$2 AND task_id IS NULL")
+                .bind(&task_id)
+                .bind(&sid)
+                .execute(&pool)
+                .await;
+                
+            sid
+        },
+        None => {
+            println!("[ORCHESTRATOR] CRITICAL ERROR: No free agent connected within timeout. Aborting analysis.");
+            let _ = sqlx::query("UPDATE tasks SET status='Failed (Agent Timeout)' WHERE id=$1")
+                .bind(&task_id).execute(&pool).await;
+            return;
+        }
+    };
+    
+    // 5. DETONATION PHASE: Send payload only to the bound session
+    println!("[ORCHESTRATOR] Step 3.1: Sending detonation command to agent...");
+    let _ = sqlx::query("UPDATE tasks SET status='Detonating Sample' WHERE id=$1").bind(&task_id).execute(&pool).await;
+    
+    // Update Status: Running
+    let _ = sqlx::query("UPDATE tasks SET status='Running' WHERE id=$1")
+        .bind(&task_id).execute(&pool).await;
+
+    // 5. Send Payload
+    let cmd = if is_url_task {
+        serde_json::json!({
+            "command": "EXEC_URL",
+            "url": target_url,
+            "task_id": task_id
+        }).to_string()
+    } else {
+        serde_json::json!({
+            "command": "DOWNLOAD_EXEC",
+            "url": target_url,
+            "filename": original_filename,
+            "vm_id": vmid,
+            "vm_name": vm_name
+        }).to_string()
+    };
+    
+    // Send ONLY to the session assigned to this VM/Task
+    manager.send_command_to_session(&session_id, &cmd).await;
+    println!("[ORCHESTRATOR] Detonation command sent to VM {} (Session {}): {}", vm_name, session_id, cmd);
+    
+    // 6. Monitor Phase
+    println!("[ORCHESTRATOR] Step 4: Monitoring Analysis Phase Initiated ({}s)...", duration_seconds); 
+    tokio::time::sleep(Duration::from_secs(duration_seconds)).await;
+    
+    // 7. Cleanup - STOP VM IMMEDIATELY after analysis duration
+    println!("[ORCHESTRATOR] Step 5: Analysis Complete. Waiting 5s for trailing telemetry...");
+    tokio::time::sleep(Duration::from_secs(5)).await;
+
+    println!("[ORCHESTRATOR] Step 6: Stopping and reverting VM...");
+    if let Err(e) = client.vm_action(node, vmid, "stop").await {
+        println!("[ORCHESTRATOR] Warning: Failed to stop VM {}: {}", vmid, e);
+    }
+    
+    if let Err(e) = client.rollback_snapshot(node, vmid, snapshot).await {
+        println!("[ORCHESTRATOR] CRITICAL: Failed to rollback VM {} ({}) to {}: {}", vmid, vm_name, snapshot, e);
+    } else {
+        println!("[ORCHESTRATOR] SUCCESS: VM {} ({}) reverted to {} state.", vmid, vm_name, snapshot);
+    }
+
+    // 8. Generate AI Report (can take up to 10 minutes - VM is already stopped)
+    println!("[ORCHESTRATOR] Step 7: Generating AI Analysis Report...");
+    if let Err(e) = generate_ai_report(&task_id, &pool).await {
+        println!("[ORCHESTRATOR] Failed to generate AI report: {}", e);
+    } else {
+        println!("[ORCHESTRATOR] AI Analysis Report generated successfully.");
+    }
+
+    // Update Status: Completed
+    let _ = sqlx::query("UPDATE tasks SET status='Completed', completed_at=$2 WHERE id=$1")
+        .bind(&task_id)
+        .bind(Utc::now().timestamp_millis())
+        .execute(&pool)
+        .await;
+
+    // Clear active task binding for this session
+    {
+        let mut sessions = manager.sessions.lock().await;
+        if let Some(session) = sessions.get_mut(&session_id) {
+            session.active_task_id = None;
+            println!("[AGENT] Task {} cleared from session {}", task_id, session_id);
+        }
+    }
+}
+
+#[post("/vms/actions/exec-binary")]
+async fn exec_binary(
+    manager: web::Data<Arc<AgentManager>>,
+    client: web::Data<proxmox::ProxmoxClient>,
+    req: web::Json<ExecRequest>
+) -> impl Responder {
+    let cmd = serde_json::json!({
+        "command": "EXEC_BINARY",
+        "path": req.path,
+        "args": req.args
+    }).to_string();
+    
+    if let (Some(vmid), Some(node)) = (req.vmid, &req.node) {
+        // Targeted execution
+        if let Ok(vms) = client.get_vms(node).await {
+            if let Some(vm) = vms.into_iter().find(|v| v.vmid == vmid) {
+                if let Some(name) = &vm.name {
+                     if let Some(session_id) = manager.find_session_by_vm_name(name).await {
+                         manager.send_command_to_session(&session_id, &cmd).await;
+                          return HttpResponse::Ok().json(serde_json::json!({ "status": "sent", "path": req.path, "target": name }));
+                     }
+                }
+            }
+        }
+        // Fallback if session not found but manual target specified
+         return HttpResponse::BadRequest().json(serde_json::json!({ "error": "Target VM session not found" }));
+    }
+
+    // Default broadcast
+    manager.broadcast_command(&cmd).await;
+    HttpResponse::Ok().json(serde_json::json!({ "status": "broadcast", "path": req.path }))
+}
+
+#[post("/vms/actions/pivot")]
+pub async fn pivot_binary(
+    manager: web::Data<Arc<AgentManager>>,
+    req: web::Json<PivotRequest>
+) -> impl Responder {
+    let cmd = serde_json::json!({
+        "command": "UPLOAD_PIVOT",
+        "path": req.path
+    }).to_string();
+    
+    manager.broadcast_command(&cmd).await;
+    HttpResponse::Ok().json(serde_json::json!({ "status": "sent", "path": req.path }))
+}
+
+#[post("/vms/telemetry/pivot-upload")]
+pub async fn pivot_upload(
+    manager: web::Data<Arc<AgentManager>>,
+    client: web::Data<proxmox::ProxmoxClient>,
+    pool: web::Data<Pool<Postgres>>,
+    mut payload: Multipart,
+) -> Result<HttpResponse, actix_web::Error> {
+    // This is similar to submit_sample but used for pivoting
+    // I can reuse the logic by refactoring later, but for now I'll just write it
+    let mut filename = String::new();
+    let mut original_filename = String::new();
+    let mut sha256_hash = String::new();
+    
+    while let Ok(Some(mut field)) = payload.try_next().await {
+        let content_disposition = field.content_disposition();
+        if let Some(name) = content_disposition.and_then(|cd| cd.get_filename()) {
+            original_filename = name.to_string();
+            filename = format!("pivot_{}_{}", Utc::now().timestamp_millis(), name.replace("..", "").replace("/", "").replace("\\", ""));
+            
+            let upload_dir = "./uploads";
+            let _ = std::fs::create_dir_all(upload_dir);
+            let filepath = format!("{}/{}", upload_dir, filename);
+            
+            let mut f = tokio::fs::File::create(&filepath).await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+            
+            let mut hasher = Sha256::new();
+            while let Ok(Some(chunk)) = field.try_next().await {
+                f.write_all(&chunk).await
+                    .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+                hasher.update(&chunk);
+            }
+            let result = hasher.finalize();
+            sha256_hash = format!("{:x}", result);
+        }
+    }
+
+    if filename.is_empty() {
+        return Ok(HttpResponse::BadRequest().body("No file uploaded"));
+    }
+
+    let host_ip = std::env::var("HOST_IP").unwrap_or_else(|_| "192.168.50.196".to_string());
+    let download_url = format!("http://{}:8080/uploads/{}", host_ip, filename);
+    let task_id = Utc::now().timestamp_millis().to_string();
+
+    // Insert task
+    let _ = sqlx::query(
+        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at) VALUES ($1, $2, $3, $4, 'Queued', $5)"
+    )
+    .bind(&task_id)
+    .bind(&filename)
+    .bind(&original_filename)
+    .bind(&sha256_hash)
+    .bind(Utc::now().timestamp_millis())
+    .execute(pool.get_ref())
+    .await;
+
+    // Spawn analysis
+    let manager = manager.get_ref().clone();
+    let client = client.get_ref().clone();
+    let pool = pool.get_ref().clone();
+    let url_clone = download_url.clone();
+    let task_id_clone = task_id.clone();
+
+    actix_web::rt::spawn(async move {
+        orchestrate_sandbox(client, manager, pool, task_id_clone, url_clone, original_filename.clone(), 300, None, None, false).await; // Pivot uses default 300s
+    });
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "pivoted", "task_id": task_id })))
+}
+
+#[post("/vms/actions/exec-url")]
+async fn exec_url(
+    manager: web::Data<Arc<AgentManager>>,
+    client: web::Data<proxmox::ProxmoxClient>,
+    pool: web::Data<Pool<Postgres>>,
+    req: web::Json<UrlRequest>
+) -> impl Responder {
+    // Create Task Record for URL Analysis
+    let created_at = Utc::now().timestamp_millis();
+    let task_id = created_at.to_string();
+    
+    // Use URL as the "filename" for tracking purposes
+    let url_display = if req.url.len() > 100 {
+        format!("{}...", &req.url[..97])
+    } else {
+        req.url.clone()
+    };
+    
+    let _ = sqlx::query(
+        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at) VALUES ($1, $2, $3, $4, 'Queued', $5)"
+    )
+    .bind(&task_id)
+    .bind(&format!("URL: {}", url_display))
+    .bind(&req.url)
+    .bind("N/A")  // No file hash for URL analysis
+    .bind(created_at)
+    .execute(pool.get_ref())
+    .await;
+    
+    println!("[URL Analysis] Task {} created for URL: {}", task_id, req.url);
+    
+    let duration = req.analysis_duration.unwrap_or(5) * 60;
+    
+    // Spawn Analysis Job
+    let manager_clone = manager.get_ref().clone(); 
+    let client_clone = client.get_ref().clone();
+    let pool_clone = pool.get_ref().clone();
+    let url = req.url.clone();
+    let task_id_clone = task_id.clone();
+    let vmid = req.vmid;
+    let node = req.node.clone();
+    
+    actix_web::rt::spawn(async move {
+        orchestrate_sandbox(client_clone, manager_clone, pool_clone, task_id_clone, url, "URL_Detonation".to_string(), duration, vmid, node, true).await;
+    });
+
+    HttpResponse::Ok().json(serde_json::json!({ 
+        "status": "analysis_queued", 
+        "url": req.url,
+        "task_id": task_id,
+        "message": "URL analysis task created and orchestration initiated"
+    }))
+}
+
+#[derive(Deserialize)]
+struct VerdictOverride {
+    verdict: String,
+}
+
+#[post("/tasks/{id}/verdict")]
+async fn update_task_verdict(
+    pool: web::Data<Pool<Postgres>>,
+    path: web::Path<String>,
+    req: web::Json<VerdictOverride>
+) -> impl Responder {
+    let id = path.into_inner();
+    let risk_score = if req.verdict == "Malicious" { 100 } else { 0 };
+
+    let res = sqlx::query("UPDATE tasks SET verdict=$2, risk_score=$3, verdict_manual=true WHERE id=$1")
+        .bind(&id)
+        .bind(&req.verdict)
+        .bind(risk_score)
+        .execute(pool.get_ref())
+        .await;
+
+    match res {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "status": "success", "verdict": req.verdict })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })),
+    }
+}
+
+#[get("/tasks")]
+async fn list_tasks(pool: web::Data<Pool<Postgres>>) -> impl Responder {
+    let tasks = sqlx::query_as::<_, Task>(
+        "SELECT id, filename, original_filename, file_hash, status, verdict, risk_score, created_at, completed_at, ghidra_status, verdict_manual FROM tasks ORDER BY created_at DESC"
+    )
+    .fetch_all(pool.get_ref())
+    .await;
+
+    match tasks {
+        Ok(t) => HttpResponse::Ok().json(t),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })),
+    }
+}
+
+#[delete("/tasks/{id}")]
+async fn delete_task(
+    pool: web::Data<Pool<Postgres>>,
+    path: web::Path<String>
+) -> impl Responder {
+    let id = path.into_inner();
+    
+    // Get filename first to delete the actual file
+    let task = sqlx::query_as::<_, Task>("SELECT * FROM tasks WHERE id = $1")
+        .bind(&id)
+        .fetch_optional(pool.get_ref())
+        .await;
+
+    match task {
+        Ok(Some(t)) => {
+            // Delete Associated Binary File
+            let file_path = format!("./uploads/{}", t.filename);
+            if let Err(e) = tokio::fs::remove_file(&file_path).await {
+                println!("[DATABASE] Warning: Failed to delete file {}: {}", file_path, e);
+            }
+            
+            // Delete Associatied Screenshots Folder
+            let screenshot_dir = format!("./screenshots/{}", id);
+            let _ = tokio::fs::remove_dir_all(&screenshot_dir).await;
+            
+            // Delete from Database
+            if let Err(e) = sqlx::query("DELETE FROM tasks WHERE id = $1")
+                .bind(&id)
+                .execute(pool.get_ref())
+                .await {
+                println!("[DATABASE] Error deleting task {}: {}", id, e);
+                return HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() }));
+            }
+            
+            // Also delete associated events
+            let _ = sqlx::query("DELETE FROM events WHERE task_id = $1").bind(&id).execute(pool.get_ref()).await;
+            
+            println!("[DATABASE] Task {} and associated data deleted.", id);
+            HttpResponse::Ok().json(serde_json::json!({ "status": "success", "message": "Task and data deleted" }))
+        }
+        Ok(None) => HttpResponse::NotFound().json(serde_json::json!({ "error": "Task not found" })),
+        Err(e) => {
+            println!("[DATABASE] Error fetching task for deletion: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() }))
+        }
+    }
+}
+
+#[post("/tasks/purge")]
+async fn purge_all(pool: web::Data<Pool<Postgres>>) -> impl Responder {
+    println!("[SYSTEM] Purge All initiated...");
+    
+    // 1. Clear Database Tables
+    let _ = sqlx::query("DELETE FROM tasks").execute(pool.get_ref()).await;
+    let _ = sqlx::query("DELETE FROM events").execute(pool.get_ref()).await;
+    
+    // 2. Clear Files
+    let _ = tokio::fs::remove_dir_all("./uploads").await;
+    let _ = tokio::fs::create_dir_all("./uploads").await;
+    let _ = tokio::fs::remove_dir_all("./screenshots").await;
+    let _ = tokio::fs::create_dir_all("./screenshots").await;
+    
+    let _ = tokio::fs::remove_dir_all("./screenshots").await;
+    let _ = tokio::fs::create_dir_all("./screenshots").await;
+    
+    println!("[SYSTEM] Purge complete: Database and files cleared.");
+    HttpResponse::Ok().json(serde_json::json!({ "status": "success", "message": "All data cleared" }))
+}
+
+#[get("/vms/telemetry/history")]
+async fn get_history(
+    pool: web::Data<Pool<Postgres>>,
+    query: web::Query<TaskQuery>
+) -> impl Responder {
+    let events = if let Some(tid) = &query.task_id {
+        if let Some(search) = &query.search {
+            sqlx::query_as::<_, RawAgentEvent>(
+                "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
+                 FROM events 
+                 WHERE task_id = $1 
+                 AND to_tsvector('english', process_name || ' ' || details) @@ websearch_to_tsquery('english', $2)
+                 ORDER BY timestamp DESC LIMIT 2000"
+            )
+            .bind(tid)
+            .bind(search)
+            .fetch_all(pool.get_ref())
+            .await
+        } else {
+            sqlx::query_as::<_, RawAgentEvent>(
+                "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
+                 FROM events 
+                 WHERE task_id = $1 
+                 ORDER BY timestamp DESC LIMIT 2000"
+            )
+            .bind(tid)
+            .fetch_all(pool.get_ref())
+            .await
+        }
+    } else {
+        if let Some(search) = &query.search {
+            sqlx::query_as::<_, RawAgentEvent>(
+                "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
+                 FROM events 
+                 WHERE to_tsvector('english', process_name || ' ' || details) @@ websearch_to_tsquery('english', $1)
+                 ORDER BY timestamp DESC LIMIT 2000"
+            )
+            .bind(search)
+            .fetch_all(pool.get_ref())
+            .await
+        } else {
+            sqlx::query_as::<_, RawAgentEvent>(
+                "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id FROM events ORDER BY timestamp DESC LIMIT 2000"
+            )
+            .fetch_all(pool.get_ref())
+            .await
+        }
+    };
+
+    match events {
+        Ok(evts) => HttpResponse::Ok().json(evts),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })),
+    }
+}
+
+#[post("/vms/telemetry/screenshot")]
+async fn upload_screenshot(
+    mut payload: Multipart,
+    manager: web::Data<Arc<AgentManager>>
+) -> Result<HttpResponse, Error> {
+    let task_id = manager.get_any_active_task_id().await.unwrap_or_else(|| "unsorted".to_string());
+    let task_dir = format!("./screenshots/{}", task_id);
+    let _ = tokio::fs::create_dir_all(&task_dir).await;
+    
+    while let Ok(Some(mut field)) = payload.try_next().await {
+        let name = match field.content_disposition().and_then(|cd| cd.get_filename()) {
+            Some(n) => n.to_string(),
+            None => format!("screenshot_{}.png", Utc::now().timestamp_millis()),
+        };
+        let path = format!("{}/{}", task_dir, name);
+        let mut f = tokio::fs::File::create(&path).await
+            .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
+        while let Ok(Some(chunk)) = field.try_next().await {
+            f.write_all(&chunk).await
+                .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+        }
+    }
+
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "success" })))
+}
+
+#[get("/vms/telemetry/screenshots")]
+async fn list_screenshots(query: web::Query<TaskQuery>) -> impl Responder {
+    let mut files = Vec::new();
+    let base_path = if let Some(tid) = &query.task_id {
+        format!("./screenshots/{}", tid)
+    } else {
+        "./screenshots".to_string()
+    };
+
+    if let Ok(entries) = std::fs::read_dir(&base_path) {
+        for entry in entries.flatten() {
+            if let Ok(name) = entry.file_name().into_string() {
+                // If we are listing the root, don't show directories
+                if query.task_id.is_some() || !entry.path().is_dir() {
+                    files.push(name);
+                }
+            }
+        }
+    }
+    HttpResponse::Ok().json(files)
+}
+
+// AI Types moved to ai_analysis.rs
+
+#[derive(Serialize, Deserialize)]
+struct ChatMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Serialize, Deserialize)]
+struct ChatRequest {
+    message: String,
+    history: Vec<ChatMessage>,
+    task_id: Option<String>,
+    page_context: Option<String>,
+}
+
+// ChromaDB Vector Search Helper
+async fn query_vector_db(query: &str, n_results: usize) -> Result<Vec<String>, Box<dyn std::error::Error>> {
+    let chroma_url = env::var("CHROMADB_URL").unwrap_or_else(|_| "http://chromadb:8000".to_string());
+    let client = reqwest::Client::new();
+    
+    // Try to query the collection, if it doesn't exist, return empty
+    let response = client
+        .post(format!("{}/api/v1/collections/malware_knowledge/query", chroma_url))
+        .json(&serde_json::json!({
+            "query_texts": [query],
+            "n_results": n_results,
+            "include": ["documents", "metadatas"]
+        }))
+        .send()
+        .await;
+    
+    match response {
+        Ok(resp) => {
+            if resp.status().is_success() {
+                match resp.json::<serde_json::Value>().await {
+                    Ok(results) => {
+                        let documents = results["documents"][0]
+                            .as_array()
+                            .unwrap_or(&vec![])
+                            .iter()
+                            .filter_map(|d| d.as_str().map(String::from))
+                            .collect();
+                        Ok(documents)
+                    }
+                    Err(_) => Ok(vec![]),
+                }
+            } else {
+                Ok(vec![])  // Collection doesn't exist yet, return empty
+            }
+        }
+        Err(_) => Ok(vec![]),  // ChromaDB not available, continue without it
+    }
+}
+
+#[post("/vms/ai/chat")]
+async fn chat_handler(
+    req: web::Json<ChatRequest>,
+    manager: web::Data<Arc<AgentManager>>,
+    pool: web::Data<Pool<Postgres>>
+) -> impl Responder {
+    let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://192.168.50.98:11434".to_string());
+    let ollama_model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5-coder:14b".to_string());
+
+    // Fetch recent analysis context
+    let recent_tasks = sqlx::query_as::<_, Task>(
+        "SELECT id, filename, original_filename, file_hash, status, verdict, risk_score, created_at, completed_at, ghidra_status, verdict_manual FROM tasks ORDER BY created_at DESC LIMIT 5"
+    )
+    .fetch_all(pool.get_ref())
+    .await
+    .unwrap_or_default();
+
+    // Determine target task for context (prioritize requested task_id over global active)
+    let target_task_id = if let Some(tid) = &req.task_id {
+        Some(tid.clone())
+    } else {
+        manager.get_any_active_task_id().await
+    };
+    
+    let telemetry_events = if let Some(tid) = &target_task_id {
+        sqlx::query_as::<_, RawAgentEvent>(
+            "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
+             FROM events 
+             WHERE task_id = $1 
+             AND LOWER(process_name) NOT IN (SELECT value FROM (VALUES ('svchost.exe'), ('conhost.exe'), ('searchindexer.exe'), ('mallab-agent-windows.exe')))
+             ORDER BY timestamp DESC LIMIT 300"
+        )
+        .bind(tid)
+        .fetch_all(pool.get_ref())
+        .await
+    } else {
+        sqlx::query_as::<_, RawAgentEvent>(
+            "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id FROM events ORDER BY timestamp DESC LIMIT 200"
+        )
+        .fetch_all(pool.get_ref())
+        .await
+    }
+    .unwrap_or_default();
+
+    // Filter out noise processes (benign Windows processes and agent)
+    let noise_processes = vec![
+        "mallab-agent-windows.exe",
+        "svchost.exe",
+        "conhost.exe",
+        "explorer.exe",
+        "searchindexer.exe",
+        "wermgr.exe",
+        "audiodg.exe",
+        "lsass.exe",
+        "csrss.exe",
+        "winlogon.exe",
+        "services.exe",
+        "dwm.exe",
+        "spoolsv.exe",
+        "taskhostw.exe",
+        "runtimebroker.exe",
+        "sihost.exe",
+        "ctfmon.exe",
+        "smartscreen.exe",
+        "registry",
+        "system",
+        "smss.exe"
+    ];
+    
+    let filtered_events: Vec<_> = telemetry_events.iter()
+        .filter(|e| !noise_processes.iter().any(|np| e.process_name.to_lowercase() == *np))
+        .take(100)  // Limit to 100 relevant events after filtering
+        .collect();
+
+    // Fetch Ghidra findings for the target task
+    let ghidra_findings: Vec<GhidraFunction> = if let Some(tid) = &target_task_id {
+        sqlx::query_as::<_, GhidraFunction>(
+            "SELECT function_name, entry_point, decompiled_code, assembly FROM ghidra_findings WHERE task_id = $1"
+        )
+        .bind(tid)
+        .fetch_all(pool.get_ref())
+        .await
+        .unwrap_or_default()
+    } else {
+        vec![]
+    };
+
+    let mut context_summary = String::new();
+    
+    // Add task summary
+    if !recent_tasks.is_empty() {
+        context_summary.push_str("### SYSTEM CONTEXT: RECENTLY ANALYZED FILES\n");
+        for t in &recent_tasks {
+            context_summary.push_str(&format!(
+                "- {} (SHA256: {}) - Status: {}, Verdict: {} (Risk Score: {})\n", 
+                t.original_filename, t.file_hash, t.status, t.verdict.as_deref().unwrap_or("Pending"), t.risk_score.unwrap_or(0)
+            ));
+        }
+        context_summary.push_str("\n");
+    }
+
+    // Add Ghidra Insight
+    if !ghidra_findings.is_empty() {
+        context_summary.push_str("### STATIC ANALYSIS (Ghidra Findings for current task):\n");
+        for func in &ghidra_findings {
+            context_summary.push_str(&format!(
+                "- Function: {} @ {}\n  Code Snippet: {}\n",
+                func.function_name,
+                func.entry_point,
+                func.decompiled_code.chars().take(200).collect::<String>().replace("\n", " ")
+            ));
+        }
+        context_summary.push_str("\n");
+    }
+
+    // Add telemetry summary
+    if !filtered_events.is_empty() {
+        context_summary.push_str("BEHAVIORAL TELEMETRY DATA (Filtered - Malicious Activity Only):\n");
+        context_summary.push_str("Benign Windows processes have been filtered out. Analyze this data to understand malicious behavior:\n\n");
+        
+        for (idx, evt) in filtered_events.iter().enumerate() {
+            context_summary.push_str(&format!(
+                "{}. [{}] PID:{} PPID:{} Process:'{}' - {}\n",
+                idx + 1,
+                evt.event_type,
+                evt.process_id,
+                evt.parent_process_id,
+                evt.process_name,
+                evt.details
+            ));
+        }
+    } else {
+        context_summary.push_str("No relevant telemetry events captured (all events were filtered as benign system activity).\n");
+    }
+
+    // Query Vector Database for relevant malware knowledge
+    let vector_context = if !req.message.is_empty() {
+        let mut vector_results = Vec::new();
+        
+        // Query with different perspectives for better coverage
+        let queries = vec![
+            req.message.clone(),
+            format!("malware technique: {}", req.message),
+            format!("MITRE ATT&CK: {}", req.message),
+        ];
+        
+        for query in queries {
+            if let Ok(docs) = query_vector_db(&query, 2).await {
+                vector_results.extend(docs);
+            }
+        }
+        
+        // Deduplicate and limit results
+        vector_results.sort();
+        vector_results.dedup();
+        vector_results.truncate(5);
+        
+        if !vector_results.is_empty() {
+            let mut vctx = String::from("\n\nRELEVANT MALWARE INTELLIGENCE (Vector DB):\n");
+            vctx.push_str("The following knowledge has been retrieved from the malware intelligence database:\n\n");
+            for (idx, doc) in vector_results.iter().enumerate() {
+                vctx.push_str(&format!("{}. {}\n\n", idx + 1, doc));
+            }
+            vctx
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+    
+    context_summary.push_str(&vector_context);
+
+    // Add explicit page context if provided
+    if let Some(pc) = &req.page_context {
+        context_summary.push_str("\n\nCURRENT ANALYST VIEW CONTEXT (Screen Data):\n");
+        context_summary.push_str(pc);
+        context_summary.push_str("\n");
+    }
+
+    let client = reqwest::Client::new();
+    
+    // Construct messages with system prompt
+    let mut messages = vec![
+        serde_json::json!({
+            "role": "system",
+            "content": format!(
+                "## VooDooBox Intelligence Core | System Prompt
+
+**Role & Persona:**
+You are the **VooDooBox Intelligence Core**, an elite Malware Analyst Assistant. You function as a high-end forensic terminal.
+- **Tone:** Clinical, precise, and authoritative.
+- **Protocol:** Zero conversational filler. Do not use phrases like \"I can help with that.\" Provide actionable intelligence immediately.
+
+- **Integrity:** STRICT ADHERENCE TO DATA. You must ONLY base your conclusions on the provided BEHAVIORAL TELEMETRY and STATIC ANALYSIS data. Do NOT invent C2 addresses, filenames, or behaviors that are not present in the logs. If you are unsure, state that the data is inconclusive.
+
+### Presentation Standards (MANDATORY)
+1. **Status Alerts:**
+   - `> [!CAUTION]` for active threats/C2 activity.
+   - `> [!IMPORTANT]` for critical forensic artifacts.
+   - `> [!NOTE]` for contextual observations.
+   - `> [!WARNING]` before any destructive VM action.
+2. **Forensic Tables:** All event sequences MUST be correlated in a Markdown Table:
+   | Time Offset | Event Type | Source | Detail |
+   | :--- | :--- | :--- | :--- |
+3. **Artifact formatting:**
+   - IPs/Domains: `192.168.1.1`
+   - Hashes: `SHA256(...)`
+   - Registry: `HKLM\\Software\\...`
+4. **Confidence Scoring:** Every verdict must include `[Confidence: High/Med/Low]`.
+
+### Data Ecosystem & Capabilities
+* **QUERY_TELEMETRY:** Access real-time kernel event streams.
+* **QUERY_VECTOR_DB:** Cross-reference Ghidra patterns/signatures.
+* **MCP_ACTION:** Execute VM commands (Snapshots, Process Kill).
+* **Ghidra Static Analysis:**
+    * `MalwareScan`: Identify C2/injection patterns.
+    * `CipherScan`: Detect cryptographic primitives.
+    * `GetFunctionCFG` / `GetCallTree`: Flow analysis.
+    * `RenameFunction`: Annotate binary live.
+
+### Execution Workflow
+1. **Prioritize Timelines:** Correlate Kernel events with Process trees. Highlighting parent-child anomalies is primary.
+2. **Contextualize:** Distinguish clearly between *Dynamic Behavior* (observed) and *Static Capability* (code potential).
+3. **Attribution:** Use RAG to map findings to MITRE ATT&CK TTPs.
+
+### Example Response Format
+> [!CAUTION]
+> **THREAT IDENTIFIED:** Potential Ransomware Activity [Confidence: High]
+> **Binary:** `invoice.exe` | **PID:** 4402
+
+### 📊 Correlated Telemetry
+| Offset | Event | Detail |
+| :--- | :--- | :--- |
+| T+0s | Process | `invoice.exe` spawn `cmd.exe` |
+| T+2s | File | Changes to `*.encrypted` detected |
+
+### 🔍 Ghidra Static Intelligence
+`CipherScan` identified ChaCha20 encryption loop at `0x140001000`.
+```c
+// Decompiled Logic
+if (check_key()) {{
+    encrypt_files();
+}}
+```
+
+ANALYSIS DATA CONTEXT:
+Below is the LIVE data from recent analyses. Use this to formulate your technical response.
+
+{}
+",
+                context_summary
+            )
+        })
+    ];
+
+    // Append history
+    for msg in &req.history {
+        messages.push(serde_json::json!({
+            "role": msg.role,
+            "content": msg.content
+        }));
+    }
+
+    messages.push(serde_json::json!({
+        "role": "user",
+        "content": req.message
+    }));
+
+    // Call Ollama
+    let res = client.post(format!("{}/api/chat", ollama_url))
+        .json(&serde_json::json!({
+            "model": ollama_model,
+            "messages": messages,
+            "stream": false
+        }))
+        .send()
+        .await;
+
+    match res {
+        Ok(resp) => {
+            if let Ok(json) = resp.json::<serde_json::Value>().await {
+                if let Some(content) = json["message"]["content"].as_str() {
+                    return HttpResponse::Ok().json(serde_json::json!({ "response": content }));
+                }
+            }
+            HttpResponse::InternalServerError().json(serde_json::json!({ "response": "Failed to parse AI response" }))
+        },
+        Err(e) => {
+            println!("Ollama Chat Error: {}", e);
+            HttpResponse::InternalServerError().json(serde_json::json!({ "response": "AI Service Unavailable" }))
+        }
+    }
+}
+
+#[post("/vms/analysis/ai-insight")]
+async fn ai_insight_handler(req: web::Json<AnalysisRequest>) -> impl Responder {
+    let api_key = env::var("GEMINI_API_KEY").unwrap_or_else(|_| "MOCK_KEY".to_string());
+    let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://192.168.50.98:11434".to_string());
+    let ollama_model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "llama3".to_string());
+    
+    let client = reqwest::Client::new();
+    
+    let prompt = format!(
+        "Act as a SANS-certified Forensic Analyst (GCFA/GREM) and VooDooBox Intelligence Core.
+STRICT ANTI-HALLUCINATION: Analyze ONLY the provided process telemetry and event logs: {}.
+DO NOT invent malicious behaviors. If the logs are benign, report them as benign. Do NOT use placeholder addresses like 'malicious-c2.com' unless they appear in the logs.
+
+### 1. Identification Phase (Forensic Analysis)
+Analyze the telemetry for:
+- **Anomalous Lineage:** Parent-child PID relationships (e.g., Process A spawning Process B with mismatched privileges).
+- **Persistence Mechanisms:** Registry Run keys, Scheduled Tasks, or Service creation.
+- **LOLBins:** Misuse of standard Windows binaries (certutil, bitsadmin, wscript).
+- **Injection:** Memory anomalies indicative of Process Hollowing or DLL Injection.
+- **MITRE ATT&CK Mapping:** You MUST map observed behaviors to MITRE Technique IDs (e.g., T1055).
+
+### 2. Containment & Eradication Strategy
+Provide actionable steps prioritized by specific constraints:
+- **Immediate:** Process termination and network isolation.
+- **Forensic:** Memory dumping instructions for volatile evidence preservation.
+
+### Output Format
+Return ONLY a raw JSON object with this exact structure (no markdown, no backticks):
+{{
+  \"risk_score\": (0-100 integer based on DREAD model),
+  \"threat_level\": (\"Low\", \"Medium\", \"High\", \"Critical\"),
+  \"summary\": \"GCFA-style executive summary focusing on the Root Cause Analysis (RCA).\",
+  \"suspicious_pids\": [list of integers],
+  \"mitre_tactics\": [\"List relevant MITRE ATT&CK Tactic IDs (e.g., T1055, T1053)\"],
+  \"recommendations\": [
+    \"SANS-STEP-3 (Containment): [Action]\",
+    \"SANS-STEP-4 (Eradication): [Action]\",
+    \"FORENSIC: [Evidence Collection Step]\"
+  ]
+}}",
+        serde_json::to_string(&req.into_inner()).unwrap_or_default()
+    );
+
+
+    // Try Ollama first
+    if let Ok(res) = client.post(format!("{}/api/generate", ollama_url))
+        .json(&serde_json::json!({
+            "model": ollama_model,
+            "prompt": prompt,
+            "stream": false
+        }))
+        .send()
+        .await 
+    {
+        if let Ok(body) = res.json::<serde_json::Value>().await {
+            let ai_text = body["response"].as_str().unwrap_or("{}");
+            if let Ok(report) = serde_json::from_str::<ai_analysis::AIReport>(ai_text) {
+                return HttpResponse::Ok().json(report);
+            }
+        }
+    }
+
+    // Fallback to Gemini or Mock if Ollama fails or is unavailable
+    if api_key == "MOCK_KEY" {
+        return HttpResponse::Ok().json(ai_analysis::AIReport {
+            risk_score: 88,
+            threat_level: "Critical".to_string(),
+            summary: "MOCK ANALYSIS: Highly suspicious process lineage detected. 'malware.exe' is performing potential process hollowing on 'svchost.exe'.".to_string(),
+            suspicious_pids: vec![8888, 1234],
+            mitre_tactics: vec!["T1055".to_string(), "T1071".to_string()],
+            recommendations: vec![
+                "Immediately terminate PID 8888".to_string(),
+                "Dump process memory for forensics".to_string(),
+                "Isolate VM network traffic".to_string()
+            ],
+        });
+    }
+
+    let url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={}",
+        api_key
+    );
+
+    let resp = client.post(&url)
+        .json(&serde_json::json!({
+            "contents": [{ "parts": [{ "text": prompt }] }]
+        }))
+        .send()
+        .await;
+
+    match resp {
+        Ok(res) => {
+            match res.json::<serde_json::Value>().await {
+                Ok(body) => {
+                    let ai_text = body["candidates"][0]["content"]["parts"][0]["text"].as_str().unwrap_or("{}");
+                    let clean_json = ai_text.trim_matches(|c| c == '`' || c == '\n' || c == ' ');
+                    
+                    match serde_json::from_str::<ai_analysis::AIReport>(clean_json) {
+                        Ok(report) => HttpResponse::Ok().json(report),
+                        Err(_) => HttpResponse::InternalServerError().body("Failed to parse Gemini response"),
+                    }
+                }
+                Err(_) => HttpResponse::InternalServerError().body("Failed to parse Gemini JSON response"),
+            }
+        }
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}
+
+#[post("/ghidra/analyze")]
+async fn ghidra_analyze(req: web::Json<serde_json::Value>) -> impl Responder {
+    let client = reqwest::Client::new();
+    let ghidra_api = env::var("GHIDRA_API_INTERNAL").unwrap_or_else(|_| "http://ghidra:8000".to_string());
+    
+    let res = client.post(format!("{}/analyze", ghidra_api))
+        .json(&req.into_inner())
+        .send()
+        .await;
+
+    match res {
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.json::<serde_json::Value>().await.unwrap_or_default();
+            HttpResponse::build(status).json(body)
+        },
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}
+
+#[get("/ghidra/binary/{name}/functions")]
+async fn ghidra_functions(path: web::Path<String>) -> impl Responder {
+    let name = path.into_inner();
+    let client = reqwest::Client::new();
+    let ghidra_api = env::var("GHIDRA_API_INTERNAL").unwrap_or_else(|_| "http://ghidra:8000".to_string());
+    
+    let res = client.get(format!("{}/binary/{}/functions", ghidra_api, name))
+        .send()
+        .await;
+
+    match res {
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.json::<serde_json::Value>().await.unwrap_or_default();
+            HttpResponse::build(status).json(body)
+        },
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}
+
+#[get("/ghidra/binary/{name}/decompile/{address}")]
+async fn ghidra_decompile(path: web::Path<(String, String)>) -> impl Responder {
+    let (name, address) = path.into_inner();
+    let client = reqwest::Client::new();
+    let ghidra_api = env::var("GHIDRA_API_INTERNAL").unwrap_or_else(|_| "http://ghidra:8000".to_string());
+    
+    let res = client.get(format!("{}/binary/{}/decompile/{}", ghidra_api, name, address))
+        .send()
+        .await;
+
+    match res {
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.json::<serde_json::Value>().await.unwrap_or_default();
+            HttpResponse::build(status).json(body)
+        },
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct GhidraIngestBatch {
+    task_id: Option<String>,
+    binary_name: String,
+    functions: Vec<GhidraFunction>,
+}
+
+#[derive(sqlx::FromRow, serde::Deserialize, serde::Serialize, Debug, Clone)]
+pub struct GhidraFunction {
+    pub function_name: String,
+    pub entry_point: String,
+    pub decompiled_code: String,
+    pub assembly: String,
+}
+
+#[post("/ghidra/ingest")]
+async fn ghidra_ingest(
+    req: web::Json<GhidraIngestBatch>,
+    pool: web::Data<Pool<Postgres>>
+) -> impl Responder {
+    let batch = req.into_inner();
+    let task_id = batch.task_id.unwrap_or_else(|| "unsorted".to_string());
+    println!("[GHIDRA] Ingesting {} functions for Task {}", batch.functions.len(), task_id);
+    let now = Utc::now().timestamp_millis();
+
+    for func in batch.functions {
+        let res = sqlx::query(
+            "INSERT INTO ghidra_findings (task_id, binary_name, function_name, entry_point, decompiled_code, assembly, timestamp)
+             VALUES ($1, $2, $3, $4, $5, $6, $7)"
+        )
+        .bind(&task_id)
+        .bind(&batch.binary_name)
+        .bind(&func.function_name)
+        .bind(&func.entry_point)
+        .bind(&func.decompiled_code)
+        .bind(&func.assembly)
+        .bind(now)
+        .execute(pool.get_ref())
+        .await;
+        
+        if let Err(e) = res {
+             println!("[GHIDRA] Insert failed for {}: {}", func.function_name, e);
+        }
+    }
+
+    if task_id != "unsorted" {
+        println!("[GHIDRA] Marking task {} as Analysis Complete", task_id);
+        let _ = sqlx::query("UPDATE tasks SET ghidra_status = 'Analysis Complete' WHERE id = $1")
+            .bind(&task_id)
+            .execute(pool.get_ref())
+            .await;
+    }
+
+    HttpResponse::Ok().json(serde_json::json!({ "status": "success" }))
+}
+
+#[get("/ghidra/scripts")]
+async fn ghidra_list_scripts() -> impl Responder {
+    // Proxy to Ghidra service
+    let client = reqwest::Client::new();
+    let res = client.get("http://ghidra:8000/scripts")
+        .send()
+        .await;
+
+    match res {
+        Ok(resp) => {
+            let body = resp.text().await.unwrap_or_else(|_| "[]".to_string());
+            HttpResponse::Ok()
+                .content_type("application/json")
+                .body(body)
+        },
+        Err(e) => {
+             println!("Failed to fetch scripts from Ghidra: {}", e);
+             HttpResponse::InternalServerError().json(serde_json::json!({ "error": "Ghidra offline" }))
+        }
+    }
+}
+
+#[post("/ghidra/run-script")]
+async fn ghidra_run_script(req: web::Json<serde_json::Value>) -> impl Responder {
+    let client = reqwest::Client::new();
+    let res = client.post("http://ghidra:8000/run-script")
+        .json(&req.into_inner())
+        .send()
+        .await;
+
+    match res {
+        Ok(resp) => {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_else(|_| "{}".to_string());
+            HttpResponse::build(status)
+                .content_type("application/json")
+                .body(body)
+        },
+        Err(_) => HttpResponse::InternalServerError().body("Ghidra connection failed")
+    }
+}
+
+#[get("/tasks/{id}/ghidra-findings")]
+async fn get_ghidra_findings(
+    path: web::Path<String>,
+    pool: web::Data<Pool<Postgres>>
+) -> impl Responder {
+    let task_id = path.into_inner();
+    let res = sqlx::query("SELECT function_name, entry_point, decompiled_code, assembly FROM ghidra_findings WHERE task_id = $1")
+        .bind(task_id)
+        .fetch_all(pool.get_ref())
+        .await;
+    
+    match res {
+        Ok(rows) => {
+            use sqlx::Row;
+            let findings: Vec<serde_json::Value> = rows.into_iter().map(|row| {
+                serde_json::json!({
+                    "function_name": row.get::<String, _>("function_name"),
+                    "entry_point": row.get::<String, _>("entry_point"),
+                    "decompiled_code": row.get::<String, _>("decompiled_code"),
+                    "assembly": row.get::<String, _>("assembly")
+                })
+            }).collect();
+            HttpResponse::Ok().json(findings)
+        },
+        Err(e) => HttpResponse::InternalServerError().body(e.to_string())
+    }
+}
+
+#[get("/tasks/{id}/ai-report")]
+async fn get_ai_report(
+    path: web::Path<String>,
+    pool: web::Data<Pool<Postgres>>
+) -> impl Responder {
+    let task_id = path.into_inner();
+    let res = sqlx::query("SELECT risk_score, threat_level, summary, suspicious_pids, mitre_tactics, recommendations, forensic_report_json FROM analysis_reports WHERE task_id = $1")
+        .bind(task_id)
+        .fetch_optional(pool.get_ref())
+        .await;
+    
+    match res {
+        Ok(Some(row)) => {
+            use sqlx::Row;
+            // Try to return the full forensic report if available (preferred)
+            if let Ok(json_str) = row.try_get::<String, _>("forensic_report_json") {
+                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json_str) {
+                    return HttpResponse::Ok().json(parsed);
+                }
+            }
+
+            // Fallback to legacy partial fields
+            let report = serde_json::json!({
+                "risk_score": row.get::<i32, _>("risk_score"),
+                "threat_level": row.get::<String, _>("threat_level"),
+                "summary": row.get::<String, _>("summary"),
+                "suspicious_pids": row.get::<Vec<i32>, _>("suspicious_pids"),
+                "mitre_tactics": row.get::<Vec<String>, _>("mitre_tactics"),
+                "recommendations": row.get::<Vec<String>, _>("recommendations")
+            });
+            HttpResponse::Ok().json(report)
+        },
+        Ok(None) => HttpResponse::NotFound().body("No AI report found for this task"),
+        Err(e) => {
+            eprintln!("[AI] Database fetch error: {}", e);
+            HttpResponse::InternalServerError().body(e.to_string())
+        }
+    }
+}
+
+#[post("/tasks/{id}/analyze")]
+async fn trigger_task_analysis(
+    path: web::Path<String>,
+    pool: web::Data<Pool<Postgres>>
+) -> impl Responder {
+    let task_id = path.into_inner();
+    println!("[AI] Manual analysis trigger for task: {}", task_id);
+    
+    match ai_analysis::generate_ai_report(&task_id, pool.get_ref()).await {
+        Ok(_) => {
+            // After generation, fetch the full forensic report JSON
+            let res = sqlx::query("SELECT forensic_report_json FROM analysis_reports WHERE task_id = $1")
+                .bind(&task_id)
+                .fetch_optional(pool.get_ref())
+                .await;
+
+            match res {
+                Ok(Some(row)) => {
+                    use sqlx::Row;
+                    let forensic_json: String = row.get("forensic_report_json");
+                    
+                    // Parse and return as JSON
+                    match serde_json::from_str::<serde_json::Value>(&forensic_json) {
+                        Ok(report) => HttpResponse::Ok().json(report),
+                        Err(e) => {
+                            println!("[AI] Failed to parse forensic report JSON: {}", e);
+                            HttpResponse::InternalServerError().body("Failed to parse report")
+                        }
+                    }
+                },
+                _ => HttpResponse::InternalServerError().body("Report generated but failed to retrieve")
+            }
+        },
+        Err(e) => {
+            println!("[AI] Manual analysis failed for Task {}: {}", task_id, e);
+            HttpResponse::InternalServerError().body(format!("Analysis failed: {}", e))
+        }
+    }
+}
+
+
+
+#[post("/tasks/{id}/report/pdf")]
+async fn generate_pdf_report(
+    path: web::Path<String>,
+    body: web::Json<serde_json::Value>
+) -> impl Responder {
+    let task_id = path.into_inner();
+    let file_path = format!("reports/{}.pdf", task_id);
+
+    // Check if pre-generated (high quality) report exists
+    if std::path::Path::new(&file_path).exists() {
+        match fs::read(&file_path) {
+            Ok(bytes) => {
+                return HttpResponse::Ok()
+                    .content_type("application/pdf")
+                    .body(bytes);
+            },
+            Err(e) => {
+                println!("[PDF] Failed to read cached report: {}", e);
+                // Fallthrough to legacy generation
+            }
+        }
+    }
+
+    // Fallback to legacy generation only if it's an AIReport shape
+    if let Ok(legacy_report) = serde_json::from_value::<AIReport>(body.into_inner()) {
+        match reports::generate_pdf(task_id, legacy_report) {
+            Ok(pdf_bytes) => {
+                return HttpResponse::Ok()
+                    .content_type("application/pdf")
+                    .body(pdf_bytes);
+            },
+            Err(e) => {
+                println!("Failed to generate legacy PDF: {}", e);
+            }
+        }
+    }
+
+    HttpResponse::NotFound().body("Report PDF not found and could not be generated from fallback")
+}
+
+async fn init_db() -> Pool<Postgres> {
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    println!("[DATABASE] Connecting to: {}", database_url.split('@').last().unwrap_or("hidden"));
+
+    // Install the drivers manually if using Any
+    sqlx::any::install_default_drivers();
+
+    let pool = PgPoolOptions::new()
+        .max_connections(5)
+        .connect(&database_url)
+        .await
+        .expect("Failed to connect to Database");
+
+    println!("[DATABASE] Connection established. Creating tables...");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS events (
+            id SERIAL PRIMARY KEY,
+            event_type TEXT NOT NULL,
+            process_id INTEGER NOT NULL,
+            parent_process_id INTEGER NOT NULL,
+            process_name TEXT NOT NULL,
+            details TEXT NOT NULL,
+            timestamp BIGINT NOT NULL,
+            task_id TEXT
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create events table");
+
+    println!("[DATABASE] Events table ready.");
+
+    // Migration for existing events table
+    let _ = sqlx::query("ALTER TABLE events ADD COLUMN IF NOT EXISTS task_id TEXT").execute(&pool).await;
+    // Migration for existing events table
+    let _ = sqlx::query("ALTER TABLE events ADD COLUMN IF NOT EXISTS task_id TEXT").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE events ADD COLUMN IF NOT EXISTS session_id TEXT").execute(&pool).await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_events_search ON events USING GIN (to_tsvector('english', process_name || ' ' || details))").execute(&pool).await;
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS tasks (
+            id TEXT PRIMARY KEY,
+            filename TEXT NOT NULL,
+            original_filename TEXT NOT NULL DEFAULT '',
+            file_hash TEXT NOT NULL DEFAULT '',
+            status TEXT NOT NULL,
+            verdict TEXT,
+            risk_score INTEGER,
+            created_at BIGINT NOT NULL,
+            completed_at BIGINT,
+            ghidra_status TEXT DEFAULT 'Not Started',
+            verdict_manual BOOLEAN DEFAULT FALSE
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create tasks table");
+
+    println!("[DATABASE] Tasks table ready.");
+
+    // Explicitly add columns if they don't exist (Migration for existing DBs)
+    let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS original_filename TEXT DEFAULT ''").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS file_hash TEXT DEFAULT ''").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS ghidra_status TEXT DEFAULT 'Not Started'").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS verdict_manual BOOLEAN DEFAULT FALSE").execute(&pool).await;
+
+    println!("[DATABASE] Task table migrations complete.");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS ghidra_findings (
+            id SERIAL PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            binary_name TEXT NOT NULL,
+            function_name TEXT NOT NULL,
+            entry_point TEXT NOT NULL,
+            decompiled_code TEXT NOT NULL,
+            assembly TEXT NOT NULL,
+            timestamp BIGINT NOT NULL
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create ghidra_findings table");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS analysis_reports (
+            id SERIAL PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            risk_score INTEGER,
+            threat_level TEXT,
+            summary TEXT,
+            suspicious_pids INTEGER[],
+            mitre_tactics TEXT[],
+            recommendations TEXT[],
+            created_at BIGINT
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create analysis_reports table");
+
+    println!("[DATABASE] Analysis Reports table ready.");
+
+    pool
+}
+
+#[derive(Deserialize)]
+struct HistoryQuery {
+    task_id: String,
+    search: Option<String>,
+}
+
+#[get("/vms/telemetry/history")]
+async fn get_telemetry_history(
+    query: web::Query<HistoryQuery>,
+    pool_data: web::Data<Pool<Postgres>>,
+) -> impl Responder {
+    let task_id = &query.task_id;
+    let pool = pool_data.get_ref();
+
+    let rows = if let Some(search_term) = &query.search {
+        if search_term.is_empty() {
+             sqlx::query_as::<_, RawAgentEvent>(
+                "SELECT * FROM events WHERE task_id = $1 ORDER BY timestamp ASC"
+            )
+            .bind(task_id)
+            .fetch_all(pool)
+            .await
+        } else {
+            sqlx::query_as::<_, RawAgentEvent>(
+                "SELECT * FROM events WHERE task_id = $1 AND to_tsvector('english', process_name || ' ' || details) @@ websearch_to_tsquery('english', $2) ORDER BY timestamp ASC"
+            )
+            .bind(task_id)
+            .bind(search_term)
+            .fetch_all(pool)
+            .await
+        }
+    } else {
+        sqlx::query_as::<_, RawAgentEvent>(
+            "SELECT * FROM events WHERE task_id = $1 ORDER BY timestamp ASC"
+        )
+        .bind(task_id)
+        .fetch_all(pool)
+        .await
+    };
+
+    match rows {
+        Ok(events) => HttpResponse::Ok().json(events),
+        Err(e) => {
+            eprintln!("History fetch error: {}", e);
+            HttpResponse::InternalServerError().body(e.to_string())
+        }
+    }
+}
+
+
+#[actix_web::main]
+async fn main() -> std::io::Result<()> {
+    dotenv().ok();
+    env_logger::init();
+    
+    // Ensure uploads directory exists
+    std::fs::create_dir_all("./uploads")?;
+    std::fs::create_dir_all("./screenshots")?;
+
+    let pool = init_db().await;
+    let pool_data = web::Data::new(pool.clone());
+
+    let proxmox_url = env::var("PROXMOX_URL").expect("PROXMOX_URL must be set");
+    let proxmox_user = env::var("PROXMOX_USER").expect("PROXMOX_USER must be set");
+    let proxmox_token_id = env::var("PROXMOX_TOKEN_ID").expect("PROXMOX_TOKEN_ID must be set");
+    let proxmox_token_secret = env::var("PROXMOX_TOKEN_SECRET").expect("PROXMOX_TOKEN_SECRET must be set");
+
+    let client = proxmox::ProxmoxClient::new(
+        proxmox_url,
+        proxmox_user,
+        proxmox_token_id,
+        proxmox_token_secret,
+    );
+
+    let broadcaster = Arc::new(stream::Broadcaster::new());
+    let broadcaster_data = web::Data::new(broadcaster.clone());
+    
+    let agent_manager = Arc::new(AgentManager::new());
+    let agent_manager_data = web::Data::new(agent_manager.clone());
+
+    tokio::spawn(start_tcp_listener(broadcaster, agent_manager, pool));
+
+    println!("Starting Hyper-Bridge server on 0.0.0.0:8080");
+
+    use actix_cors::Cors;
+
+    HttpServer::new(move || {
+        let cors = Cors::permissive();
+
+        App::new()
+            .wrap(cors)
+            .app_data(web::Data::new(client.clone()))
+            .app_data(broadcaster_data.clone())
+            .app_data(agent_manager_data.clone())
+            .app_data(pool_data.clone())
+            .service(health_check)
+            .service(list_all_vms)
+            .service(vm_control)
+            .service(vm_revert)
+            .service(vnc_proxy)
+            .service(spice_proxy)
+            .service(spice_websocket)
+            .service(terminate_process)
+            .service(exec_url)
+            .service(ai_insight_handler)
+            .service(chat_handler)
+            .service(list_tasks)
+            .service(delete_task)
+            .service(purge_all)
+            .service(pivot_binary)
+            .service(pivot_upload)
+            .service(exec_binary)
+            .service(submit_sample)
+            .service(upload_screenshot)
+            .service(list_screenshots)
+            .service(ghidra_analyze)
+            .service(ghidra_functions)
+            .service(ghidra_decompile)
+            .service(ghidra_ingest)
+            .service(ghidra_list_scripts)
+            .service(ghidra_run_script)
+            .service(get_ghidra_findings)
+            .service(get_ai_report)
+            .service(trigger_task_analysis)
+            .service(get_telemetry_history)
+            .service(update_task_verdict)
+            .service(generate_pdf_report)
+            .service(actix_files::Files::new("/uploads", "./uploads").show_files_listing())
+            .service(actix_files::Files::new("/screenshots", "./screenshots").show_files_listing())
+            .route("/ws", web::get().to(stream::ws_route))
+    })
+    .bind(("0.0.0.0", 8080))?
+    .run()
+    .await
+}

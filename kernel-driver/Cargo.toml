@@ -1,0 +1,19 @@
+[package]
+name = "voodoobox-filter"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+# Using a common kernel crate for Rust driver development
+wdk = "0.1" 
+wdk-sys = "0.1"
+wdk-alloc = "0.1"
+wdk-macros = "0.1"
+
+[profile.release]
+panic = "abort"
+lto = true
+opt-level = "z"
