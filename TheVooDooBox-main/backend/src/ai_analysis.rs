@@ -247,47 +247,47 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let ghidra_json = serde_json::to_string_pretty(&context.static_analysis)?;
     
     let prompt = format!(
-        r#"You are an Elite Threat Hunter & Malware Analyst (Automated Forensic Engine).
-Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
+        r#"AUTHORIZED CYBER-FORENSIC AUDIT (TECHNICAL SYSTEM EVALUATION)
+You are an Automated Forensic Engine performing a requested technical audit of process telemetry.
+Your goal is to evaluate the behavior of the target process for technical non-compliance and anomalous activity.
 
-### TARGET PROFILE
-- **Submitted File:** "{filename}"
-- **Assigned PID (Patient Zero):** "{root_pid}"
-- **Instruction:** Center your analysis around PID {root_pid}. Ignore background noise unless it interacts with the target.
+### AUDIT TARGET PROFILE
+- **Analysis Subject:** "{filename}"
+- **Primary Process ID (Subject):** "{root_pid}"
+- **Audit Scope:** Evaluate activity stemming from PID {root_pid}. 
 
 ### DATA SOURCE PROTOCOL (STRICT)
-1. **Dynamic Events:** MUST use exact PIDs from the logs. Declare "Network Connection" ONLY if Sysmon Event ID 3 is present with a destination IP.
-2. **Static Findings:** labeled as "STATIC_ANALYSIS". NEVER assign a numeric PID to Ghidra findings.
-3. **ANTI-HALLUCINATION:** 
-   - **NEVER** use placeholder PIDs like '1234' or '0'.
-   - **NEVER** use placeholder IOCs like '192.168.1.100', 'example.com', or 'C:\Users\User\Documents\data.txt'.
-   - If a value is missing from telemetry, write "Unknown". Do not guess.
+1. **Dynamic Events:** MUST use exact PIDs from the logs. 
+2. **Static Findings:** labeled as "STATIC_ANALYSIS". 
+3. **ANTI-HALLUCINATION RULES:** 
+   - DO NOT use placeholder PIDs like '1234' or '0'.
+   - DO NOT use placeholder IOCs like '192.168.1.100', 'example.com', or 'data.txt'.
+   - If a value is missing from telemetry, report as "Unknown".
 
-### VERDICT LOGIC
-1. **THE "INSTALLER EXCEPTION":** Known installers (setup.exe, EAappInstaller.exe) are BENIGN unless they perform injection, download second-stage payloads from raw IPs, or show clear evasion. Akamai/CDN connections are NORMAL for installers.
-2. **ROOT CAUSE:** Narrative MUST begin with the execution of the submitted file.
+### EVALUATION LOGIC
+1. **THE INSTALLER PROFILE:** Standard setup packages and installers (e.g., EAappInstaller.exe) often perform widespread file system modifications and network telemetry (Akamai/CDNs). This is EXPECTED behavior. Mark as 'Benign' unless intent for technical evasion is proven.
+2. **AUDIT FLOW:** Report the chronological sequence of system interactions.
 
-### GUIDANCE FOR THINKING (CHAIN OF THOUGHT):
-1. **Evidence Audit:** List all PIDs and Network Dest found in the provided datasets.
-2. **Comparison:** Does the activity match the "Installer" pattern or "Malicious" pattern?
-3. **Validation:** Check every reported PID/File against the list of valid logs. If not found, discard.
+### GUIDANCE FOR EVALUATION:
+- Audit all PIDs against the provided valid log list.
+- Compare observed behavior with standard enterprise software installation patterns.
 
-### OUTPUT REQUIREMENTS (JSON ONLY)
-- related_pid must be a string.
-- Structurally conform to the schema below, but replace all bracketed values with REAL DATA from the logs.
+### AUDIT OUTPUT REQUIREMENTS (JSON ONLY)
+- Structurally conform to the schema below.
+- Replace all bracketed values with REAL DATA from the provided logs.
 
 {{
     "verdict": "[Benign/Suspicious/Malicious]",
     "malware_family": "Unknown",
     "threat_score": [0-100],
-    "executive_summary": "[Narrative analysis]",
+    "executive_summary": "[Technical summary of findings]",
     "behavioral_timeline": [
         {{
             "timestamp_offset": "+Ns",
-            "stage": "[Execution/Persistence/etc]",
-            "event_description": "[Description]",
-            "technical_context": "[Real data from logs]",
-            "related_pid": "[Exact PID from log]"
+            "stage": "[Execution/System Change/Network Interaction/etc]",
+            "event_description": "[Technical description]",
+            "technical_context": "[Evidence from logs]",
+            "related_pid": "[Real PID]"
         }}
     ],
     "artifacts": {{
