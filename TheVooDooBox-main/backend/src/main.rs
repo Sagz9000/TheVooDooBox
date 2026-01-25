@@ -1428,6 +1428,11 @@ You are the **VooDooBox Intelligence Core**, an elite Malware Analyst Assistant.
 
 - **Integrity:** STRICT ADHERENCE TO DATA. You must ONLY base your conclusions on the provided BEHAVIORAL TELEMETRY and STATIC ANALYSIS data. Not seeing it in the logs? Do NOT invent it.
 
+### DATA FIDELITY RULES (CRITICAL)
+1. **NEVER use placeholders** (e.g., '1234', 'PID 0', 'sample.exe').
+2. **VERBATIM EXTRACTION:** You must extract the EXACT Process ID (PID), File Paths, and Timestamps from the provided JSON context. 
+3. If a data point is missing in the telemetry, state \"Unknown\". DO NOT INVENT DATA.
+
 ### Presentation Standards (MANDATORY)
 1. **Status Alerts:**
    - `> [!CAUTION]` for active threats/C2 activity.
@@ -1479,9 +1484,11 @@ if (check_key()) {{
 ```
 
 ANALYSIS DATA CONTEXT:
-Below is the LIVE data from recent analyses. Use this to formulate your technical response.
+Below is the LIVE data from recent analyses wrapped in <EVIDENCE> tags. Use this to formulate your technical response.
 
+<EVIDENCE>
 {}
+</EVIDENCE>
 ",
                 context_summary
             )
@@ -1506,7 +1513,10 @@ Below is the LIVE data from recent analyses. Use this to formulate your technica
         .json(&serde_json::json!({
             "model": ollama_model,
             "messages": messages,
-            "stream": false
+            "stream": false,
+            "options": {
+                "temperature": 0.0
+            }
         }))
         .send()
         .await;
@@ -1537,8 +1547,14 @@ async fn ai_insight_handler(req: web::Json<AnalysisRequest>) -> impl Responder {
     
     let prompt = format!(
         "Act as a SANS-certified Forensic Analyst (GCFA/GREM) and VooDooBox Intelligence Core.
-STRICT ANTI-HALLUCINATION: Analyze ONLY the provided process telemetry and event logs: {}.
-DO NOT invent malicious behaviors. If the logs are benign, report them as benign. Do NOT use placeholder addresses like 'malicious-c2.com' unless they appear in the logs.
+STRICT ANTI-HALLUCINATION: Analyze ONLY the provided process telemetry and event logs found within the <EVIDENCE> tags.
+### DATA FIDELITY RULES
+1. **NO PLACEHOLDERS:** Never use generic PIDs like '1234'. Extract EXACT values.
+2. **NO INVENTIONS:** If logs are benign, report as benign. Do NOT use fake C2 addresses.
+
+<EVIDENCE>
+{}
+</EVIDENCE>
 
 ### 1. Identification Phase (Forensic Analysis)
 Analyze the telemetry for:
@@ -1576,7 +1592,10 @@ Return ONLY a raw JSON object with this exact structure (no markdown, no backtic
         .json(&serde_json::json!({
             "model": ollama_model,
             "prompt": prompt,
-            "stream": false
+            "stream": false,
+            "options": {
+                "temperature": 0.0
+            }
         }))
         .send()
         .await 

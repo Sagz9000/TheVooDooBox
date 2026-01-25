@@ -235,16 +235,23 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let context_json = serde_json::to_string_pretty(&context)?;
     
     let prompt = format!(
-        r#"You are a Senior Malware Researcher. 
-Analyze the provided sandbox telemetry to produce a Forensic Triage Report.
+        r#"You are a Senior Malware Researcher (Automated Forensic Engine).
+Your GOAL is to extract FACTS from the provided Telemetry.
+
+### DATA FIDELITY RULES (CRITICAL)
+1. **NEVER use placeholders** (e.g., '1234', 'PID 0', 'sample.exe').
+2. **VERBATIM EXTRACTION:** You must extract the EXACT Process ID (PID), File Paths, and Timestamps from the provided JSON.
+3. If a data point is missing in the telemetry, state "Unknown" or "Not Observed". DO NOT INVENT DATA.
+4. If you see a PID in the telemetry (e.g., '4492'), USE '4492'. Do not change it.
 
 ### OBJECTIVE
 Dissect the malware's execution chain. Connect individual Sysmon events into a coherent technical narrative.
 
-### TELEMETRY DATA
-```json
+### EVIDENCE
+Analyze the evidence below. Extract the SPECIFIC PIDs and filenames found in the <EVIDENCE> tags.
+<EVIDENCE>
 {}
-```
+</EVIDENCE>
 
 ### OUTPUT REQUIREMENTS (JSON ONLY)
 1. **Verdict:** definitive classification (Malicious, Suspicious, Benign).
@@ -270,18 +277,18 @@ Dissect the malware's execution chain. Connect individual Sysmon events into a c
     "executive_summary": "Analysis indicates the sample...",
     "behavioral_timeline": [
         {{
-            "timestamp_offset": "+2s",
+            "timestamp_offset": "+0s",
             "stage": "Execution",
             "event_description": "Process Spawn",
-            "technical_context": "Sample.exe spawned cmd.exe",
-            "related_pid": 1234
+            "technical_context": "[BINARY_NAME] spawned [CHILD_PROCESS]",
+            "related_pid": 9999
         }}
     ],
     "artifacts": {{
-        "dropped_files": ["C:\\Temp\\malware.exe"],
-        "c2_domains": ["malicious.com"],
+        "dropped_files": ["C:\\Path\\To\\Artifact"],
+        "c2_domains": ["malicious-domain.com"],
         "mutual_exclusions": ["Global\\MutexName"],
-        "command_lines": ["cmd.exe /c start"]
+        "command_lines": ["cmd.exe /c [COMMAND]"]
     }}
 }}
 "#, 
@@ -307,7 +314,10 @@ Dissect the malware's execution chain. Connect individual Sysmon events into a c
             "model": model,
             "prompt": prompt,
             "stream": false,
-            "format": "json"
+            "format": "json",
+            "options": {
+                "temperature": 0.0
+            }
         }))
         .send()
         .await
