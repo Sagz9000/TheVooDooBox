@@ -225,9 +225,13 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     context.static_analysis = fetch_ghidra_analysis(task_id, pool).await;
 
     // 4. Construct Hybrid Prompt
+    // Extract valid PIDs for the "Menu" technique
+    let valid_pids: Vec<String> = context.processes.iter().map(|p| p.pid.to_string()).collect();
+    let pid_list_str = valid_pids.join(", ");
+
     // SAFETY CHECK: If we have very little data (e.g. just the root process start), warn the AI
     let forced_benign_instruction = if context.processes.is_empty() || (context.processes.len() == 1 && context.processes[0].network_activity.is_empty() && context.processes[0].file_activity.is_empty()) {
-        "ALERT: Telemetry is minimal. The sample likely did NOT execute or is benign. You MUST return a 'Benign' verdict unless you see EXPLICIT malicious indicators in the logs. Do NOT hallunicate a 'PowerShell' attack if none exists."
+        "ALERT: Telemetry is minimal. The sample likely did NOT execute or is benign. You MUST return a 'Benign' verdict unless you see EXPLICIT malicious indicators in the logs. Do NOT hallucinate a 'PowerShell' attack if none exists."
     } else {
         ""
     };
@@ -235,65 +239,66 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let context_json = serde_json::to_string_pretty(&context)?;
     
     let prompt = format!(
-        r#"You are a Senior Malware Researcher (Automated Forensic Engine).
-Your GOAL is to extract FACTS from the provided Telemetry.
+        r#"You are an Elite Threat Hunter & Malware Analyst (Automated Forensic Engine).
+Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
 
-### DATA FIDELITY RULES (CRITICAL)
-1. **NEVER use placeholders** (e.g., '1234', 'PID 0', 'sample.exe').
-2. **VERBATIM EXTRACTION:** You must extract the EXACT Process ID (PID), File Paths, and Timestamps from the provided JSON.
-3. If a data point is missing in the telemetry, state "Unknown" or "Not Observed". DO NOT INVENT DATA.
-4. If you see a PID in the telemetry (e.g., '4492'), USE '4492'. Do not change it.
+### INSTRUCTIONS:
+1. **BEHAVIORAL BIAS (PARANOIA):** Assume the provided telemetry represents a potential malware sample. Your job is to explain *why* it is malicious. Scrutinize Living-off-the-Land binaries (powershell, certutil, bitsadmin), Registry persistence, and Code Injection as primary threats.
+2. **DATA ACCURACY (STRICT):** While your *analysis* should be suspicious, your *evidence* must be exact.
+   - NEVER use placeholder PIDs (like '1234' or '9999').
+   - VERBATIM EXTRACTION: You must extract the EXACT PIDs and File Paths from the evidence.
+3. **VALID PID LIST (CHEAT SHEET):** cite PIDs ONLY from this list: [{pid_list}]. 
+   - If a specific PID is not visible in the logs, write "Unknown". Do NOT invent data.
 
-### OBJECTIVE
-Dissect the malware's execution chain. Connect individual Sysmon events into a coherent technical narrative.
+### SAFETY CONSTRAINTS:
+{safety_check}
+
+### GUIDANCE FOR THINKING (CHAIN OF THOUGHT):
+1. First, list all commands and process starts executed.
+2. Second, checking against the Valid PID List, map the correct PID to each behavioral event.
+3. Third, ask: "Why would a legitimate user run this?" If the answer is suspicious contextually, flag it as high severity.
 
 ### EVIDENCE
-Analyze the evidence below. Extract the SPECIFIC PIDs and filenames found in the <EVIDENCE> tags.
+Analyze the evidence below wrapped in <EVIDENCE> tags.
 <EVIDENCE>
-{}
+{telemetry}
 </EVIDENCE>
 
 ### OUTPUT REQUIREMENTS (JSON ONLY)
 1. **Verdict:** definitive classification (Malicious, Suspicious, Benign).
-2. **Timeline:** Chronological reconstruction of the execution flow. Group related events (e.g., "Parent spawns Child" -> "Child writes file").
-3. **Artifacts:** Extract distinct Indicators of Compromise (IOCs) found in the logs.
-
-### CRITICAL: HALLUCINATION REDUCTION RULES
-- Analyze ONLY the provided telemetry.
-- {}
-- If the logs show only a benign installer (like VLC, ChromeSetup), mark it BENIGN.
-- Do NOT use specific examples (like 'PowerShell', 'malicious-server') unless they appear in YOUR provided logs.
+2. **Timeline:** Chronological reconstruction of the execution flow. Group related events.
+3. **Artifacts:** Extract distinct Indicators of Compromise (IOCs) from the logs.
 
 ### CRITICAL: JSON STRUCTURE RULES
-- "related_pid" MUST be a single integer (the primary PID), NOT an array
-- If multiple PIDs are involved, mention them in "technical_context" as text
-- All field names must match exactly as shown below
+- "related_pid" MUST be a single integer from the Valid PID List.
+- If multiple PIDs are involved, describe them in "technical_context".
+- All field names must match exactly as shown below:
 
-### JSON STRUCTURE EXAMPLE (DO NOT COPY VALUES)
 {{
     "verdict": "Malicious",
     "malware_family": "Unknown",
     "threat_score": 100,
-    "executive_summary": "Analysis indicates the sample...",
+    "executive_summary": "Analysis indicates...",
     "behavioral_timeline": [
         {{
             "timestamp_offset": "+0s",
             "stage": "Execution",
             "event_description": "Process Spawn",
-            "technical_context": "[BINARY_NAME] spawned [CHILD_PROCESS]",
-            "related_pid": 9999
+            "technical_context": "[BINARY] spawned [CHILD]",
+            "related_pid": 0
         }}
     ],
     "artifacts": {{
-        "dropped_files": ["C:\\Path\\To\\Artifact"],
-        "c2_domains": ["malicious-domain.com"],
-        "mutual_exclusions": ["Global\\MutexName"],
-        "command_lines": ["cmd.exe /c [COMMAND]"]
+        "dropped_files": [],
+        "c2_domains": [],
+        "mutual_exclusions": [],
+        "command_lines": []
     }}
 }}
 "#, 
-        context_json,
-        forced_benign_instruction
+        pid_list = pid_list_str,
+        safety_check = forced_benign_instruction,
+        telemetry = context_json
     );
 
     // 5. Call Ollama with proper timeout configuration
@@ -316,7 +321,7 @@ Analyze the evidence below. Extract the SPECIFIC PIDs and filenames found in the
             "stream": false,
             "format": "json",
             "options": {
-                "temperature": 0.0
+                "temperature": 0.05
             }
         }))
         .send()
