@@ -1945,8 +1945,21 @@ async fn generate_pdf_report(
 }
 
 async fn init_db() -> Pool<Postgres> {
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-    println!("[DATABASE] Connecting to: {}", database_url.split('@').last().unwrap_or("hidden"));
+    let database_url = match env::var("DATABASE_URL") {
+        Ok(url) => url,
+        Err(_) => {
+            // Fallback: try to construct it manually from env vars if somehow missing
+            let user = env::var("POSTGRES_USER").unwrap_or_else(|_| "voodoobox".to_string());
+            let pass = env::var("POSTGRES_PASSWORD").unwrap_or_else(|_| "voodoobox_secure".to_string());
+            let db_name = env::var("POSTGRES_DB").unwrap_or_else(|_| "voodoobox_telemetry".to_string());
+            // URL encode the password to handle special characters (#, @, etc)
+            let encoded_pass = urlencoding::encode(&pass);
+            format!("postgres://{}:{}@db:5432/{}", user, encoded_pass, db_name)
+        }
+    };
+
+    println!("[DATABASE] Attempting connection. URL Structure: {}... (password masked)", 
+        database_url.split('@').next().unwrap_or("???"));
 
     // Install the drivers manually if using Any
     sqlx::any::install_default_drivers();

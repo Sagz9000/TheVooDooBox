@@ -28,3 +28,5 @@ sha2 = "0.10"
 genpdf = { version = "0.2.0", features = ["images"] }
 codepage-437 = "0.1"
 image = "0.23"
+urlencoding = "2.1"
+

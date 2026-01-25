@@ -1,5 +1,5 @@
 FROM rust:latest as builder
-ENV CACHE_BUST=2
+ENV CACHE_BUST=3
 
 WORKDIR /usr/src/app
 COPY . .
