@@ -312,42 +312,43 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
 
     return (
         <div className="flex flex-col h-full bg-[#050505] text-white overflow-hidden animate-in fade-in duration-300 font-sans">
-            {/* Header */}
-            <header className="h-14 border-b border-white/10 bg-[#0a0a0a] flex items-center justify-between px-6 shadow-2xl z-10">
-                <div className="flex items-center gap-4">
-                    <button onClick={onBack} className="p-2 hover:bg-white/5 rounded-full text-zinc-400 hover:text-white transition-colors group">
+            {/* Header - Scalable */}
+            <header className="min-h-14 py-3 md:h-14 border-b border-white/10 bg-[#0a0a0a] flex flex-col md:flex-row items-center justify-between px-4 md:px-6 shadow-2xl z-10 gap-4">
+                <div className="flex items-center gap-4 w-full md:w-auto">
+                    <button onClick={onBack} className="p-2 hover:bg-white/5 rounded-full text-zinc-400 hover:text-white transition-colors group shrink-0">
                         <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
                     </button>
-                    <img src="/logo.png" alt="VooDooBox" className="h-8 w-auto object-contain bg-black/50 rounded-sm border border-white/10" />
-                    <div>
-                        <h1 className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Telemetry Report: Neural Analysis</h1>
+                    <img src="/logo.png" alt="VooDooBox" className="h-8 w-auto object-contain bg-black/50 rounded-sm border border-white/10 shrink-0" />
+                    <div className="min-w-0">
+                        <h1 className="text-[9px] font-black uppercase tracking-widest text-zinc-500 truncate">Telemetry: Neural Analysis</h1>
                         <div className="flex items-center gap-2">
-                            <span className="text-base font-bold tracking-tight text-white">{taskId || 'LIVE_SESSION_CAPTURE'}</span>
-                            <span className="px-2 py-0.5 rounded bg-brand-500/10 text-brand-400 text-[9px] font-black border border-brand-500/20 uppercase tracking-wider">
-                                Dynamic Analysis
+                            <span className="text-sm md:text-base font-bold tracking-tight text-white truncate">{taskId || 'LIVE_SESSION'}</span>
+                            <span className="hidden sm:inline-block px-2 py-0.5 rounded bg-brand-500/10 text-brand-400 text-[9px] font-black border border-brand-500/20 uppercase tracking-wider">
+                                Dynamic
                             </span>
                         </div>
                     </div>
                 </div>
-                <div className="flex items-center gap-4 text-xs font-mono text-zinc-500">
-                    <span className="flex items-center gap-2"><Clock size={12} /> Duration: {stats.duration}</span>
-                    <span className="flex items-center gap-2"><Cpu size={12} /> {stats.count} Events Processed</span>
+                <div className="flex items-center justify-between md:justify-end gap-4 text-[10px] md:text-xs font-mono text-zinc-500 w-full md:w-auto">
+                    <div className="flex items-center gap-4">
+                        <span className="flex items-center gap-2"><Clock size={12} /> {stats.duration}</span>
+                        <span className="hidden sm:flex items-center gap-2"><Cpu size={12} /> {stats.count} Events</span>
+                    </div>
                     {aiReport && (
                         <button
                             onClick={() => taskId && voodooApi.downloadPdf(taskId, aiReport)}
-                            className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 rounded-md transition-all shadow-lg shadow-brand-500/40 uppercase font-black tracking-wider text-[11px] animate-pulse"
-                            title="Download PDF Report"
+                            className="flex items-center gap-2 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 rounded-md transition-all shadow-lg shadow-brand-500/40 uppercase font-black tracking-wider text-[10px]"
                         >
-                            <Download size={16} />
-                            Download PDF
+                            <Download size={14} />
+                            <span className="hidden xs:inline">PDF</span>
                         </button>
                     )}
                 </div>
             </header>
 
-            <div className="flex-1 flex overflow-hidden">
-                {/* Left: Enhanced Process Tree */}
-                <div className="w-[350px] border-r border-white/10 bg-[#0c0c0c] flex flex-col z-0">
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+                {/* Left: Enhanced Process Tree (Fluid Sidebar) */}
+                <div className="w-full lg:w-80 xl:w-[350px] lg:border-r border-b lg:border-b-0 border-white/10 bg-[#0c0c0c] flex flex-col shrink-0 min-h-0 h-64 lg:h-auto">
                     <div className="p-4 border-b border-white/10 bg-[#111] flex flex-col gap-3 shadow-sm">
                         <div className="flex items-center gap-2">
                             <Activity size={14} className="text-brand-500" />
@@ -418,16 +419,16 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                         </div>
                     )}
 
-                    {/* Tabs Navigation */}
-                    <div className="flex items-center px-4 border-b border-white/10 bg-[#0a0a0a] overflow-x-auto overflow-y-hidden custom-scrollbar whitespace-nowrap">
-                        <TabButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} icon={<List size={14} />} label="Activity Timeline" count={timelineEvents.length} />
+                    {/* Tabs Navigation - Scrollable */}
+                    <div className="flex items-center px-4 border-b border-white/10 bg-[#0a0a0a] overflow-x-auto overflow-y-hidden custom-scrollbar whitespace-nowrap scroll-smooth min-h-[48px]">
+                        <TabButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} icon={<List size={14} />} label="Timeline" count={timelineEvents.length} />
                         <TabButton active={activeTab === 'screenshots'} onClick={() => setActiveTab('screenshots')} icon={<Image size={14} />} label="Screenshots" count={screenshots.length} />
                         <TabButton active={activeTab === 'network'} onClick={() => setActiveTab('network')} icon={<Globe size={14} />} label="Network" count={networkEvents.length} />
                         <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<FileText size={14} />} label="Files" count={fileEvents.length} />
                         <TabButton active={activeTab === 'registry'} onClick={() => setActiveTab('registry')} icon={<Server size={14} />} label="Registry" count={registryEvents.length} />
-                        <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Ghidra Intelligence" count={ghidraFindings.length} />
+                        <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Intelligence" count={ghidraFindings.length} />
                         <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} icon={<Sparkles size={14} />} label="AI Insight" />
-                        <TabButton active={activeTab === 'console'} onClick={() => setActiveTab('console')} icon={<Terminal size={14} />} label="Raw Console" count={stats.count} />
+                        <TabButton active={activeTab === 'console'} onClick={() => setActiveTab('console')} icon={<Terminal size={14} />} label="Raw Feed" count={stats.count} />
                     </div>
 
                     {/* Tab Content Area */}
@@ -436,11 +437,11 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             <TimelineView events={timelineEvents} />
                         )}
                         {activeTab === 'screenshots' && (
-                            <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6">
+                            <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 md:p-6">
                                 {screenshots.length === 0 ? (
                                     <EmptyState msg="No screenshots captured" />
                                 ) : (
-                                    <div className="grid grid-cols-2 lg:grid-cols-3 gap-6">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                                         {screenshots.map((shot, i) => (
                                             <div key={i} className="group relative rounded-lg overflow-hidden border border-white/10 bg-black/20 hover:border-brand-500/50 transition-all shadow-xl">
                                                 <div className="aspect-video relative overflow-hidden bg-black">
@@ -451,13 +452,13 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                                         loading="lazy"
                                                     />
                                                 </div>
-                                                <div className="p-3 bg-[#111] border-t border-white/5 flex items-center justify-between">
-                                                    <span className="text-[10px] font-mono text-zinc-500 truncate">{shot}</span>
+                                                <div className="p-3 bg-[#111] border-t border-white/5 flex items-center justify-between gap-2 overflow-hidden">
+                                                    <span className="text-[9px] font-mono text-zinc-500 truncate">{shot}</span>
                                                     <a
                                                         href={voodooApi.getScreenshotUrl(shot, taskId || undefined)}
                                                         target="_blank"
                                                         rel="noopener noreferrer"
-                                                        className="p-1 hover:bg-white/10 rounded text-zinc-400 hover:text-white transition-colors"
+                                                        className="p-1 hover:bg-white/10 rounded text-zinc-400 hover:text-white transition-colors shrink-0"
                                                     >
                                                         <Globe size={12} />
                                                     </a>
@@ -496,14 +497,14 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                         )}
                         {activeTab === 'console' && (
                             <div className="absolute inset-0 flex flex-col bg-black">
-                                <div className="p-4 border-b border-white/5 bg-zinc-900/20">
-                                    <div className="flex gap-2">
+                                <div className="p-3 md:p-4 border-b border-white/5 bg-zinc-900/20">
+                                    <div className="flex flex-col sm:flex-row gap-2">
                                         <div className="relative group flex-1">
                                             <Terminal size={12} className="absolute left-3 top-2.5 text-zinc-600 group-focus-within:text-brand-500 transition-colors" />
                                             <input
                                                 type="text"
-                                                placeholder="Full-text search telemetry logs (AND, OR, quotes supported)..."
-                                                className="w-full bg-black/40 border border-white/5 rounded-md pl-9 pr-3 py-2 text-[11px] text-zinc-200 focus:outline-none focus:border-brand-500/50 transition-all font-mono"
+                                                placeholder="Search logs..."
+                                                className="w-full bg-black/40 border border-white/5 rounded-md pl-9 pr-3 py-2 text-[10px] md:text-[11px] text-zinc-200 focus:outline-none focus:border-brand-500/50 transition-all font-mono"
                                                 value={consoleSearchInput}
                                                 onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConsoleSearchInput(e.target.value)}
                                                 onKeyDown={(e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -511,20 +512,21 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                                 }}
                                             />
                                         </div>
-                                        <button
-                                            onClick={handleConsoleSearch}
-                                            className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-md text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center gap-2 shadow-lg shadow-brand-500/20"
-                                        >
-                                            <Search size={14} />
-                                            Search
-                                        </button>
-                                        <button
-                                            onClick={() => setShowCheatsheet(!showCheatsheet)}
-                                            className={`p-2 rounded-md border border-white/10 transition-colors ${showCheatsheet ? 'bg-brand-500/20 text-brand-400' : 'bg-black/40 text-zinc-500 hover:text-white'}`}
-                                            title="Search Cheatsheet"
-                                        >
-                                            <Sparkles size={14} />
-                                        </button>
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={handleConsoleSearch}
+                                                className="flex-1 sm:flex-initial px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-md text-[10px] md:text-[11px] font-bold uppercase tracking-wider transition-colors flex items-center justify-center gap-2"
+                                            >
+                                                <Search size={14} />
+                                                Search
+                                            </button>
+                                            <button
+                                                onClick={() => setShowCheatsheet(!showCheatsheet)}
+                                                className={`p-2 rounded-md border border-white/10 transition-colors ${showCheatsheet ? 'bg-brand-500/20 text-brand-400' : 'bg-black/40 text-zinc-500 hover:text-white'}`}
+                                            >
+                                                <Sparkles size={14} />
+                                            </button>
+                                        </div>
                                     </div>
 
                                     {showCheatsheet && (

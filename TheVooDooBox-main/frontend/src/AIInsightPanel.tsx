@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { Brain, ShieldAlert, Clock, FileText, Globe, Terminal, Sparkles, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
-
-import { ForensicReport, TimelineEvent, Artifacts } from './voodooApi';
+import { voodooApi, ForensicReport, TimelineEvent, Artifacts } from './voodooApi';
 
 interface AIInsightPanelProps {
     report: ForensicReport | null;
@@ -40,21 +39,21 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
     const isValidReport = report && typeof report === 'object' && 'verdict' in report;
 
     return (
-        <div className="flex flex-col h-full bg-security-surface p-6 overflow-auto custom-scrollbar animate-in slide-in-from-right duration-500">
-            <div className="flex items-center justify-between mb-8 pb-4 border-b border-security-border">
+        <div className="flex flex-col h-full bg-security-surface p-4 md:p-6 overflow-auto custom-scrollbar animate-in slide-in-from-right duration-500 min-h-0">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 md:mb-8 pb-4 border-b border-security-border gap-4">
                 <div className="flex items-center gap-3">
-                    <div className="p-2 bg-brand-600/10 rounded-lg">
-                        <Brain className="w-6 h-6 text-brand-500" />
+                    <div className="p-2 bg-brand-600/10 rounded-lg shrink-0">
+                        <Brain className="w-5 h-5 md:w-6 md:h-6 text-brand-500" />
                     </div>
                     <div>
-                        <h2 className="text-lg font-bold text-white leading-none">Forensic Analysis</h2>
-                        <p className="text-[10px] text-slate-500 uppercase tracking-widest mt-1">Kill Chain Reconstruction</p>
+                        <h2 className="text-base md:text-lg font-bold text-white leading-none">Forensic Analysis</h2>
+                        <p className="text-[9px] md:text-[10px] text-slate-500 uppercase tracking-widest mt-1">Kill Chain Reconstruction</p>
                     </div>
                 </div>
                 <button
                     onClick={onAnalyze}
                     disabled={loading}
-                    className="btn-primary h-8 px-3 text-[10px] flex items-center gap-2 shadow-lg shadow-brand-600/20 disabled:opacity-50 disabled:cursor-wait whitespace-nowrap"
+                    className="btn-primary h-8 px-3 text-[10px] flex items-center gap-2 shadow-lg shadow-brand-600/20 disabled:opacity-50 disabled:cursor-wait whitespace-nowrap w-full md:w-auto justify-center"
                 >
                     {loading ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                     {loading ? 'ANALYZING...' : 'RUN ANALYTICS'}
@@ -62,16 +61,16 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
             </div>
 
             {!isValidReport && !loading && (
-                <div className="flex-1 flex flex-col items-center justify-center text-center py-12">
+                <div className="flex-1 flex flex-col items-center justify-center text-center py-12 px-4">
                     <div className="w-16 h-16 bg-security-panel border border-security-border rounded-2xl flex items-center justify-center mb-4 text-slate-700">
                         <ShieldAlert size={32} />
                     </div>
                     <h3 className="text-slate-300 font-bold">No Analysis Found</h3>
-                    <p className="text-xs text-slate-500 mt-1">
-                        {taskId ? 'Run analytics to perform deep-dive forensic<br />correlation for this task.' : 'Correlation requires an active<br />telemetry session.'}
+                    <p className="text-xs text-slate-500 mt-1 max-w-[250px]">
+                        {taskId ? 'Run analytics to perform deep-dive forensic correlation for this task.' : 'Correlation requires an active telemetry session.'}
                     </p>
                     {report && typeof report === 'string' && (
-                        <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-[10px] text-red-400 font-mono">
+                        <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-[10px] text-red-400 font-mono break-all max-w-full">
                             Error: {report}
                         </div>
                     )}
@@ -86,23 +85,23 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
             )}
 
             {isValidReport && (
-                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500 pb-8">
                     {/* Verdict Card */}
-                    <div className="p-5 bg-security-panel border border-security-border rounded-xl relative overflow-hidden shadow-inner">
+                    <div className="p-4 md:p-5 bg-security-panel border border-security-border rounded-xl relative overflow-hidden shadow-inner">
                         <div className="text-[9px] text-slate-500 uppercase font-black tracking-[0.2em] mb-4">Classification</div>
-                        <div className="flex items-center justify-between gap-4">
-                            <div>
-                                <div className={`inline-flex px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest border-2 ${getVerdictColor(report.verdict)}`}>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6 sm:gap-4">
+                            <div className="w-full sm:w-auto">
+                                <div className={`inline-flex px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest border-2 w-full sm:w-auto justify-center ${getVerdictColor(report.verdict)}`}>
                                     {report.verdict}
                                 </div>
                                 {report.malware_family && (
-                                    <div className="mt-2 text-xs text-slate-400">
-                                        Family: <span className="text-white font-mono">{report.malware_family}</span>
+                                    <div className="mt-3 sm:mt-2 text-xs text-slate-400">
+                                        Family: <span className="text-white font-mono break-all">{report.malware_family}</span>
                                     </div>
                                 )}
                             </div>
-                            <div className="text-right">
-                                <div className="text-4xl font-black text-white tracking-tighter">{report.threat_score}</div>
+                            <div className="text-left sm:text-right w-full sm:w-auto">
+                                <div className="text-3xl md:text-4xl font-black text-white tracking-tighter">{report.threat_score}</div>
                                 <div className="text-[10px] text-slate-500 uppercase tracking-wider">Threat Score</div>
                             </div>
                         </div>
@@ -111,7 +110,7 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                     {/* Executive Summary */}
                     <div className="space-y-3">
                         <div className="text-[9px] text-slate-500 uppercase font-black tracking-[0.2em]">Executive Summary</div>
-                        <div className="text-sm text-slate-300 leading-relaxed bg-security-highlight p-4 rounded-lg border-l-4 border-brand-500 italic shadow-lg">
+                        <div className="text-xs md:text-sm text-slate-300 leading-relaxed bg-security-highlight p-4 rounded-lg border-l-4 border-brand-500 italic shadow-lg">
                             "{report.executive_summary}"
                         </div>
                     </div>
@@ -132,25 +131,25 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                         {expandedTimeline && (
                             <div className="space-y-3">
                                 {report.behavioral_timeline.map((event, i) => (
-                                    <div key={i} className="bg-security-panel border border-security-border rounded-lg p-4 hover:border-brand-500/30 transition-colors group">
-                                        <div className="flex items-start justify-between gap-4 mb-2">
+                                    <div key={i} className="bg-security-panel border border-security-border rounded-lg p-3 md:p-4 hover:border-brand-500/30 transition-colors group">
+                                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-2">
                                             <div className="flex items-center gap-3">
-                                                <span className="text-[10px] font-mono text-slate-600 bg-black/40 px-2 py-1 rounded border border-white/5">
+                                                <span className="text-[9px] md:text-[10px] font-mono text-slate-600 bg-black/40 px-2 py-1 rounded border border-white/5 whitespace-nowrap">
                                                     {event.timestamp_offset}
                                                 </span>
-                                                <span className={`text-xs font-bold uppercase tracking-wider ${getStageColor(event.stage)}`}>
+                                                <span className={`text-[11px] font-bold uppercase tracking-wider ${getStageColor(event.stage)}`}>
                                                     {event.stage}
                                                 </span>
                                             </div>
                                             <button
                                                 onClick={() => onSelectPid?.(event.related_pid)}
-                                                className="px-2 py-1 bg-brand-500/10 text-brand-400 border border-brand-500/30 rounded font-mono text-[10px] font-bold hover:bg-brand-500 hover:text-white transition-all"
+                                                className="px-2 py-1 bg-brand-500/10 text-brand-400 border border-brand-500/30 rounded font-mono text-[9px] md:text-[10px] font-bold hover:bg-brand-500 hover:text-white transition-all w-full sm:w-auto text-center"
                                             >
                                                 PID {event.related_pid}
                                             </button>
                                         </div>
-                                        <div className="text-sm text-white font-semibold mb-1">{event.event_description}</div>
-                                        <div className="text-xs text-slate-400 font-mono leading-relaxed">{event.technical_context}</div>
+                                        <div className="text-xs md:text-sm text-white font-semibold mb-1 leading-snug">{event.event_description}</div>
+                                        <div className="text-[11px] md:text-xs text-slate-400 font-mono leading-relaxed break-words opacity-80">{event.technical_context}</div>
                                     </div>
                                 ))}
                             </div>
@@ -171,17 +170,17 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                         </button>
 
                         {expandedArtifacts && (
-                            <div className="space-y-4">
+                            <div className="grid grid-cols-1 gap-4">
                                 {/* C2 Domains */}
                                 {report.artifacts.c2_domains.length > 0 && (
                                     <div className="bg-threat-critical/5 border border-threat-critical/20 rounded-lg p-4">
                                         <div className="flex items-center gap-2 mb-3">
                                             <Globe size={14} className="text-threat-critical" />
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-threat-critical">Network Indicators</span>
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-threat-critical">Network Indicators</span>
                                         </div>
-                                        <div className="space-y-1">
+                                        <div className="space-y-1.5">
                                             {report.artifacts.c2_domains.map((domain, i) => (
-                                                <div key={i} className="text-xs font-mono text-slate-300 bg-black/40 px-3 py-2 rounded border border-threat-critical/30">
+                                                <div key={i} className="text-[10px] md:text-xs font-mono text-slate-300 bg-black/40 px-3 py-2 rounded border border-threat-critical/30 break-all leading-none">
                                                     {domain}
                                                 </div>
                                             ))}
@@ -194,11 +193,11 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                                     <div className="bg-threat-high/5 border border-threat-high/20 rounded-lg p-4">
                                         <div className="flex items-center gap-2 mb-3">
                                             <FileText size={14} className="text-threat-high" />
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-threat-high">Dropped Files</span>
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-threat-high">Dropped Files</span>
                                         </div>
-                                        <div className="space-y-1">
+                                        <div className="space-y-1.5">
                                             {report.artifacts.dropped_files.map((file, i) => (
-                                                <div key={i} className="text-xs font-mono text-slate-300 bg-black/40 px-3 py-2 rounded border border-threat-high/30 break-all">
+                                                <div key={i} className="text-[10px] md:text-xs font-mono text-slate-300 bg-black/40 px-3 py-2 rounded border border-threat-high/30 break-all leading-normal">
                                                     {file}
                                                 </div>
                                             ))}
@@ -211,11 +210,11 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                                     <div className="bg-brand-500/5 border border-brand-500/20 rounded-lg p-4">
                                         <div className="flex items-center gap-2 mb-3">
                                             <Terminal size={14} className="text-brand-400" />
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-brand-400">Suspicious Commands</span>
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-brand-400">Suspicious Commands</span>
                                         </div>
                                         <div className="space-y-2">
                                             {report.artifacts.command_lines.map((cmd, i) => (
-                                                <div key={i} className="text-xs font-mono text-slate-300 bg-black/60 px-3 py-2 rounded border border-brand-500/30 break-all leading-relaxed">
+                                                <div key={i} className="text-[10px] md:text-xs font-mono text-slate-300 bg-black/60 px-3 py-2 rounded border border-brand-500/30 break-all leading-relaxed">
                                                     {cmd}
                                                 </div>
                                             ))}
@@ -228,11 +227,11 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                                     <div className="bg-purple-500/5 border border-purple-500/20 rounded-lg p-4">
                                         <div className="flex items-center gap-2 mb-3">
                                             <ShieldAlert size={14} className="text-purple-400" />
-                                            <span className="text-[10px] font-bold uppercase tracking-wider text-purple-400">Mutex / Exclusions</span>
+                                            <span className="text-[9px] font-bold uppercase tracking-wider text-purple-400">Mutex / Exclusions</span>
                                         </div>
-                                        <div className="space-y-1">
+                                        <div className="space-y-1.5">
                                             {report.artifacts.mutual_exclusions.map((mutex, i) => (
-                                                <div key={i} className="text-xs font-mono text-slate-300 bg-black/40 px-3 py-2 rounded border border-purple-500/30">
+                                                <div key={i} className="text-[10px] md:text-xs font-mono text-slate-300 bg-black/40 px-3 py-2 rounded border border-purple-500/30 break-all leading-none">
                                                     {mutex}
                                                 </div>
                                             ))}

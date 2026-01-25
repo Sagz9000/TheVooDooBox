@@ -19,7 +19,7 @@ const CodeBlock = ({ language, code }: { language: string, code: string }) => {
                     onClick={handleCopy}
                     className="flex items-center gap-1 text-xs text-slate-400 hover:text-white transition-colors"
                 >
-                    {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}
+                    {copied ? <Check size={12} className="text-voodoo-toxic-green" /> : <Copy size={12} />}
                     {copied ? 'Copied!' : 'Copy'}
                 </button>
             </div>
@@ -31,8 +31,6 @@ const CodeBlock = ({ language, code }: { language: string, code: string }) => {
 };
 
 const FormattedMessage = ({ content }: { content: string }) => {
-    // Regex to split by code blocks: ```language\ncode```
-    // Captures: [pre-text, language, code, post-text...]
     const parts = content.split(/```(\w*)\n([\s\S]*?)```/g);
 
     if (parts.length === 1) {
@@ -59,38 +57,32 @@ const FormattedMessage = ({ content }: { content: string }) => {
 export default function FloatingChat({ activeTaskId, pageContext }: { activeTaskId?: string | null, pageContext?: string }) {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ role: 'user' | 'assistant', content: string }[]>([
-        { role: 'assistant', content: 'Hello! I am your VOODOOBOX Analyst Assistant. I can investigate samples, query the knowledge base, and help you inspect telemetry.' }
+        { role: 'assistant', content: 'VoodooBox AI Online. I can analyze task telemetry, correlate Ghidra findings, and assist with forensic investigation.' }
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // Draggable state (Wrapper/Bubble position)
-    const [position, setPosition] = useState({ x: window.innerWidth - 100, y: window.innerHeight - 100 });
+    // Draggable state
+    const [position, setPosition] = useState({ x: window.innerWidth - 80, y: window.innerHeight - 80 });
     const [isDragging, setIsDragging] = useState(false);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-    // Resize state (Window dimensions)
-    const [size, setSize] = useState({ width: 450, height: 600 });
+    // Resize state
+    const [size, setSize] = useState({ width: Math.min(450, window.innerWidth - 40), height: Math.min(600, window.innerHeight - 150) });
     const [isResizing, setIsResizing] = useState(false);
-    const [hasInteracted, setHasInteracted] = useState(false);
 
     useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
             if (isDragging) {
-                setHasInteracted(true);
-                // Simple dragging logic - moves the whole wrapper (anchored by bubble)
                 setPosition({
                     x: e.clientX - dragOffset.x,
                     y: e.clientY - dragOffset.y
                 });
             } else if (isResizing) {
-                setHasInteracted(true);
-                // When anchored bottom-right, the resize handle is at top-left.
-                // We calculate the delta from the bubble position.
                 setSize({
-                    width: Math.max(300, position.x - e.clientX + 56), // +56 for bubble width
-                    height: Math.max(400, position.y - e.clientY - 32) // -32 for spacing
+                    width: Math.max(300, e.clientX - position.x),
+                    height: Math.max(300, e.clientY - position.y)
                 });
             }
         };
@@ -115,14 +107,11 @@ export default function FloatingChat({ activeTaskId, pageContext }: { activeTask
     }, [isDragging, dragOffset, isResizing, position]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
-        // Prevent drag when clicking input or buttons inside
         if ((e.target as HTMLElement).closest('button') && !(e.target as HTMLElement).closest('.bubble-toggle')) {
             if (!(e.target as HTMLElement).closest('.drag-handle')) return;
         }
-        if ((e.target as HTMLElement).closest('input')) return;
 
         setIsDragging(true);
-        // dragOffset is always relative to the wrapper position (the bubble)
         setDragOffset({
             x: e.clientX - position.x,
             y: e.clientY - position.y
@@ -142,30 +131,28 @@ export default function FloatingChat({ activeTaskId, pageContext }: { activeTask
         scrollToBottom();
     }, [messages]);
 
-    // Handle snap-back and window resize
     useEffect(() => {
         const resetPosition = () => {
-            // Always snap back to corner when closed
             if (!isOpen) {
                 setPosition({
                     x: window.innerWidth - 80,
                     y: window.innerHeight - 80
                 });
-                setHasInteracted(false);
-            } else if (!hasInteracted) {
-                // If opening for first time (no manual interaction), center bubble in corner
-                // The window will correctly open above it due to "absolute bottom-full"
-                setPosition({
-                    x: window.innerWidth - 80,
-                    y: window.innerHeight - 80
-                });
+            } else {
+                // Adjust for viewport overflow
+                const targetX = Math.min(window.innerWidth - size.width - 20, Math.max(20, position.x));
+                const targetY = Math.min(window.innerHeight - size.height - 20, Math.max(20, position.y));
+
+                if (targetX !== position.x || targetY !== position.y) {
+                    setPosition({ x: targetX, y: targetY });
+                }
             }
         };
 
         resetPosition();
         window.addEventListener('resize', resetPosition);
         return () => window.removeEventListener('resize', resetPosition);
-    }, [isOpen]); // Only reset on toggle to allow persistent manual position while open
+    }, [isOpen, size.width, size.height]);
 
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
@@ -185,7 +172,7 @@ export default function FloatingChat({ activeTaskId, pageContext }: { activeTask
 
             setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
         } catch (error) {
-            setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Error connecting to AI Agent. Please ensure the backend is running.' }]);
+            setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Neural Sync Error: AI Core offline.' }]);
         } finally {
             setIsLoading(false);
         }
@@ -193,124 +180,106 @@ export default function FloatingChat({ activeTaskId, pageContext }: { activeTask
 
     return (
         <div
-            className="fixed z-50 transition-none"
+            className="fixed z-[100] flex flex-col items-end"
             style={{
                 left: `${position.x}px`,
                 top: `${position.y}px`,
                 pointerEvents: 'none'
             }}
         >
-            <div className="relative flex flex-col items-end">
-                {/* Chat Window - Anchored ABOVE the toggle via bottom-full */}
-                {isOpen && (
+            {isOpen && (
+                <div
+                    className="mb-4 bg-security-panel border border-security-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 backdrop-blur-sm shadow-brand-500/10 relative"
+                    style={{
+                        pointerEvents: 'auto',
+                        width: `${size.width}px`,
+                        height: `${size.height}px`
+                    }}
+                >
                     <div
-                        className="absolute bottom-full right-0 mb-4 bg-security-panel border border-security-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200 backdrop-blur-sm shadow-brand-500/10"
-                        style={{
-                            pointerEvents: 'auto',
-                            width: `${size.width}px`,
-                            height: `${size.height}px`
-                        }}
+                        onMouseDown={handleMouseDown}
+                        className="p-4 bg-security-surface/90 border-b border-security-border flex items-center justify-between cursor-move drag-handle select-none"
                     >
-                        {/* Header (Drag Handle) */}
-                        <div
-                            onMouseDown={handleMouseDown}
-                            className="p-4 bg-security-surface/90 border-b border-security-border flex items-center justify-between cursor-move drag-handle select-none"
-                        >
-                            <div className="flex items-center gap-3">
-                                <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center border border-brand-500/30">
-                                    <Bot size={18} className="text-brand-500" />
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-white leading-none">Analyst Assistant</h3>
-                                    <span className="text-[10px] text-brand-400 font-bold uppercase tracking-widest flex items-center gap-1">
-                                        <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
-                                        VooDooBox Core
-                                    </span>
+                        <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center border border-brand-500/30">
+                                <Bot size={18} className="text-brand-500" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-bold text-white leading-none">Voodoo Assistant</h3>
+                                <span className="text-[10px] text-brand-400 font-bold uppercase tracking-widest flex items-center gap-1 mt-1">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-voodoo-toxic-green animate-pulse"></span>
+                                    AI Insight Active
+                                </span>
+                            </div>
+                        </div>
+                        <button onClick={() => setIsOpen(false)} className="text-security-muted hover:text-white transition-colors p-1">
+                            <X size={18} />
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar bg-black/20">
+                        {messages.map((m, i) => (
+                            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                <div className={`max-w-[90%] p-3.5 rounded-xl text-sm leading-relaxed shadow-sm ${m.role === 'user'
+                                    ? 'bg-brand-600 text-white rounded-br-none'
+                                    : 'bg-security-surface border border-security-border text-slate-200 rounded-bl-none'
+                                    }`}>
+                                    <FormattedMessage content={m.content} />
                                 </div>
                             </div>
-                            <button onClick={() => setIsOpen(false)} className="text-security-muted hover:text-white transition-colors">
-                                <X size={18} />
+                        ))}
+                        {isLoading && (
+                            <div className="flex justify-start">
+                                <div className="bg-security-surface border border-security-border px-4 py-3 rounded-xl rounded-bl-none flex items-center gap-2">
+                                    <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce"></div>
+                                    <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-75"></div>
+                                    <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-150"></div>
+                                </div>
+                            </div>
+                        )}
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    <div className="p-4 bg-security-surface border-t border-security-border">
+                        <div className="relative">
+                            <input
+                                className="w-full bg-security-bg border border-security-border rounded-lg pl-4 pr-12 py-3 text-sm text-white placeholder-security-muted outline-none focus:border-brand-500 transition-all font-medium focus:ring-1 focus:ring-brand-500/50"
+                                placeholder="Ask about threats or files..."
+                                value={input}
+                                onChange={(e) => setInput(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                                disabled={isLoading}
+                            />
+                            <button
+                                onClick={handleSend}
+                                disabled={isLoading || !input.trim()}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-brand-500 text-white rounded-md hover:bg-brand-600 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                <Send size={16} />
                             </button>
                         </div>
-
-                        {/* Messages */}
-                        <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar bg-black/20">
-                            {messages.map((m, i) => (
-                                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                    <div className={`max-w-[90%] p-3.5 rounded-xl text-sm leading-relaxed shadow-sm ${m.role === 'user'
-                                        ? 'bg-brand-600 text-white rounded-br-none'
-                                        : 'bg-security-surface border border-security-border text-slate-200 rounded-bl-none'
-                                        }`}>
-                                        <FormattedMessage content={m.content} />
-                                    </div>
-                                </div>
-                            ))}
-                            {isLoading && (
-                                <div className="flex justify-start">
-                                    <div className="bg-security-surface border border-security-border px-4 py-3 rounded-xl rounded-bl-none flex items-center gap-2">
-                                        <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce"></div>
-                                        <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-75"></div>
-                                        <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-150"></div>
-                                    </div>
-                                </div>
-                            )}
-                            <div ref={messagesEndRef} />
-                        </div>
-
-                        {/* Input */}
-                        <div className="p-4 bg-security-surface border-t border-security-border">
-                            <div className="relative">
-                                <input
-                                    className="w-full bg-security-bg border border-security-border rounded-lg pl-4 pr-12 py-3 text-sm text-white placeholder-security-muted outline-none focus:border-brand-500 transition-all font-medium focus:ring-1 focus:ring-brand-500/50"
-                                    placeholder="Ask about threats, processes, or logs..."
-                                    value={input}
-                                    onChange={(e) => setInput(e.target.value)}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                                    disabled={isLoading}
-                                />
-                                <button
-                                    onClick={handleSend}
-                                    disabled={isLoading || !input.trim()}
-                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-brand-500 text-white rounded-md hover:bg-brand-600 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                                >
-                                    <Send size={16} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {/* Resize Handles */}
-                        {/* Top-Left Corner */}
-                        <div
-                            onMouseDown={handleResizeStart}
-                            className="absolute top-0 left-0 w-8 h-8 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize flex items-center justify-center group z-20"
-                        >
-                            <div className="w-3 h-3 bg-white border-2 border-brand-500 rounded-full shadow-lg transition-transform group-hover:scale-125"></div>
-                        </div>
-
-                        {/* Top Edge */}
-                        <div
-                            onMouseDown={handleResizeStart}
-                            className="absolute top-0 left-4 right-0 h-2 -translate-y-1/2 cursor-ns-resize z-10 hover:bg-brand-500/50 transition-colors"
-                        />
-                        {/* Left Edge */}
-                        <div
-                            onMouseDown={handleResizeStart}
-                            className="absolute top-4 bottom-0 left-0 w-2 -translate-x-1/2 cursor-ew-resize z-10 hover:bg-brand-500/50 transition-colors"
-                        />
                     </div>
-                )}
 
-                {/* Bubble Toggle (Wrapper is anchored to this) */}
-                <button
-                    onMouseDown={handleMouseDown}
-                    onClick={() => !isDragging && setIsOpen(!isOpen)}
-                    style={{ pointerEvents: 'auto' }}
-                    className={`w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 transform hover:scale-105 active:scale-95 cursor-move bubble-toggle ${isOpen ? 'bg-security-surface border border-security-border rotate-90' : 'bg-brand-600 hover:bg-brand-500 ring-2 ring-brand-500/30'
-                        }`}
-                >
-                    {isOpen ? <X size={24} className="text-white" /> : <Sparkles size={24} className="text-white fill-white/20" />}
-                </button>
-            </div>
+                    <div
+                        onMouseDown={handleResizeStart}
+                        className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize flex items-end justify-end p-0.5 opacity-50 hover:opacity-100"
+                    >
+                        <svg width="6" height="6" viewBox="0 0 6 6" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M6 6H0L6 0V6Z" fill="#3b82f6" />
+                        </svg>
+                    </div>
+                </div>
+            )}
+
+            <button
+                onMouseDown={handleMouseDown}
+                onClick={() => !isDragging && setIsOpen(!isOpen)}
+                style={{ pointerEvents: 'auto' }}
+                className={`w-12 h-12 md:w-14 md:h-14 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 transform hover:scale-105 active:scale-95 cursor-move bubble-toggle ${isOpen ? 'bg-security-surface border border-security-border rotate-90' : 'bg-brand-600 hover:bg-brand-500 ring-2 ring-brand-500/30 shadow-brand-500/20'
+                    }`}
+            >
+                {isOpen ? <X size={24} className="text-white" /> : <Sparkles size={24} className="text-white fill-white/20" />}
+            </button>
         </div>
     );
 }

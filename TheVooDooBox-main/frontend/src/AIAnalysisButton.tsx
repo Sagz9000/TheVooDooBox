@@ -70,30 +70,30 @@ export default function AIAnalysisButton({ processes, events }: AIAnalysisProps)
             <button
                 onClick={runAnalysis}
                 disabled={loading}
-                className="btn-primary w-full h-10 relative overflow-hidden group"
+                className="btn-primary w-full h-10 relative overflow-hidden group shadow-[0_0_15px_rgba(57,255,20,0.1)] active:shadow-none"
             >
                 {loading ? (
-                    <>
+                    <div className="flex items-center justify-center gap-2">
                         <Loader2 size={16} className="animate-spin" />
-                        <span>Analyzing with AI...</span>
-                    </>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Neural Syncing...</span>
+                    </div>
                 ) : (
-                    <>
+                    <div className="flex items-center justify-center gap-2">
                         <Brain size={16} />
-                        <span>Run AI Threat Analysis</span>
-                        <Sparkles size={14} className="absolute right-3 opacity-50 group-hover:opacity-100 transition-opacity" />
-                    </>
+                        <span className="text-[10px] font-black uppercase tracking-widest">Run Neural Threat Analysis</span>
+                        <Sparkles size={14} className="absolute right-3 opacity-30 group-hover:opacity-100 transition-opacity" />
+                    </div>
                 )}
             </button>
 
             {/* Error State */}
             {error && (
-                <div className="card bg-threat-critical/10 border-threat-critical/30 p-4">
+                <div className="card bg-threat-critical/10 border-threat-critical/30 p-4 animate-in fade-in slide-in-from-top-1 duration-200">
                     <div className="flex items-start gap-3">
                         <AlertTriangle size={20} className="text-threat-critical flex-shrink-0 mt-0.5" />
                         <div>
-                            <h4 className="text-sm font-bold text-threat-critical mb-1">Analysis Failed</h4>
-                            <p className="text-xs text-security-muted">{error}</p>
+                            <h4 className="text-[10px] font-black text-threat-critical mb-1 uppercase tracking-widest">Analysis Offline</h4>
+                            <p className="text-[10px] text-security-muted font-mono">{error}</p>
                         </div>
                     </div>
                 </div>
@@ -101,16 +101,16 @@ export default function AIAnalysisButton({ processes, events }: AIAnalysisProps)
 
             {/* Report Display */}
             {report && (
-                <div className="card bg-security-surface border-security-border p-5 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <div className="card bg-security-surface border-security-border p-5 space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500 shadow-2xl">
                     {/* Header */}
                     <div className="flex items-center justify-between pb-3 border-b border-security-border/50">
                         <div className="flex items-center gap-2">
                             <Brain size={18} className="text-brand-500" />
-                            <h3 className="text-sm font-black text-white uppercase tracking-tight">AI Analysis Report</h3>
+                            <h3 className="text-[11px] font-black text-white uppercase tracking-tight">AI Correlation Report</h3>
                         </div>
                         <div className="flex items-center gap-2">
                             <TrendingUp size={14} className={getThreatColor(report.threat_level)} />
-                            <span className={`text-xs font-black uppercase ${getThreatColor(report.threat_level)}`}>
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${getThreatColor(report.threat_level)}`}>
                                 {report.threat_level}
                             </span>
                         </div>
@@ -119,8 +119,8 @@ export default function AIAnalysisButton({ processes, events }: AIAnalysisProps)
                     {/* Risk Score */}
                     <div className="flex items-center gap-4">
                         <div className="flex-1">
-                            <div className="text-[9px] font-black text-security-muted uppercase tracking-widest mb-2">Risk Score</div>
-                            <div className="h-2 bg-security-bg rounded-full overflow-hidden">
+                            <div className="text-[9px] font-black text-security-muted uppercase tracking-[0.2em] mb-2">Neural Threat Level</div>
+                            <div className="h-1.5 bg-security-bg rounded-full overflow-hidden border border-white/5">
                                 <div
                                     className={`h-full transition-all duration-1000 ${report.risk_score > 70 ? 'bg-threat-critical' :
                                         report.risk_score > 40 ? 'bg-threat-high' :
@@ -130,29 +130,29 @@ export default function AIAnalysisButton({ processes, events }: AIAnalysisProps)
                                 />
                             </div>
                         </div>
-                        <div className={`text-2xl font-black tabular-nums ${report.risk_score > 70 ? 'text-threat-critical' :
-                            report.risk_score > 40 ? 'text-threat-high' :
-                                'text-threat-low'
+                        <div className={`text-2xl font-black tabular-nums tracking-tighter ${report.risk_score > 70 ? 'text-threat-critical shadow-[0_0_10px_rgba(255,71,87,0.2)]' :
+                            report.risk_score > 40 ? 'text-threat-high shadow-[0_0_10px_rgba(255,165,0,0.2)]' :
+                                'text-voodoo-toxic-green shadow-[0_0_10px_rgba(57,255,20,0.2)]'
                             }`}>
-                            {report.risk_score}
+                            {report.risk_score}%
                         </div>
                     </div>
 
                     {/* Summary */}
                     <div>
-                        <div className="text-[9px] font-black text-security-muted uppercase tracking-widest mb-2">Summary</div>
-                        <p className="text-xs text-slate-300 leading-relaxed bg-security-bg p-3 rounded border border-security-border/30">
-                            {report.summary}
+                        <div className="text-[9px] font-black text-security-muted uppercase tracking-[0.2em] mb-2">Executive Findings</div>
+                        <p className="text-[11px] text-slate-300 leading-relaxed bg-black/40 p-3 rounded border border-security-border/30 italic">
+                            "{report.summary}"
                         </p>
                     </div>
 
                     {/* Suspicious PIDs */}
                     {report.suspicious_pids.length > 0 && (
                         <div>
-                            <div className="text-[9px] font-black text-security-muted uppercase tracking-widest mb-2">Suspicious Processes</div>
+                            <div className="text-[9px] font-black text-security-muted uppercase tracking-[0.2em] mb-2">Primary Vectors</div>
                             <div className="flex flex-wrap gap-2">
                                 {report.suspicious_pids.map(pid => (
-                                    <span key={pid} className="px-2 py-1 bg-threat-critical/20 text-threat-critical border border-threat-critical/30 rounded text-xs font-mono font-bold">
+                                    <span key={pid} className="px-2 py-1 bg-threat-critical/20 text-threat-critical border border-threat-critical/30 rounded text-[10px] font-mono font-bold">
                                         PID {pid}
                                     </span>
                                 ))}
@@ -163,11 +163,11 @@ export default function AIAnalysisButton({ processes, events }: AIAnalysisProps)
                     {/* Recommendations */}
                     {report.recommendations.length > 0 && (
                         <div>
-                            <div className="text-[9px] font-black text-security-muted uppercase tracking-widest mb-2">Recommendations</div>
+                            <div className="text-[9px] font-black text-security-muted uppercase tracking-[0.2em] mb-2">Sanitization Protocol</div>
                             <ul className="space-y-2">
                                 {report.recommendations.map((rec, i) => (
-                                    <li key={i} className="flex items-start gap-2 text-xs text-slate-300">
-                                        <CheckCircle size={14} className="text-brand-500 flex-shrink-0 mt-0.5" />
+                                    <li key={i} className="flex items-start gap-2 text-[10px] text-slate-300">
+                                        <CheckCircle size={14} className="text-voodoo-toxic-green flex-shrink-0 mt-0.5" />
                                         <span>{rec}</span>
                                     </li>
                                 ))}

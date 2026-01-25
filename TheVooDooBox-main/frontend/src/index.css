@@ -149,6 +149,26 @@
     @apply text-white font-mono text-[11px] font-bold;
 }
 
+/* Responsive Scaling Utilities */
+.scalable-grid {
+    @apply grid grid-cols-1 lg:grid-cols-12 gap-4 md:gap-6;
+}
+
+.scrollable-x {
+    @apply overflow-x-auto overflow-y-hidden custom-scrollbar;
+}
+
+.fluid-sidebar {
+    @apply w-full lg:w-80 xl:w-[350px] shrink-0;
+}
+
+/* Fix for long-running telemetry names/paths */
+.truncate-path {
+    @apply truncate;
+    direction: rtl;
+    text-align: left;
+}
+
 /* Grid layout for telemetry */
 .telemetry-row {
     @apply flex items-center py-1 px-3 border-b border-security-border/30 hover:bg-white/5 transition-colors cursor-pointer;
