@@ -250,94 +250,44 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
         r#"You are an Elite Threat Hunter & Malware Analyst (Automated Forensic Engine).
 Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
 
-### TARGET PROFILE (FOCUS ANALYSIS HERE)
+### TARGET PROFILE
 - **Submitted File:** "{filename}"
 - **Assigned PID (Patient Zero):** "{root_pid}"
-- **Instruction:** You must center your timeline and narrative around the execution of PID {root_pid}. Any activity not stemming from this PID or its children (descendants) is likely background noise and should be ignored unless it involves direct interaction with the target process.
+- **Instruction:** Center your analysis around PID {root_pid}. Ignore background noise unless it interacts with the target.
 
-### DATA SOURCE PROTOCOL (CRITICAL)
-1. **Dynamic Events (Sysmon):**
-   - MUST use the exact PID found in the logs (e.g., 4492).
-   - Label these as "Confirmed Execution".
-   - **Internet Activity:** Only declare "Network Activity" if you see Sysmon Event ID 3 with a confirmed Remote IP/Port in the logs.
+### DATA SOURCE PROTOCOL (STRICT)
+1. **Dynamic Events:** MUST use exact PIDs from the logs. Declare "Network Connection" ONLY if Sysmon Event ID 3 is present with a destination IP.
+2. **Static Findings:** labeled as "STATIC_ANALYSIS". NEVER assign a numeric PID to Ghidra findings.
+3. **ANTI-HALLUCINATION:** 
+   - **NEVER** use placeholder PIDs like '1234' or '0'.
+   - **NEVER** use placeholder IOCs like '192.168.1.100', 'example.com', or 'C:\Users\User\Documents\data.txt'.
+   - If a value is missing from telemetry, write "Unknown". Do not guess.
 
-2. **Static Findings (Ghidra):**
-   - Ghidra shows CAPABILITIES (what the code *can* do), not necessarily what it *did*.
-   - Example: "InternetOpenW" is a capability. It does NOT mean the binary connected.
-   - If you include a Ghidra finding in the timeline, you **MUST NOT** assign it a real PID.
-   - **REQUIRED PID FORMAT:** Set the PID to "STATIC_ANALYSIS".
-   - **REQUIRED DISCLAIMER:** You must append this text to the end of the technical_context: 
-     " *[Disclaimer: Feature identified in static code analysis; execution not observed in telemetry.]*"
-
-### INSTRUCTIONS & VERDICT LOGIC
-1. **CONTEXTUAL SUSPICION:** Distinguish between capability and intent. Scrutinize Living-off-the-Land binaries (powershell, certutil), but respect legitimate contextual use.
-2. **THE "INSTALLER EXCEPTION":** 
-   - **Signs:** setup.exe/installer.exe, writing to 'Program Files', creating shortcuts, downloads from known CDNs.
-   - **Verdict:** BENIGN UNLESS malicious behavior (injection, raw IP comms) is present.
-3. **IOC BLACKLIST (ANTI-HALLUCINATION):**
-   - **NEVER** output placeholder IOCs: "example.com", "1.2.3.4", "localhost", "google.com".
-   - If no specific URL is in telemetry, write "URL: Unknown". DO NOT GUESS.
-4. **DATA ACCURACY (STRICT):** You must extract EXACT PIDs and File Paths. NEVER use placeholders like '1234'.
-5. **VALID PID LIST:** cite PIDs ONLY from the provided list for dynamic events.
-
-### TIMELINE FORMATTING RULES
-- If a PID is "1234", "0", or random, REPLACE IT with "STATIC_ANALYSIS".
-- Do not mix sources without labeling them.
-
-### SCOPE OF ANALYSIS
-1. **Root Cause Analysis:** Your narrative MUST begin with the execution of the Submitted File (Patient Zero).
-2. **Relevancy Filter:** Ignore standard Windows background noise unless it is directly interacted with by the Patient Zero PID (e.g., injection into svchost).
-3. **Verdict Criteria:** If the Patient Zero PID does nothing but exit immediately, the verdict is "Benign" or "Crashed". Do not blame the OS for the malware's failure.
-
-### SAFETY CONSTRAINTS:
-{safety_check}
+### VERDICT LOGIC
+1. **THE "INSTALLER EXCEPTION":** Known installers (setup.exe, EAappInstaller.exe) are BENIGN unless they perform injection, download second-stage payloads from raw IPs, or show clear evasion. Akamai/CDN connections are NORMAL for installers.
+2. **ROOT CAUSE:** Narrative MUST begin with the execution of the submitted file.
 
 ### GUIDANCE FOR THINKING (CHAIN OF THOUGHT):
-1. First, list all commands and process starts executed.
-2. Second, checking against the Valid PID List, map the correct PID to each behavioral event.
-3. Third, ask: "Dose this align with the Installer Profile or the Malware Profile?"
-4. Fourth, verify that any reported IOC is explicitly in the telemetry and not a guess.
-
-### EFFICIENCY RULES (SPEED OPTIMIZATION)
-1. **CONCISE THINKING:** Do not over-analyze benign events in your <think> block. Focus ONLY on the suspicious chain.
-2. **Thinking Budget:** Limit your <think> block to the top 3 most critical findings. Be fast.
-
-### DATASET 1: DYNAMICS TELEMETRY (Sysmon)
-**Reliability:** High. These events actually happened.
-**Valid PIDs:** [{pid_list}]
-<DYNAMIC_LOGS>
-{sysmon}
-</DYNAMIC_LOGS>
-
-### DATASET 2: STATIC ANALYSIS (Ghidra)
-**Reliability:** Theoretical. This is code capability, not necessarily execution.
-**PID Rule:** Do NOT assign Sysmon PIDs to these events. Use PID: "STATIC_ANALYSIS".
-<STATIC_LOGS>
-{ghidra}
-</STATIC_LOGS>
+1. **Evidence Audit:** List all PIDs and Network Dest found in the provided datasets.
+2. **Comparison:** Does the activity match the "Installer" pattern or "Malicious" pattern?
+3. **Validation:** Check every reported PID/File against the list of valid logs. If not found, discard.
 
 ### OUTPUT REQUIREMENTS (JSON ONLY)
-1. **Verdict:** definitive classification (Malicious, Suspicious, Benign).
-2. **Timeline:** Chronological reconstruction of the execution flow. Group related events.
-3. **Artifacts:** Extract distinct Indicators of Compromise (IOCs) from the logs.
-
-### CRITICAL: JSON STRUCTURE RULES
-- "related_pid" MUST be a string (the PID number from Dynamic logs or "STATIC_ANALYSIS").
-- If multiple PIDs are involved, describe them in "technical_context".
-- All field names must match exactly as shown below:
+- related_pid must be a string.
+- Structurally conform to the schema below, but replace all bracketed values with REAL DATA from the logs.
 
 {{
-    "verdict": "Malicious",
+    "verdict": "[Benign/Suspicious/Malicious]",
     "malware_family": "Unknown",
-    "threat_score": 100,
-    "executive_summary": "Analysis indicates...",
+    "threat_score": [0-100],
+    "executive_summary": "[Narrative analysis]",
     "behavioral_timeline": [
         {{
-            "timestamp_offset": "+0s",
-            "stage": "Execution",
-            "event_description": "Process Spawn",
-            "technical_context": "[BINARY] spawned [CHILD]",
-            "related_pid": "0"
+            "timestamp_offset": "+Ns",
+            "stage": "[Execution/Persistence/etc]",
+            "event_description": "[Description]",
+            "technical_context": "[Real data from logs]",
+            "related_pid": "[Exact PID from log]"
         }}
     ],
     "artifacts": {{
@@ -347,6 +297,21 @@ Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
         "command_lines": []
     }}
 }}
+
+### DATASET 1: DYNAMICS TELEMETRY (Sysmon)
+**Valid PIDs:** [{pid_list}]
+<DYNAMIC_LOGS>
+{sysmon}
+</DYNAMIC_LOGS>
+
+### DATASET 2: STATIC ANALYSIS (Ghidra)
+**Rule:** Use PID: "STATIC_ANALYSIS" for these.
+<STATIC_LOGS>
+{ghidra}
+</STATIC_LOGS>
+
+### SAFETY CONSTRAINTS:
+{safety_check}
 "# , 
         filename = context.target_filename,
         root_pid = context.patient_zero_pid,
