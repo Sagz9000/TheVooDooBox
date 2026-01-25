@@ -1936,7 +1936,7 @@ async fn generate_pdf_report(
     // 1. Try Legacy AIReport
     if let Ok(legacy_report) = serde_json::from_value::<AIReport>(json_val.clone()) {
         println!("[PDF] Generating legacy PDF for {}", task_id);
-        match reports::generate_pdf(task_id, legacy_report) {
+        match reports::generate_pdf(task_id.clone(), legacy_report) {
             Ok(pdf_bytes) => return HttpResponse::Ok().content_type("application/pdf").body(pdf_bytes),
             Err(e) => println!("[PDF] Legacy generation failed: {}", e),
         }
