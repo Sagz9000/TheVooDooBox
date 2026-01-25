@@ -1,0 +1,21 @@
+FROM rust:latest AS builder
+
+# Install mingw-w64 for cross-compiling to Windows
+RUN apt-get update && apt-get install -y mingw-w64
+
+# Add the windows target
+RUN rustup target add x86_64-pc-windows-gnu
+
+WORKDIR /app
+
+# Copy the workspace
+COPY rust_src/ ./rust_src/
+WORKDIR /app/rust_src
+
+# Build for release
+RUN cargo build --release --target x86_64-pc-windows-gnu
+
+# Final stage
+FROM alpine:latest
+WORKDIR /binaries
+COPY --from=builder /app/rust_src/target/x86_64-pc-windows-gnu/release/*.exe ./

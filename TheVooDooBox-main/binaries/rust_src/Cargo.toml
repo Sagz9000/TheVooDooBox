@@ -1,0 +1,11 @@
+[workspace]
+members = [
+    "ps_encoded",
+    "lolbin_sim",
+    "beacon_sim",
+    "reg_persist",
+    "schtask_sim",
+    "reg_tamper",
+    "artifact_gen",
+]
+resolver = "2"
