@@ -55,6 +55,6 @@ The sandboxes are resilient. If you prefer to work entirely outside the VoodooBo
 
 *   **FlareVM Powered**: Pre-standardized with the most powerful open-source forensic toolsets.
 *   **Live Interaction**: Full mouse and keyboard control over the guest VM.
-*   **The Eye (Kernel Driver)**: A bespoke Windows kernel driver that captures elusive behaviors like remote thread injection and driver loading.
-*   **Ghidra Integration**: Automated static analysis pipeline that decompiles binary functions and correlates them with dynamic behavioral events.
-*   **AI Analyst**: An integrated LLM Assistant that provides real-time context and summarizes forensic impact.
+*   **Agentic AI Analysis (Paranoid Mode)**: Features a dual-mode "Detective vs Clerk" AI core. It extracts exact process data (using the **PID Menu** technique) while maintaining a paranoid behavioral bias to catch living-off-the-land (LOLBin) attacks.
+*   **Performance-Optimized Context**: Implements aggressive Rust-side noise filtering (95% reduction in log volume) to enable sub-60s analysis even with high-parameter 14B/32B models.
+*   **Ghidra-Powered RAG**: Static decompilation patterns are automatically cross-referenced with dynamic behavior using a local Vector Database (ChromaDB) and SANS-quality forensic templates.

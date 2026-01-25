@@ -104,6 +104,16 @@ Stores the final output of the AI Analyst.
 | `mitre_tactics` | TEXT[] | e.g. ["Persistence", "Privilege Escalation"] |
 | `forensic_report_json`| JSONB | Full structured report (timeline, artifacts) |
 
+## AI Analysis & Synthesis Pipeline
+
+TheVooDooBox uses a multi-stage pipeline to convert raw kernel telemetry into actionable intelligence:
+
+1.  **Noise Filtering (Rust)**: Aggressively filters the stream to remove background system activity. Only high-value event IDs (Process Create, Network, File Create, Remote Thread) from relevant process lineages are preserved.
+2.  **PID Menu Extraction (Clerk Mode)**: The system extracts all unique, valid PIDs from the filtered telemetry and provides them as a "Factual Cheat Sheet" to the model. This prevents hallucination of process identifiers.
+3.  **Context Enrichment**: Ghidra static findings (decompiled code) and ChromaDB RAG results (MITRE TTPs/Forensic Templates) are injected into the prompt.
+4.  **Paranoid Reasoning (Detective Mode)**: The LLM processes the data with a high-integrity persona ("Elite Threat Hunter"). It is biased toward identifying malicious intent in otherwise "benign-looking" tool usage (e.g., `certutil` being used as a downloader).
+5.  **Deterministic Synthesis**: Temperature is locked at `0.05` to ensure the final report is grounded in the provided telemetry while allowing for a "thinking budget" to interpret behavior.
+
 ## API Specifications
 
 ### REST Endpoints (`/api`)

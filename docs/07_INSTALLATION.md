@@ -42,16 +42,20 @@ Before proceeding, you must collect the following from your Proxmox environment:
     *   **Important**: Copy the **Secret** immediately; it is only shown once.
 3.  **Token ID**: The name given to the token during creation (e.g., `VoodooBox`).
 
-### `.env` Mapping
-Enter these values into your `.env` file in the project root:
+### 4. Configure `.env`
+Create a `.env` file in the root directory:
+```env
+PROXMOX_URL=https://192.168.1.100:8006
+PROXMOX_USER=root@pam
+PROXMOX_TOKEN_ID=VoodooBox
+PROXMOX_TOKEN_SECRET=...
+HOST_IP=192.168.1.5
+AI_TIMEOUT_SECONDS=1200 # Required for deep reasoning models (14B+)
+DATABASE_URL=postgres://voodoobox:secure_password_here@db:5432/voodoobox_telemetry
+```
 
-| Variable | Description | Example |
-| :--- | :--- | :--- |
-| `PROXMOX_URL` | Your PVE management URL | `https://192.168.50.5:8006` |
-| `PROXMOX_USER` | The user the token belongs to | `root@pam` |
-| `PROXMOX_TOKEN_ID` | The ID/Name of the token | `VoodooBox` |
-| `PROXMOX_TOKEN_SECRET` | The secret string from Proxmox | `xxxx-xxxx-xxxx...` |
-| `DATABASE_URL` | Postgres connection string | `postgres://voodoobox:secure_password_here@db:5432/voodoobox_telemetry` |
+> [!TIP]
+> **Ollama Optimization**: For models like `deepseek-r1:14b`, we recommend setting `OLLAMA_FLASH_ATTENTION=1` and `OLLAMA_KV_CACHE_TYPE=q8_0` on your Ollama host to maximize analysis speed.
 
 > [!IMPORTANT]
 > **Credential Mismatch Warning**: Ensure your `DATABASE_URL` uses the user `voodoobox` and NOT `mallab`.

@@ -55,11 +55,26 @@ curl http://192.168.50.98:11434/api/generate -d '{
 - The UI shows a loading spinner during analysis
 - Consider using a smaller model like `llama3:8b` for faster responses
 
+## AI Performance Benchmarks
+Use the following settings for the "Gold Standard" analysis experience with TheVooDooBox:
+
+| Model | Recommended Params | Target Speed |
+| :--- | :--- | :--- |
+| `qwen2.5-coder:14b` | `temp: 0.05`, `ctx: 16k` | 45-90s |
+| `deepseek-r1:14b` | `temp: 0.05`, `ctx: 16k` | 2-5m |
+| `llama3.1:8b` | `temp: 0.0` | 15-30s |
+
+### Testing Reasoning Modes
+Reasoning models like **DeepSeek-R1** require more time to generate their `<think>` blocks. If you observe the backend timing out:
+1.  Increase `AI_TIMEOUT_SECONDS` in your `.env` to `1200`.
+2.  Verify `OLLAMA_FLASH_ATTENTION=1` is enabled on the Ollama host.
+3.  Ensure the **PID Menu** is appearing at the top of your troubleshooting prompt to confirm factual anchoring is working.
+
 ## Alternative Models
 You can change the model in `docker-compose.yaml` or `.env`:
 ```yaml
 - OLLAMA_MODEL=qwen2.5-coder:14b  # Recommended Default
-- OLLAMA_MODEL=qwen2.5-coder:7b   # Faster, less capable
+- OLLAMA_MODEL=deepseek-r1:14b    # Reasoning-focused alternative
 - OLLAMA_MODEL=llama3.1:8b       # General purpose alternative
 - OLLAMA_MODEL=mistral           # Fast alternative
 ```
