@@ -1912,33 +1912,43 @@ async fn generate_pdf_report(
     let task_id = path.into_inner();
     let file_path = format!("reports/{}.pdf", task_id);
 
+    // Ensure reports directory exists
+    let _ = std::fs::create_dir_all("reports");
+
     // Check if pre-generated (high quality) report exists
     if std::path::Path::new(&file_path).exists() {
         match fs::read(&file_path) {
             Ok(bytes) => {
+                println!("[PDF] Serving cached report for {}", task_id);
                 return HttpResponse::Ok()
                     .content_type("application/pdf")
                     .body(bytes);
             },
             Err(e) => {
                 println!("[PDF] Failed to read cached report: {}", e);
-                // Fallthrough to legacy generation
             }
         }
     }
 
-    // Fallback to legacy generation only if it's an AIReport shape
-    if let Ok(legacy_report) = serde_json::from_value::<AIReport>(body.into_inner()) {
+    // Fallback: On-the-fly generation if cached file is missing
+    let json_val = body.into_inner();
+    
+    // 1. Try Legacy AIReport
+    if let Ok(legacy_report) = serde_json::from_value::<AIReport>(json_val.clone()) {
+        println!("[PDF] Generating legacy PDF for {}", task_id);
         match reports::generate_pdf(task_id, legacy_report) {
-            Ok(pdf_bytes) => {
-                return HttpResponse::Ok()
-                    .content_type("application/pdf")
-                    .body(pdf_bytes);
-            },
-            Err(e) => {
-                println!("Failed to generate legacy PDF: {}", e);
-            }
+            Ok(pdf_bytes) => return HttpResponse::Ok().content_type("application/pdf").body(pdf_bytes),
+            Err(e) => println!("[PDF] Legacy generation failed: {}", e),
         }
+    }
+    
+    // 2. Try New ForensicReport (Requires re-generation logic or minimal template)
+    // For now, if we have a ForensicReport, we return 404 but with a better message 
+    // because full Forensic PDF requires AnalysisContext which isn't in the POST body.
+    // However, we can at least log that we received it.
+    if let Ok(_) = serde_json::from_value::<ai_analysis::ForensicReport>(json_val) {
+        println!("[PDF] Received ForensicReport for {}, but cached PDF is missing and on-the-fly generation for ForensicReport is pending implementation.", task_id);
+        return HttpResponse::NotFound().body("Forensic PDF not found. Please re-run analysis to generate it.");
     }
 
     HttpResponse::NotFound().body("Report PDF not found and could not be generated from fallback")
@@ -2054,7 +2064,7 @@ async fn init_db() -> Pool<Postgres> {
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS analysis_reports (
             id SERIAL PRIMARY KEY,
-            task_id TEXT NOT NULL,
+            task_id TEXT NOT NULL UNIQUE,
             risk_score INTEGER,
             threat_level TEXT,
             summary TEXT,
@@ -2073,6 +2083,28 @@ async fn init_db() -> Pool<Postgres> {
     
     // Migration for forensic_report_json
     let _ = sqlx::query("ALTER TABLE analysis_reports ADD COLUMN IF NOT EXISTS forensic_report_json TEXT DEFAULT '{}'").execute(&pool).await;
+
+    // Enforce UNIQUE constraint on task_id for existing tables
+    // 1. Clean up duplicates (keep most recent)
+    let _ = sqlx::query(
+        "DELETE FROM analysis_reports a
+         USING analysis_reports b
+         WHERE a.id < b.id AND a.task_id = b.task_id"
+    ).execute(&pool).await;
+
+    // 2. Add the unique constraint if it doesn't exist
+    let _ = sqlx::query(
+        "DO $$
+        BEGIN
+            IF NOT EXISTS (
+                SELECT 1 FROM pg_constraint WHERE conname = 'analysis_reports_task_id_key'
+            ) THEN
+                ALTER TABLE analysis_reports ADD CONSTRAINT analysis_reports_task_id_key UNIQUE (task_id);
+            END IF;
+        END $$;"
+    ).execute(&pool).await;
+
+    println!("[DATABASE] Analysis Reports migrations complete.");
 
     pool
 }

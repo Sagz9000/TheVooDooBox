@@ -15,7 +15,8 @@ import {
     RefreshCcw,
     Brain,
     Filter,
-    Clock
+    Clock,
+    Download
 } from 'lucide-react';
 import { voodooApi, AgentEvent, BASE_URL } from './voodooApi';
 import GhidraConsole from './GhidraConsole';
@@ -336,6 +337,17 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                                         className="p-1.5 hover:bg-brand-500/20 text-brand-500 border border-transparent hover:border-brand-500/30 rounded transition-all"
                                                     >
                                                         <Code size={14} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); voodooApi.downloadPdf(task.id, {}); }}
+                                                        title="Download PDF Report"
+                                                        className={`p-1.5 border border-transparent rounded transition-all ${task.status === 'Completed' || task.status === 'Analysis Complete'
+                                                            ? 'hover:bg-cyan-500/20 text-cyan-500 hover:border-cyan-500/30'
+                                                            : 'text-zinc-700 cursor-not-allowed'
+                                                            }`}
+                                                        disabled={!(task.status === 'Completed' || task.status === 'Analysis Complete')}
+                                                    >
+                                                        <Download size={14} />
                                                     </button>
                                                     <button
                                                         onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDeleteTask(task.id, e); }}

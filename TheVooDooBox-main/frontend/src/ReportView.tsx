@@ -334,10 +334,22 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                         <span className="flex items-center gap-2"><Clock size={12} /> {stats.duration}</span>
                         <span className="hidden sm:flex items-center gap-2"><Cpu size={12} /> {stats.count} Events</span>
                     </div>
-                    {aiReport && (
+                    {taskId && (
                         <button
-                            onClick={() => taskId && voodooApi.downloadPdf(taskId, aiReport)}
-                            className="flex items-center gap-2 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 rounded-md transition-all shadow-lg shadow-brand-500/40 uppercase font-black tracking-wider text-[10px]"
+                            onClick={() => {
+                                if (aiReport) {
+                                    voodooApi.downloadPdf(taskId, aiReport);
+                                } else {
+                                    // Switch to intelligence tab and explain
+                                    setActiveTab('intelligence');
+                                    alert("AI Analysis is required before downloading the PDF report. Please click 'RUN ANALYTICS'.");
+                                }
+                            }}
+                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] ${aiReport
+                                ? 'bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 shadow-brand-500/40'
+                                : 'bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300'
+                                }`}
+                            title={aiReport ? "Download PDF Report" : "Analysis Required"}
                         >
                             <Download size={14} />
                             <span className="hidden xs:inline">PDF</span>
