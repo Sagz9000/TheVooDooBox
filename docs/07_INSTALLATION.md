@@ -47,7 +47,7 @@ Enter these values into your `.env` file in the project root:
 
 | Variable | Description | Example |
 | :--- | :--- | :--- |
-| `PROXMOX_URL` | Your PVE management URL | `https://192.168.1.200:8006` |
+| `PROXMOX_URL` | Your PVE management URL | `https://192.168.50.5:8006` |
 | `PROXMOX_USER` | The user the token belongs to | `root@pam` |
 | `PROXMOX_TOKEN_ID` | The ID/Name of the token | `VoodooBox` |
 | `PROXMOX_TOKEN_SECRET` | The secret string from Proxmox | `xxxx-xxxx-xxxx...` |
@@ -64,9 +64,9 @@ Configure your local LLM or cloud API here.
 
 | Variable | Description |
 | :--- | :--- |
-| `OLLAMA_URL` | URL of your local Ollama instance (e.g., `http://192.168.1.100:11434`) |
+| `OLLAMA_URL` | URL of your local Ollama instance (e.g., `http://192.168.50.98:11434`) |
 | `OLLAMA_MODEL` | Smart model for analysis (e.g., `qwen2.5-coder:14b`) |
-| `EMBEDDING_MODEL` | Fast model for RAG (e.g., `nomic-embed-text:v1.5`) |
+| `EMBEDDING_MODEL` | Fast model for RAG (e.g., `nomic-embed-text`) |
 | `GEMINI_API_KEY` | (Optional) Fallback to Google Gemini Pro |
 
 ### How it Works
