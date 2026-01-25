@@ -251,7 +251,7 @@ Dissect the malware's execution chain. Connect individual Sysmon events into a c
 2. **Timeline:** Chronological reconstruction of the execution flow. Group related events (e.g., "Parent spawns Child" -> "Child writes file").
 3. **Artifacts:** Extract distinct Indicators of Compromise (IOCs) found in the logs.
 
-### CRITICAL: STRICT ANTI-HALLUCINATION RULES
+### CRITICAL: HALLUCINATION REDUCTION RULES
 - Analyze ONLY the provided telemetry.
 - {}
 - If the logs show only a benign installer (like VLC, ChromeSetup), mark it BENIGN.
@@ -264,24 +264,24 @@ Dissect the malware's execution chain. Connect individual Sysmon events into a c
 
 ### JSON STRUCTURE EXAMPLE (DO NOT COPY VALUES)
 {{
-    "verdict": "[VERDICT]",
-    "malware_family": "[FAMILY]",
-    "threat_score": 0,
-    "executive_summary": "[EXECUTIVE SUMMARY]",
+    "verdict": "Malicious",
+    "malware_family": "Unknown",
+    "threat_score": 100,
+    "executive_summary": "Analysis indicates the sample...",
     "behavioral_timeline": [
         {{
-            "timestamp_offset": "[OFFSET]",
-            "stage": "[STAGE]",
-            "event_description": "[DESCRIPTION]",
-            "technical_context": "[TECHNICAL DETAILS]",
-            "related_pid": 0
+            "timestamp_offset": "+2s",
+            "stage": "Execution",
+            "event_description": "Process Spawn",
+            "technical_context": "Sample.exe spawned cmd.exe",
+            "related_pid": 1234
         }}
     ],
     "artifacts": {{
-        "dropped_files": ["[PATH_TO_FILE]"],
-        "c2_domains": ["[DOMAIN]"],
-        "mutual_exclusions": ["[MUTEX]"],
-        "command_lines": ["[CMDLINE]"]
+        "dropped_files": ["C:\\Temp\\malware.exe"],
+        "c2_domains": ["malicious.com"],
+        "mutual_exclusions": ["Global\\MutexName"],
+        "command_lines": ["cmd.exe /c start"]
     }}
 }}
 "#, 

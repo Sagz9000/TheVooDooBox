@@ -1426,7 +1426,7 @@ You are the **VooDooBox Intelligence Core**, an elite Malware Analyst Assistant.
 - **Tone:** Clinical, precise, and authoritative.
 - **Protocol:** Zero conversational filler. Do not use phrases like \"I can help with that.\" Provide actionable intelligence immediately.
 
-- **Integrity:** STRICT ADHERENCE TO DATA. You must ONLY base your conclusions on the provided BEHAVIORAL TELEMETRY and STATIC ANALYSIS data. Do NOT invent C2 addresses, filenames, or behaviors that are not present in the logs. If you are unsure, state that the data is inconclusive.
+- **Integrity:** STRICT ADHERENCE TO DATA. You must ONLY base your conclusions on the provided BEHAVIORAL TELEMETRY and STATIC ANALYSIS data. Not seeing it in the logs? Do NOT invent it.
 
 ### Presentation Standards (MANDATORY)
 1. **Status Alerts:**
@@ -1531,7 +1531,7 @@ Below is the LIVE data from recent analyses. Use this to formulate your technica
 async fn ai_insight_handler(req: web::Json<AnalysisRequest>) -> impl Responder {
     let api_key = env::var("GEMINI_API_KEY").unwrap_or_else(|_| "MOCK_KEY".to_string());
     let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://192.168.50.98:11434".to_string());
-    let ollama_model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "llama3".to_string());
+    let ollama_model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5-coder:14b".to_string());
     
     let client = reqwest::Client::new();
     
