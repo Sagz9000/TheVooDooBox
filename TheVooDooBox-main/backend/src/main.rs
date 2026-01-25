@@ -1955,7 +1955,16 @@ async fn init_db() -> Pool<Postgres> {
         .max_connections(5)
         .connect(&database_url)
         .await
-        .expect("Failed to connect to Database");
+        .unwrap_or_else(|e| {
+            // Safe Debugging: Show scheme and end of URL, mask password
+            let masked = if let Some((prefix, suffix)) = database_url.split_once('@') {
+                 let scheme_part = prefix.split(':').next().unwrap_or("???");
+                 format!("{}://***:***@{}", scheme_part, suffix)
+            } else {
+                 "INVALID_FORMAT_NO_AT_SYMBOL".to_string()
+            };
+            panic!("Failed to connect to Database. URL structure: '{}'. Error: {}", masked, e);
+        });
 
     println!("[DATABASE] Connection established. Creating tables...");
 

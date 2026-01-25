@@ -45,7 +45,7 @@ The full documentation is available in the `docs/` directory. For a complete gui
 For those familiar with the stack:
 
 1.  **Clone**: `git clone https://github.com/Sagz9000/TheVooDooBox.git`
-2.  **Config**: `cp .env.example .env`
+2.  **Config**: `cp .env.example .env` (⚠️ Check `DATABASE_URL` user is `voodoobox`!)
 3.  **Run**: `docker-compose up -d --build`
 4.  **Analysis**: Access UI at `http://localhost:3000`
 

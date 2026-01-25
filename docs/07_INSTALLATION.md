@@ -51,6 +51,13 @@ Enter these values into your `.env` file in the project root:
 | `PROXMOX_USER` | The user the token belongs to | `root@pam` |
 | `PROXMOX_TOKEN_ID` | The ID/Name of the token | `VoodooBox` |
 | `PROXMOX_TOKEN_SECRET` | The secret string from Proxmox | `xxxx-xxxx-xxxx...` |
+| `DATABASE_URL` | Postgres connection string | `postgres://voodoobox:secure_password_here@db:5432/voodoobox_telemetry` |
+
+> [!IMPORTANT]
+> **Credential Mismatch Warning**: Ensure your `DATABASE_URL` uses the user `voodoobox` and NOT `mallab`.
+> The `docker-compose.yaml` creates the user `voodoobox`. If your `.env` has `mallab`, the application will fail to connect.
+> **Correct**: `postgres://voodoobox:password@db:5432/voodoobox_telemetry`
+> **Incorrect**: `postgres://mallab:password@db:5432/mallab_telemetry`
 
 ### AI Analyst Configuration
 Configure your local LLM or cloud API here.

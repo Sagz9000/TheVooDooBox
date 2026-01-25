@@ -65,42 +65,32 @@ export default function FloatingChat({ activeTaskId, pageContext }: { activeTask
     const [isLoading, setIsLoading] = useState(false);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
-    // Draggable state
+    // Draggable state (Wrapper/Bubble position)
     const [position, setPosition] = useState({ x: window.innerWidth - 100, y: window.innerHeight - 100 });
     const [isDragging, setIsDragging] = useState(false);
     const [dragOffset, setDragOffset] = useState({ x: 0, y: 0 });
 
-    // Resize state
+    // Resize state (Window dimensions)
     const [size, setSize] = useState({ width: 450, height: 600 });
     const [isResizing, setIsResizing] = useState(false);
+    const [hasInteracted, setHasInteracted] = useState(false);
 
     useEffect(() => {
         const handleMouseMove = (e: MouseEvent) => {
             if (isDragging) {
+                setHasInteracted(true);
+                // Simple dragging logic - moves the whole wrapper (anchored by bubble)
                 setPosition({
                     x: e.clientX - dragOffset.x,
                     y: e.clientY - dragOffset.y
                 });
             } else if (isResizing) {
-                // Resize logic (bottom-left corner resize since it's anchored bottom-right)
-                // Since the window is absolutely positioned by its top-left corner (but logically acts as bottom-right anchored contextually),
-                // we simplified the drag logic to just top/left position.
-                // Let's implement standard resizing.
-
-                // Calculate new dimensions
-                const newWidth = Math.max(300, e.clientX - position.x + size.width);
-                // Wait, position is top-left.
-                // If we resize from bottom-right (standard handle):
-                // newWidth = e.clientX - position.x
-                // newHeight = e.clientY - position.y
-
-                // But the user requested "bottom-left" handle or standard? 
-                // Usually chat bubbles are bottom-right of screen.
-                // Our position state is standard (left/top). 
-
+                setHasInteracted(true);
+                // When anchored bottom-right, the resize handle is at top-left.
+                // We calculate the delta from the bubble position.
                 setSize({
-                    width: Math.max(300, e.clientX - position.x),
-                    height: Math.max(400, e.clientY - position.y)
+                    width: Math.max(300, position.x - e.clientX + 56), // +56 for bubble width
+                    height: Math.max(400, position.y - e.clientY - 32) // -32 for spacing
                 });
             }
         };
@@ -125,11 +115,14 @@ export default function FloatingChat({ activeTaskId, pageContext }: { activeTask
     }, [isDragging, dragOffset, isResizing, position]);
 
     const handleMouseDown = (e: React.MouseEvent) => {
+        // Prevent drag when clicking input or buttons inside
         if ((e.target as HTMLElement).closest('button') && !(e.target as HTMLElement).closest('.bubble-toggle')) {
             if (!(e.target as HTMLElement).closest('.drag-handle')) return;
         }
+        if ((e.target as HTMLElement).closest('input')) return;
 
         setIsDragging(true);
+        // dragOffset is always relative to the wrapper position (the bubble)
         setDragOffset({
             x: e.clientX - position.x,
             y: e.clientY - position.y
@@ -152,15 +145,19 @@ export default function FloatingChat({ activeTaskId, pageContext }: { activeTask
     // Handle snap-back and window resize
     useEffect(() => {
         const resetPosition = () => {
+            // Always snap back to corner when closed
             if (!isOpen) {
                 setPosition({
                     x: window.innerWidth - 80,
                     y: window.innerHeight - 80
                 });
-            } else {
+                setHasInteracted(false);
+            } else if (!hasInteracted) {
+                // If opening for first time (no manual interaction), center bubble in corner
+                // The window will correctly open above it due to "absolute bottom-full"
                 setPosition({
-                    x: window.innerWidth - size.width - 40,
-                    y: window.innerHeight - size.height - 100
+                    x: window.innerWidth - 80,
+                    y: window.innerHeight - 80
                 });
             }
         };
@@ -168,7 +165,7 @@ export default function FloatingChat({ activeTaskId, pageContext }: { activeTask
         resetPosition();
         window.addEventListener('resize', resetPosition);
         return () => window.removeEventListener('resize', resetPosition);
-    }, [isOpen, size.width, size.height]);
+    }, [isOpen]); // Only reset on toggle to allow persistent manual position while open
 
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
@@ -196,114 +193,124 @@ export default function FloatingChat({ activeTaskId, pageContext }: { activeTask
 
     return (
         <div
-            className="fixed z-50 flex flex-col items-end"
+            className="fixed z-50 transition-none"
             style={{
                 left: `${position.x}px`,
                 top: `${position.y}px`,
-                // We removed the transform translate to make resizing math simpler. 
-                // The position now represents the top-left corner of the chat window wrapper.
                 pointerEvents: 'none'
             }}
         >
-            {/* Chat Window */}
-            {isOpen && (
-                <div
-                    className="mb-4 bg-security-panel border border-security-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in duration-200 backdrop-blur-sm shadow-brand-500/10 relative"
-                    style={{
-                        pointerEvents: 'auto',
-                        width: `${size.width}px`,
-                        height: `${size.height}px`
-                    }}
-                >
-                    {/* Header (Drag Handle) */}
+            <div className="relative flex flex-col items-end">
+                {/* Chat Window - Anchored ABOVE the toggle via bottom-full */}
+                {isOpen && (
                     <div
-                        onMouseDown={handleMouseDown}
-                        className="p-4 bg-security-surface/90 border-b border-security-border flex items-center justify-between cursor-move drag-handle select-none"
+                        className="absolute bottom-full right-0 mb-4 bg-security-panel border border-security-border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in slide-in-from-bottom-4 duration-200 backdrop-blur-sm shadow-brand-500/10"
+                        style={{
+                            pointerEvents: 'auto',
+                            width: `${size.width}px`,
+                            height: `${size.height}px`
+                        }}
                     >
-                        <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center border border-brand-500/30">
-                                <Bot size={18} className="text-brand-500" />
-                            </div>
-                            <div>
-                                <h3 className="text-sm font-bold text-white leading-none">Analyst Assistant</h3>
-                                <span className="text-[10px] text-brand-400 font-bold uppercase tracking-widest flex items-center gap-1">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
-                                    VooDooBox Core
-                                </span>
-                            </div>
-                        </div>
-                        <button onClick={() => setIsOpen(false)} className="text-security-muted hover:text-white transition-colors">
-                            <X size={18} />
-                        </button>
-                    </div>
-
-                    {/* Messages */}
-                    <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar bg-black/20">
-                        {messages.map((m, i) => (
-                            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[90%] p-3.5 rounded-xl text-sm leading-relaxed shadow-sm ${m.role === 'user'
-                                    ? 'bg-brand-600 text-white rounded-br-none'
-                                    : 'bg-security-surface border border-security-border text-slate-200 rounded-bl-none'
-                                    }`}>
-                                    <FormattedMessage content={m.content} />
+                        {/* Header (Drag Handle) */}
+                        <div
+                            onMouseDown={handleMouseDown}
+                            className="p-4 bg-security-surface/90 border-b border-security-border flex items-center justify-between cursor-move drag-handle select-none"
+                        >
+                            <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-full bg-brand-500/20 flex items-center justify-center border border-brand-500/30">
+                                    <Bot size={18} className="text-brand-500" />
+                                </div>
+                                <div>
+                                    <h3 className="text-sm font-bold text-white leading-none">Analyst Assistant</h3>
+                                    <span className="text-[10px] text-brand-400 font-bold uppercase tracking-widest flex items-center gap-1">
+                                        <span className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></span>
+                                        VooDooBox Core
+                                    </span>
                                 </div>
                             </div>
-                        ))}
-                        {isLoading && (
-                            <div className="flex justify-start">
-                                <div className="bg-security-surface border border-security-border px-4 py-3 rounded-xl rounded-bl-none flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce"></div>
-                                    <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-75"></div>
-                                    <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-150"></div>
-                                </div>
-                            </div>
-                        )}
-                        <div ref={messagesEndRef} />
-                    </div>
-
-                    {/* Input */}
-                    <div className="p-4 bg-security-surface border-t border-security-border">
-                        <div className="relative">
-                            <input
-                                className="w-full bg-security-bg border border-security-border rounded-lg pl-4 pr-12 py-3 text-sm text-white placeholder-security-muted outline-none focus:border-brand-500 transition-all font-medium focus:ring-1 focus:ring-brand-500/50"
-                                placeholder="Ask about threats, processes, or logs..."
-                                value={input}
-                                onChange={(e) => setInput(e.target.value)}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                                disabled={isLoading}
-                            />
-                            <button
-                                onClick={handleSend}
-                                disabled={isLoading || !input.trim()}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-brand-500 text-white rounded-md hover:bg-brand-600 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
-                            >
-                                <Send size={16} />
+                            <button onClick={() => setIsOpen(false)} className="text-security-muted hover:text-white transition-colors">
+                                <X size={18} />
                             </button>
                         </div>
-                    </div>
 
-                    {/* Resize Handle */}
-                    <div
-                        onMouseDown={handleResizeStart}
-                        className="absolute bottom-0 right-0 w-4 h-4 cursor-nwse-resize flex items-end justify-end p-0.5 opacity-50 hover:opacity-100"
-                    >
-                        <svg width="6" height="6" viewBox="0 0 6 6" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            <path d="M6 6H0L6 0V6Z" fill="#475569" />
-                        </svg>
-                    </div>
-                </div>
-            )}
+                        {/* Messages */}
+                        <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar bg-black/20">
+                            {messages.map((m, i) => (
+                                <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`max-w-[90%] p-3.5 rounded-xl text-sm leading-relaxed shadow-sm ${m.role === 'user'
+                                        ? 'bg-brand-600 text-white rounded-br-none'
+                                        : 'bg-security-surface border border-security-border text-slate-200 rounded-bl-none'
+                                        }`}>
+                                        <FormattedMessage content={m.content} />
+                                    </div>
+                                </div>
+                            ))}
+                            {isLoading && (
+                                <div className="flex justify-start">
+                                    <div className="bg-security-surface border border-security-border px-4 py-3 rounded-xl rounded-bl-none flex items-center gap-2">
+                                        <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce"></div>
+                                        <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-75"></div>
+                                        <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-150"></div>
+                                    </div>
+                                </div>
+                            )}
+                            <div ref={messagesEndRef} />
+                        </div>
 
-            {/* Bubble Toggle */}
-            <button
-                onMouseDown={handleMouseDown}
-                onClick={() => !isDragging && setIsOpen(!isOpen)}
-                style={{ pointerEvents: 'auto' }}
-                className={`w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 transform hover:scale-105 active:scale-95 cursor-move bubble-toggle ${isOpen ? 'bg-security-surface border border-security-border rotate-90' : 'bg-brand-600 hover:bg-brand-500 ring-2 ring-brand-500/30'
-                    }`}
-            >
-                {isOpen ? <X size={24} className="text-white" /> : <Sparkles size={24} className="text-white fill-white/20" />}
-            </button>
+                        {/* Input */}
+                        <div className="p-4 bg-security-surface border-t border-security-border">
+                            <div className="relative">
+                                <input
+                                    className="w-full bg-security-bg border border-security-border rounded-lg pl-4 pr-12 py-3 text-sm text-white placeholder-security-muted outline-none focus:border-brand-500 transition-all font-medium focus:ring-1 focus:ring-brand-500/50"
+                                    placeholder="Ask about threats, processes, or logs..."
+                                    value={input}
+                                    onChange={(e) => setInput(e.target.value)}
+                                    onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                                    disabled={isLoading}
+                                />
+                                <button
+                                    onClick={handleSend}
+                                    disabled={isLoading || !input.trim()}
+                                    className="absolute right-2 top-1/2 -translate-y-1/2 p-2 bg-brand-500 text-white rounded-md hover:bg-brand-600 transition-all shadow-lg disabled:opacity-50 disabled:cursor-not-allowed"
+                                >
+                                    <Send size={16} />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Resize Handles */}
+                        {/* Top-Left Corner */}
+                        <div
+                            onMouseDown={handleResizeStart}
+                            className="absolute top-0 left-0 w-8 h-8 -translate-x-1/2 -translate-y-1/2 cursor-nwse-resize flex items-center justify-center group z-20"
+                        >
+                            <div className="w-3 h-3 bg-white border-2 border-brand-500 rounded-full shadow-lg transition-transform group-hover:scale-125"></div>
+                        </div>
+
+                        {/* Top Edge */}
+                        <div
+                            onMouseDown={handleResizeStart}
+                            className="absolute top-0 left-4 right-0 h-2 -translate-y-1/2 cursor-ns-resize z-10 hover:bg-brand-500/50 transition-colors"
+                        />
+                        {/* Left Edge */}
+                        <div
+                            onMouseDown={handleResizeStart}
+                            className="absolute top-4 bottom-0 left-0 w-2 -translate-x-1/2 cursor-ew-resize z-10 hover:bg-brand-500/50 transition-colors"
+                        />
+                    </div>
+                )}
+
+                {/* Bubble Toggle (Wrapper is anchored to this) */}
+                <button
+                    onMouseDown={handleMouseDown}
+                    onClick={() => !isDragging && setIsOpen(!isOpen)}
+                    style={{ pointerEvents: 'auto' }}
+                    className={`w-14 h-14 rounded-full flex items-center justify-center shadow-2xl transition-all duration-300 transform hover:scale-105 active:scale-95 cursor-move bubble-toggle ${isOpen ? 'bg-security-surface border border-security-border rotate-90' : 'bg-brand-600 hover:bg-brand-500 ring-2 ring-brand-500/30'
+                        }`}
+                >
+                    {isOpen ? <X size={24} className="text-white" /> : <Sparkles size={24} className="text-white fill-white/20" />}
+                </button>
+            </div>
         </div>
     );
 }
