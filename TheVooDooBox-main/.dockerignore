@@ -1,0 +1,10 @@
+.git
+.agent
+node_modules
+target
+ghidra/projects
+backend/uploads
+backend/screenshots
+backend/reports
+chroma_data
+*.log
