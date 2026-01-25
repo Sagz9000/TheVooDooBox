@@ -34,7 +34,7 @@ Using PostgreSQL allows the backend to handle both **Forensic Telemetry** and **
 
 ## 🤖 The MCP Server (Model Context Protocol)
 
-TheVooDooBox implements the **Model Context Protocol (MCP)**, allowing AI agents (like Claude or GPT-4) to use the platform's forensic capabilities as native "tools."
+TheVooDooBox implements the **Model Context Protocol (MCP)**, allowing AI agents (like Gemini or GPT-4) to use the platform's forensic capabilities as native "tools."
 
 ### Why it exists
 Traditional AI analysis is passive. By exposing Hyper-Bridge as an MCP server, we turn the AI into an **Active Investigator**. The AI can decide to rollback a VM, trigger a Ghidra scan, or fetch the last 100 process events on its own initiative to answer a complex hypothesis.
@@ -81,4 +81,4 @@ In your `.env` file:
 *   `BACKEND_URL`: URL of the Hyper-Bridge (`http://hyper-bridge:8080`).
 *   `GHIDRA_API`: URL of the static engine (`http://ghidra:8000`).
 
-To connect an external Agentic UI (like Claude Desktop) to the lab, you can point it to the MCP server's SSE endpoint at `http://<server_ip>:8001`.
+To connect an external Agentic UI (like Gemini or Claude Desktop) to the lab, you can point it to the MCP server's SSE endpoint at `http://<server_ip>:8001`.

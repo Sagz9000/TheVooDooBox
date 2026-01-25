@@ -1,6 +1,6 @@
 # MCP Server: The "Investigator"
 
-The **Model Context Protocol (MCP)** server acts as the bridge between Agentic AI (like Claude or the internal VoodooBox Analyst) and the lab's infrastructure. It runs as a standalone Python service, exposing tools that allow LLMs to take action.
+The **Model Context Protocol (MCP)** server acts as the bridge between Agentic AI (like Gemini or the internal VoodooBox Analyst) and the lab's infrastructure. It runs as a standalone Python service, exposing tools that allow LLMs to take action.
 
 ## 🏗️ Architecture
 
@@ -43,9 +43,9 @@ The MCP server is configured via environment variables in `docker-compose.yaml`:
       - OLLAMA_HOST=http://192.168.50.98:11434 # Local LLM (Optional)
 ```
 
-## 🚀 Usage with Claude Desktop
+## 🚀 Usage with Gemini / Claude Desktop
 
-To use this server with your local Claude Desktop app for "human-in-the-loop" investigations:
+To use this server with your local Gemini or Claude Desktop app for "human-in-the-loop" investigations:
 
 1.  **Add to Config**: Edit `%APPDATA%\Claude\claude_desktop_config.json`:
     ```json
@@ -62,4 +62,4 @@ To use this server with your local Claude Desktop app for "human-in-the-loop" in
       }
     }
     ```
-2.  **Restart Claude**: You will now see the tool icon available in chat.
+2.  **Restart the App**: You will now see the tool icon available in chat.

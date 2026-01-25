@@ -40,7 +40,7 @@ graph TD
     subgraph "Analyst Frontend"
         API[WebSocket API]
         UI[React Dashboard]
-        LLM["Agentic AI (Claude/Ollama)"]
+        LLM["Agentic AI (Gemini/Ollama)"]
         
         Bridge -- "JSON/WS Events" --> API
         API --> UI
