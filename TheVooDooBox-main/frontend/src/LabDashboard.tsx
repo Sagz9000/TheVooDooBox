@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
     MonitorPlay, Activity, Shield, ChevronRight, Search,
     Filter, Zap, Disc, Database, Terminal, ExternalLink, Globe,
-    Play, Sliders, Layers, Box, Download, FileText, Clock
+    Play, Sliders, Layers, Box, Download, FileText, Clock, Server
 } from 'lucide-react';
 import { ViewModel, voodooApi, BASE_URL } from './voodooApi';
 
