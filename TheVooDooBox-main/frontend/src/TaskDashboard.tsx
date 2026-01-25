@@ -31,6 +31,7 @@ interface AnalysisTask {
     risk_score: number | null;
     created_at: number;
     completed_at: number | null;
+    sandbox_id: string | null;
 }
 
 const NOISE_FILTER_PROCESSES = [
@@ -246,7 +247,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                 .map((task: AnalysisTask) => {
                                     const isUrl = task.filename.startsWith('URL:');
                                     const fileType = isUrl ? 'URL' : ((task.original_filename || task.filename).split('.').pop()?.toUpperCase() || 'BIN');
-                                    const sandboxName = task.status.includes('VM') || task.status.includes('Sandbox') || task.status === 'Queued' ? 'Auto' : 'Active Unit';
+                                    const sandboxName = task.sandbox_id || (task.status.includes('VM') || task.status.includes('Sandbox') || task.status === 'Queued' ? 'Auto' : 'Active Unit');
                                     const isExpanded = expandedTaskId === task.id;
 
                                     return (

@@ -5,14 +5,15 @@ import { ViewModel, voodooApi, BASE_URL } from './voodooApi';
 interface AnalysisTask {
     id: string;
     filename: string;
-    original_filename?: string;
-    file_hash?: string;
+    original_filename: string;
+    file_hash: string;
     status: string;
     verdict: string | null;
     risk_score: number | null;
     created_at: number;
     completed_at: number | null;
     verdict_manual?: boolean;
+    sandbox_id: string | null;
 }
 
 interface Props {

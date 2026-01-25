@@ -295,7 +295,9 @@ pub struct Task {
     pub risk_score: Option<i32>,
     pub created_at: i64,
     pub completed_at: Option<i64>,
+    pub ghidra_status: Option<String>,
     pub verdict_manual: Option<bool>,
+    pub sandbox_id: Option<String>,
 }
 
 async fn start_tcp_listener(
@@ -536,13 +538,14 @@ async fn submit_sample(
     let task_id = created_at.to_string();
     
     let _ = sqlx::query(
-        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at) VALUES ($1, $2, $3, $4, 'Queued', $5)"
+        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at, sandbox_id) VALUES ($1, $2, $3, $4, 'Queued', $5, $6)"
     )
     .bind(&task_id)
     .bind(&filename)
     .bind(&original_filename)
     .bind(&sha256_hash)
     .bind(created_at)
+    .bind(target_vmid.map(|id| id.to_string()))
     .execute(pool.get_ref())
     .await;
     
@@ -637,6 +640,14 @@ async fn orchestrate_sandbox(
     
     let node = &node_name;
     println!("[ORCHESTRATOR] Starting analysis for Task {} on VM {} ({})", task_id, vmid, vm_name);
+
+    // Update Sandbox Identity in DB
+    let sandbox_label = format!("{} [{}]", vm_name, vmid);
+    let _ = sqlx::query("UPDATE tasks SET sandbox_id=$2 WHERE id=$1")
+        .bind(&task_id)
+        .bind(&sandbox_label)
+        .execute(&pool)
+        .await;
 
     // Update Status: Preparing
     let _ = sqlx::query("UPDATE tasks SET status='Preparing Environment' WHERE id=$1")
@@ -927,14 +938,16 @@ async fn exec_url(
         req.url.clone()
     };
     
+    let vmid = req.vmid;
     let _ = sqlx::query(
-        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at) VALUES ($1, $2, $3, $4, 'Queued', $5)"
+        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at, sandbox_id) VALUES ($1, $2, $3, $4, 'Queued', $5, $6)"
     )
     .bind(&task_id)
     .bind(&format!("URL: {}", url_display))
     .bind(&req.url)
     .bind("N/A")  // No file hash for URL analysis
     .bind(created_at)
+    .bind(vmid.map(|id: u64| id.to_string()))
     .execute(pool.get_ref())
     .await;
     
@@ -948,7 +961,6 @@ async fn exec_url(
     let pool_clone = pool.get_ref().clone();
     let url = req.url.clone();
     let task_id_clone = task_id.clone();
-    let vmid = req.vmid;
     let node = req.node.clone();
     
     actix_web::rt::spawn(async move {
@@ -993,7 +1005,7 @@ async fn update_task_verdict(
 #[get("/tasks")]
 async fn list_tasks(pool: web::Data<Pool<Postgres>>) -> impl Responder {
     let tasks = sqlx::query_as::<_, Task>(
-        "SELECT id, filename, original_filename, file_hash, status, verdict, risk_score, created_at, completed_at, ghidra_status, verdict_manual FROM tasks ORDER BY created_at DESC"
+        "SELECT id, filename, original_filename, file_hash, status, verdict, risk_score, created_at, completed_at, ghidra_status, verdict_manual, sandbox_id FROM tasks ORDER BY created_at DESC"
     )
     .fetch_all(pool.get_ref())
     .await;
@@ -2095,12 +2107,16 @@ async fn init_db() -> Pool<Postgres> {
             created_at BIGINT NOT NULL,
             completed_at BIGINT,
             ghidra_status TEXT DEFAULT 'Not Started',
-            verdict_manual BOOLEAN DEFAULT FALSE
+            verdict_manual BOOLEAN DEFAULT FALSE,
+            sandbox_id TEXT
         )"
     )
     .execute(&pool)
     .await
     .expect("Failed to create tasks table");
+
+    // Migrations
+    let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sandbox_id TEXT").execute(&pool).await;
 
     println!("[DATABASE] Tasks table ready.");
 
