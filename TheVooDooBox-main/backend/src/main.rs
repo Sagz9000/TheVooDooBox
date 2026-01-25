@@ -1435,6 +1435,21 @@ Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
    - VERBATIM EXTRACTION: You must extract the EXACT PIDs and File Paths from the context.
 3. If a data point is missing in the telemetry, state \"Unknown\". DO NOT INVENT DATA.
 
+### DATA SOURCE PROTOCOL (CRITICAL)
+1. **Dynamic Events (Sysmon):**
+   - MUST use the exact PID found in the logs (e.g., 4492).
+   - Label these as \"Confirmed Execution\".
+
+2. **Static Findings (Ghidra):**
+   - Ghidra shows code *capability*, not necessarily execution. 
+   - If citing a Ghidra finding, you **MUST NOT** assign it a Sysmon PID.
+   - **REQUIRED PID FORMAT:** Set the PID to \"STATIC_ANALYSIS\".
+   - **REQUIRED DISCLAIMER:** You must append: \" *[Disclaimer: Feature identified in static code analysis; execution not observed in telemetry.]*\"
+
+### TIMELINE FORMATTING RULES
+- If a PID is \"1234\", \"0\", or random, REPLACE IT with \"STATIC_ANALYSIS\".
+- Do not mix sources without labeling them.
+
 ### EFFICIENCY RULES (SPEED OPTIMIZATION)
 1. **CONCISE THINKING:** Do not over-analyze benign events. Focus ONLY on the suspicious chain.
 2. **Thinking Budget:** Limit your reasoning to the most critical findings. Be fast.
@@ -1560,9 +1575,16 @@ async fn ai_insight_handler(req: web::Json<AnalysisRequest>) -> impl Responder {
         "Act as an Elite Threat Hunter and VooDooBox Intelligence Core.
 Assume the provided telemetry represents malicious activity. Your goal is to identify and explain the MALICIOUS behavior.
 
-### DATA FIDELITY RULES
-1. **NO PLACEHOLDERS:** Never use generic PIDs like '1234'. Extract EXACT values verbatim from the evidence.
-2. **PARANOID ANALYSIS:** Scrutinize every process spawn and network connection. Do not provide 'benign' excuses for suspicious activity.
+### DATA SOURCE PROTOCOL (CRITICAL)
+1. **Dynamic Events (Sysmon):**
+   - MUST use the exact PID found in the logs (e.g., 4492).
+   - Label these as \"Confirmed Execution\".
+
+2. **Static Findings (Ghidra):**
+   - Ghidra shows code *capability*, not necessarily execution. 
+   - If citing a Ghidra finding, you **MUST NOT** assign it a Sysmon PID.
+   - **REQUIRED PID FORMAT:** Set the PID to \"STATIC_ANALYSIS\".
+   - **REQUIRED DISCLAIMER:** You must append: \" *[Disclaimer: Feature identified in static code analysis; execution not observed in telemetry.]*\"
 
 <EVIDENCE>
 {}

@@ -147,7 +147,7 @@ pub struct TimelineEvent {
     pub stage: String, // "Execution", "Persistence", etc
     pub event_description: String,
     pub technical_context: String,
-    pub related_pid: i32,
+    pub related_pid: String, // Dynamic PID or "STATIC_ANALYSIS"
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -236,19 +236,36 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
         ""
     };
 
-    let context_json = serde_json::to_string_pretty(&context)?;
+    let sysmon_json = serde_json::to_string_pretty(&context.processes)?;
+    let ghidra_json = serde_json::to_string_pretty(&context.static_analysis)?;
     
     let prompt = format!(
         r#"You are an Elite Threat Hunter & Malware Analyst (Automated Forensic Engine).
 Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
+
+### DATA SOURCE PROTOCOL (CRITICAL)
+1. **Dynamic Events (Sysmon):**
+   - MUST use the exact PID found in the logs (e.g., 4492).
+   - Label these as "Confirmed Execution".
+
+2. **Static Findings (Ghidra):**
+   - Ghidra shows what the code *might* do, not necessarily what it *did* at a specific second.
+   - If you include a Ghidra finding in the timeline, you **MUST NOT** assign it a real PID.
+   - **REQUIRED PID FORMAT:** Set the PID to "STATIC_ANALYSIS".
+   - **REQUIRED DISCLAIMER:** You must append this text to the end of the technical_context: 
+     " *[Disclaimer: Feature identified in static code analysis; execution not observed in telemetry.]*"
 
 ### INSTRUCTIONS:
 1. **BEHAVIORAL BIAS (PARANOIA):** Assume the provided telemetry represents a potential malware sample. Your job is to explain *why* it is malicious. Scrutinize Living-off-the-Land binaries (powershell, certutil, bitsadmin), Registry persistence, and Code Injection as primary threats.
 2. **DATA ACCURACY (STRICT):** While your *analysis* should be suspicious, your *evidence* must be exact.
    - NEVER use placeholder PIDs (like '1234' or '9999').
    - VERBATIM EXTRACTION: You must extract the EXACT PIDs and File Paths from the evidence.
-3. **VALID PID LIST (CHEAT SHEET):** cite PIDs ONLY from this list: [{pid_list}]. 
+3. **VALID PID LIST (CHEAT SHEET):** cite PIDs ONLY from the provided list for dynamic events. 
    - If a specific PID is not visible in the logs, write "Unknown". Do NOT invent data.
+
+### TIMELINE FORMATTING RULES
+- If a PID is "1234", "0", or random, REPLACE IT with "STATIC_ANALYSIS".
+- Do not mix sources without labeling them.
 
 ### SAFETY CONSTRAINTS:
 {safety_check}
@@ -262,11 +279,19 @@ Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
 1. **CONCISE THINKING:** Do not over-analyze benign events in your <think> block. Focus ONLY on the suspicious chain.
 2. **Thinking Budget:** Limit your <think> block to the top 3 most critical findings. Be fast.
 
-### EVIDENCE
-Analyze the evidence below wrapped in <EVIDENCE> tags.
-<EVIDENCE>
-{telemetry}
-</EVIDENCE>
+### DATASET 1: DYNAMICS TELEMETRY (Sysmon)
+**Reliability:** High. These events actually happened.
+**Valid PIDs:** [{pid_list}]
+<DYNAMIC_LOGS>
+{sysmon}
+</DYNAMIC_LOGS>
+
+### DATASET 2: STATIC ANALYSIS (Ghidra)
+**Reliability:** Theoretical. This is code capability, not necessarily execution.
+**PID Rule:** Do NOT assign Sysmon PIDs to these events. Use PID: "STATIC_ANALYSIS".
+<STATIC_LOGS>
+{ghidra}
+</STATIC_LOGS>
 
 ### OUTPUT REQUIREMENTS (JSON ONLY)
 1. **Verdict:** definitive classification (Malicious, Suspicious, Benign).
@@ -274,7 +299,7 @@ Analyze the evidence below wrapped in <EVIDENCE> tags.
 3. **Artifacts:** Extract distinct Indicators of Compromise (IOCs) from the logs.
 
 ### CRITICAL: JSON STRUCTURE RULES
-- "related_pid" MUST be a single integer from the Valid PID List.
+- "related_pid" MUST be a string (the PID number from Dynamic logs or "STATIC_ANALYSIS").
 - If multiple PIDs are involved, describe them in "technical_context".
 - All field names must match exactly as shown below:
 
@@ -289,7 +314,7 @@ Analyze the evidence below wrapped in <EVIDENCE> tags.
             "stage": "Execution",
             "event_description": "Process Spawn",
             "technical_context": "[BINARY] spawned [CHILD]",
-            "related_pid": 0
+            "related_pid": "0"
         }}
     ],
     "artifacts": {{
@@ -302,7 +327,8 @@ Analyze the evidence below wrapped in <EVIDENCE> tags.
 "#, 
         pid_list = pid_list_str,
         safety_check = forced_benign_instruction,
-        telemetry = context_json
+        sysmon = sysmon_json,
+        ghidra = ghidra_json
     );
 
     // 5. Call Ollama with proper timeout configuration
@@ -369,7 +395,11 @@ Analyze the evidence below wrapped in <EVIDENCE> tags.
     });
 
     // 7. DB Mapping (Best Effort)
-    let suspicious_pids: Vec<i32> = report.behavioral_timeline.iter().map(|e| e.related_pid as i32).collect();
+    let mut suspicious_pids: Vec<i32> = report.behavioral_timeline.iter()
+        .filter_map(|e| e.related_pid.parse::<i32>().ok())
+        .collect();
+    suspicious_pids.sort();
+    suspicious_pids.dedup();
     let mitre_tactics: Vec<String> = report.behavioral_timeline.iter().map(|e| e.stage.clone()).collect();
     
     let mut recommendations = Vec::new();

@@ -10,6 +10,7 @@ Traditional RAG often retrieves random chunks of text. Our approach is structure
 1.  **Dynamic Context**: We aggregate the last 60 seconds of Kernel Driver events (Process Tree, Network Connections, Registry Mods).
 2.  **Static Context**: We inject decompiled function signatures and string references from Ghidra.
 3.  **Prompt Engineering**: We utilize a specialized "Forensic Triage" system prompt to align the LLM's analysis with the perspective of a Senior Malware Researcher.
+4.  **Source Attribution**: We enforce a strict Data Source Protocol to distinguish between dynamic execution (Sysmon) and static code capability (Ghidra).
 
 ## The Pipeline
 
@@ -61,6 +62,21 @@ The JSON context sent to the LLM looks like this:
 ```
 
 ![AI Forensic Verdict Summary](../TheVooDooBox-main/pictures/execaisummary.png)
+
+## Data Source Protocol (Anti-Hallucination)
+
+To prevent "Source Conflation" (where the AI hallucinations static code capabilities as dynamic execution), we enforce a strict protocol:
+
+### 1. Dynamic Events (Sysmon)
+*   **Reliability**: High. These events actually occurred during detonation.
+*   **Label**: "Confirmed Execution".
+*   **PIDs**: Must use the exact, valid PIDs found in the telemetry.
+
+### 2. Static Findings (Ghidra)
+*   **Reliability**: Theoretical. These represent code capabilities identified via decompilation.
+*   **Label**: "Static Analysis".
+*   **PIDs**: Must use the reserved string **`STATIC_ANALYSIS`**.
+*   **Disclaimer**: Must append: `*[Disclaimer: Feature identified in static code analysis; execution not observed in telemetry.]*`
 
 ## System Prompts
 
