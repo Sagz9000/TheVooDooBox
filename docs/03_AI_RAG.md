@@ -83,6 +83,10 @@ Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
 3. **VALID PID LIST (CHEAT SHEET):** cite PIDs ONLY from the provided list. 
    - If a specific PID is not visible in the logs, write "Unknown". Do NOT invent data.
 
+### EFFICIENCY RULES (SPEED OPTIMIZATION)
+1. **CONCISE THINKING:** Do not over-analyze benign events in your <think> block. Focus ONLY on the suspicious chain.
+2. **Thinking Budget:** Limit your <think> block to the top 3 most critical findings. Be fast.
+
 ### GUIDANCE FOR THINKING (CHAIN OF THOUGHT):
 1. First, list all commands and process starts executed.
 2. Second, checking against the Valid PID List, map the correct PID to each behavioral event.
@@ -116,6 +120,10 @@ Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
    - VERBATIM EXTRACTION: You must extract the EXACT PIDs and File Paths from the context.
 3. If a data point is missing in the telemetry, state "Unknown". DO NOT INVENT DATA.
 
+### EFFICIENCY RULES (SPEED OPTIMIZATION)
+1. **CONCISE THINKING:** Do not over-analyze benign events. Focus ONLY on the suspicious chain.
+2. **Thinking Budget:** Limit your reasoning to the most critical findings. Be fast.
+
 <EVIDENCE>
 [JSON TELEMETRY DATA]
 </EVIDENCE>
@@ -140,6 +148,10 @@ Assume the provided telemetry represents malicious activity. Your goal is to ide
 <EVIDENCE>
 [JSON TELEMETRY DATA]
 </EVIDENCE>
+
+### EFFICIENCY RULES (SPEED OPTIMIZATION)
+1. **CONCISE THINKING:** Do not over-analyze. Focus ONLY on the suspicious chain.
+2. **Thinking Budget:** Limit your reasoning to the top findings. Be fast.
 ```
 
 ## 🚀 Ollama & Model Optimization
@@ -148,7 +160,8 @@ TheVooDooBox is specifically tuned for **self-hosted local inference** using Oll
 
 ### 1. Context Window Stewardship
 Local 14B models can struggle with massive log dumps. We preserve context accuracy by:
-*   **Process Lineage Tracing**: Instead of sending all 10,000+ driver events, we build a transitive closure of "Malware descendants." Only events from these relevant PIDs are sent, reducing noise by up to 90%.
+*   **Process Lineage Tracing**: Instead of sending all 10,000+ driver events, we build a transitive closure of "Malware descendants." 
+*   **High-Value Event Filtering**: We aggressively filter for critical Sysmon Event IDs (1: Process Create, 3: Network, 8: RemoteThread, 11: FileCreate), reducing noise by up to 95%.
 *   **Deduplication**: Repeated events (like constant registry polling) are rolled up into single entries with hit counts.
 
 ### 2. Prompt Architecture for Qwen-Coder
@@ -159,7 +172,8 @@ The prompts were engineered to exploit the specific strengths of the Qwen-Coder 
 
 ### 3. Backend Tunings
 *   **Strict JSON Mode**: The backend enforces `format: json` at the Ollama API level to prevent parsing failures on local hardware.
-*   **Extended Timeouts**: Default timeouts are set to 600 seconds (`AI_TIMEOUT_SECONDS`) to accommodate 14B inference on mid-range GPUs.
+*   **KV Cache Optimization**: Recommended to run with `OLLAMA_KV_CACHE_TYPE=q8_0` and `OLLAMA_FLASH_ATTENTION=1` for maximum throughput.
+*   **Extended Timeouts**: Default timeouts are set to 600-1200 seconds (`AI_TIMEOUT_SECONDS`) to accommodate 14B inference on mid-range GPUs.
 *   **Vector DB Grounding**: We use a local **ChromaDB** to query MITRE ATT&CK techniques, providing the model with a "second-brain" knowledge base that bypasses its internal cutoff limits.
 
 ## ⚠️ Known Limitations

@@ -1298,7 +1298,8 @@ async fn chat_handler(
         "smartscreen.exe",
         "registry",
         "system",
-        "smss.exe"
+        "smss.exe",
+        "discord.exe"
     ];
     
     let filtered_events: Vec<_> = telemetry_events.iter()
@@ -1434,6 +1435,10 @@ Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
    - VERBATIM EXTRACTION: You must extract the EXACT PIDs and File Paths from the context.
 3. If a data point is missing in the telemetry, state \"Unknown\". DO NOT INVENT DATA.
 
+### EFFICIENCY RULES (SPEED OPTIMIZATION)
+1. **CONCISE THINKING:** Do not over-analyze benign events. Focus ONLY on the suspicious chain.
+2. **Thinking Budget:** Limit your reasoning to the most critical findings. Be fast.
+
 ### Presentation Standards (MANDATORY)
 1. **Status Alerts:**
    - `> [!CAUTION]` for active threats/C2 activity.
@@ -1562,6 +1567,10 @@ Assume the provided telemetry represents malicious activity. Your goal is to ide
 <EVIDENCE>
 {}
 </EVIDENCE>
+
+### EFFICIENCY RULES (SPEED OPTIMIZATION)
+1. **CONCISE THINKING:** Do not over-analyze. Focus ONLY on the suspicious chain.
+2. **Thinking Budget:** Limit your reasoning to the top findings. Be fast.
 
 ### 1. Identification Phase (Forensic Analysis)
 Analyze the telemetry for:

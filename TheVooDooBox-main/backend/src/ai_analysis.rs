@@ -258,6 +258,10 @@ Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
 2. Second, checking against the Valid PID List, map the correct PID to each behavioral event.
 3. Third, ask: "Why would a legitimate user run this?" If the answer is suspicious contextually, flag it as high severity.
 
+### EFFICIENCY RULES (SPEED OPTIMIZATION)
+1. **CONCISE THINKING:** Do not over-analyze benign events in your <think> block. Focus ONLY on the suspicious chain.
+2. **Thinking Budget:** Limit your <think> block to the top 3 most critical findings. Be fast.
+
 ### EVIDENCE
 Analyze the evidence below wrapped in <EVIDENCE> tags.
 <EVIDENCE>
@@ -497,6 +501,7 @@ const NOISE_PROCESSES: &[&str] = &[
     "mpcmdrun.exe",
     "msmpeng.exe",
     "chrome.exe",         // Often background noise unless specifically testing browser
+    "discord.exe",
     "explorer.exe",       // Desktop noise
     "backgroundtaskhost.exe",
     "runtimebroker.exe",
@@ -512,14 +517,17 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>) -> AnalysisC
     let relevant_pids = build_process_lineage(&raw_events);
 
     for evt in &raw_events {
-        // Lineage Filtering Strategy
-        // 1. If it's a critical alert (Injection/Tampering), ALWAYS keep it.
-        // 2. Otherwise, only keep if the PID is in the traceable lineage of the malware.
         let is_critical = matches!(evt.event_type.as_str(), "MEMORY_ANOMALY" | "PROCESS_TAMPER" | "REMOTE_THREAD");
         let is_relevant = relevant_pids.contains(&evt.process_id);
 
-        if !is_critical && !is_relevant {
-            continue; // Skip noise
+        // High-Value Event Filtering (Speed Optimization)
+        let is_high_value = match evt.event_type.as_str() {
+            "PROCESS_CREATE" | "NETWORK_CONNECT" | "NETWORK_DNS" | "REMOTE_THREAD" | "FILE_CREATE" | "DOWNLOAD_DETECTED" => true,
+            _ => false,
+        };
+
+        if !is_critical && (!is_relevant || !is_high_value) {
+            continue; // Skip noise and non-critical low-value events
         }
 
         // Ensure process entry exists
