@@ -41,10 +41,10 @@ export default function App() {
 
     // WebSocket Handling
     useEffect(() => {
-        console.log("VOODOOBOX-DEBUG: App mounting, starting WS");
+        console.log("MALLAB-DEBUG: App mounting, starting WS");
         const ws = new WebSocket(`ws://${window.location.hostname}:8080/ws`);
         ws.onopen = () => {
-            console.log("VOODOOBOX-DEBUG: WS Connected");
+            console.log("MALLAB-DEBUG: WS Connected");
             setConnected(true);
         };
         ws.onmessage = (event) => {
@@ -56,7 +56,7 @@ export default function App() {
             }
         };
         ws.onclose = () => {
-            console.log("VOODOOBOX-DEBUG: WS Closed");
+            console.log("MALLAB-DEBUG: WS Closed");
             setConnected(false);
         };
 
@@ -146,12 +146,12 @@ export default function App() {
 
     const handleNativeSpice = (node: string, vmid: number) => {
         voodooApi.getSpiceTicket(node, vmid).then(data => {
-            const vvContent = `[virt-viewer]\ntype=spice\nhost=${data.host}\npassword=${data.password || ''}\ntls-port=${data.tls_port || ''}\nproxy=${data.proxy || ''}\nhost-subject=${data.host_subject || ''}\nca=${data.ca || ''}\ndelete-this-file=1\ntitle=TheVooDooBox SPICE\n`;
+            const vvContent = `[virt-viewer]\ntype=spice\nhost=${data.host}\npassword=${data.password || ''}\ntls-port=${data.tls_port || ''}\nproxy=${data.proxy || ''}\nhost-subject=${data.host_subject || ''}\nca=${data.ca || ''}\ndelete-this-file=1\ntitle=MallabV3 SPICE\n`;
             const blob = new Blob([vvContent], { type: 'application/x-virt-viewer' });
             const url = window.URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `voodoobox-node-${vmid}.vv`;
+            a.download = `mallab-node-${vmid}.vv`;
             a.click();
         });
     };
@@ -263,7 +263,7 @@ export default function App() {
             </div>
         );
     } catch (err) {
-        console.error("VOODOOBOX-DEBUG: Render error", err);
+        console.error("MALLAB-DEBUG: Render error", err);
         return <div className="p-10 text-red-500 font-mono">Render Error: {String(err)}</div>;
     }
 }
