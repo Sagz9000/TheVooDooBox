@@ -303,9 +303,9 @@ Analyze the evidence below wrapped in <EVIDENCE> tags.
 
     // 5. Call Ollama with proper timeout configuration
     let timeout_seconds = env::var("AI_TIMEOUT_SECONDS")
-        .unwrap_or_else(|_| "600".to_string())
+        .unwrap_or_else(|_| "900".to_string())
         .parse::<u64>()
-        .unwrap_or(600);
+        .unwrap_or(900);
     
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(timeout_seconds))
