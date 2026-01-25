@@ -1,26 +1,12 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
-    Activity,
-    Server,
-    FileText,
-    Hash,
-    Clock,
-    ChevronRight,
-    Globe,
-    Terminal,
-    ArrowLeft,
-    List,
-    Cpu,
-    Loader2,
-    Code2,
-    Binary,
-    Sparkles,
-    Image, // Added Image icon
-    Search,
-    Download
+    List, Activity, Image, Zap, Terminal, Database, Search,
+    Hash, Globe, Code2, Sparkles, Binary, ChevronRight,
+    Loader2, ArrowLeft, Clock, Cpu, Disc, Download, FileText
 } from 'lucide-react';
 import { AgentEvent, voodooApi } from './voodooApi';
 import AIInsightPanel, { ForensicReport } from './AIInsightPanel';
+import ProcessTree, { Process } from './ProcessTree';
 
 interface Props {
     taskId: string | null;
@@ -63,17 +49,17 @@ const NOISE_FILTER_PROCESSES = [
 ];
 
 export default function ReportView({ taskId, events: globalEvents, onBack }: Props) {
-    const [selectedPid, setSelectedPid] = useState<number | null>(null);
-    const [activeTab, setActiveTab] = useState<'timeline' | 'network' | 'files' | 'registry' | 'console' | 'ghidra' | 'intelligence' | 'screenshots'>('timeline');
+    const [activeTab, setActiveTab] = useState<'timeline' | 'neural' | 'network' | 'files' | 'registry' | 'console' | 'ghidra' | 'intelligence' | 'screenshots'>('timeline');
     const [localEvents, setLocalEvents] = useState<AgentEvent[]>([]);
-    const [ghidraFindings, setGhidraFindings] = useState<any[]>([]);
+    const [ghidraStateFindings, setGhidraStateFindings] = useState<AgentEvent[]>([]);
     const [screenshots, setScreenshots] = useState<string[]>([]); // Screenshots state
     const [loading, setLoading] = useState(false);
+    const [selectedPid, setSelectedPid] = useState<number | null>(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [consoleSearch, setConsoleSearch] = useState('');
+    const [consoleSearchInput, setConsoleSearchInput] = useState('');
     const [aiReport, setAiReport] = useState<ForensicReport | null>(null);
     const [aiLoading, setAiLoading] = useState(false);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [consoleSearch, setConsoleSearch] = useState("");
-    const [consoleSearchInput, setConsoleSearchInput] = useState("");
     const [showCheatsheet, setShowCheatsheet] = useState(false);
 
     useEffect(() => {
@@ -94,7 +80,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     useEffect(() => {
         if (taskId) {
             voodooApi.fetchGhidraFindings(taskId).then(findings => {
-                setGhidraFindings(findings);
+                setGhidraStateFindings(findings);
             }).catch(err => {
                 console.error("[TelemetryReport] Failed to load Ghidra findings:", err);
             });
@@ -116,19 +102,20 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     }, [taskId]);
 
     const handleAIAnalysis = async () => {
+        if (!taskId) return;
         setAiLoading(true);
         try {
-            let report;
-            if (taskId) {
-                // Task-based analysis (Historical)
-                report = await voodooApi.triggerTaskAnalysis(taskId);
+            // Task-based analysis - trigger existing backend analyzer
+            const report = await voodooApi.triggerTaskAnalysis(taskId);
+            if (report) {
+                setAiReport(report);
+                setActiveTab('intelligence' as any);
             } else {
-                // Session-based analysis (Live)
-                report = await voodooApi.getAIAnalysis(events);
+                alert("AI Analysis is not ready yet or failed.");
             }
-            setAiReport(report);
         } catch (error) {
-            console.error("AI Analysis failed:", error);
+            console.error("AI analysis failed:", error);
+            alert("Analysis error. Check backend logs.");
         } finally {
             setAiLoading(false);
         }
@@ -228,6 +215,34 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         return roots;
     }, [events]);
 
+    const treeProcesses = useMemo(() => {
+        const procMap: Record<number, Process> = {};
+
+        events.forEach((e: AgentEvent) => {
+            if (!procMap[e.process_id]) {
+                procMap[e.process_id] = {
+                    pid: e.process_id,
+                    parent_pid: e.parent_process_id,
+                    name: e.process_name,
+                    status: 'running', // Fallback
+                    behaviors: []
+                };
+            }
+
+            // Add unique behaviors
+            if (!procMap[e.process_id].behaviors.includes(e.event_type)) {
+                procMap[e.process_id].behaviors.push(e.event_type);
+            }
+
+            // Update status if termination detected
+            if (e.event_type === 'PROCESS_TERMINATE') {
+                procMap[e.process_id].status = 'terminated';
+            }
+        });
+
+        return procMap;
+    }, [events]);
+
     const filteredProcessTree = useMemo(() => {
         if (!searchTerm.trim()) return processTree;
 
@@ -274,16 +289,26 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
 
     const timelineEvents = sourceEvents;
 
+    const screenshotsList = useMemo(() => {
+        return sourceEvents
+            .filter((e: AgentEvent) => e.event_type === 'SCREENSHOT' && e.details)
+            .map((e: AgentEvent) => e.details as string);
+    }, [sourceEvents]);
+
+    const ghidraFindingsList = useMemo(() => {
+        return sourceEvents.filter((e: AgentEvent) => e.event_type === 'GHIDRA_FINDING');
+    }, [sourceEvents]);
+
     const networkEvents = useMemo(() => {
-        return sourceEvents.filter(e => ['NETWORK_CONNECT', 'LATERAL_MOVEMENT', 'NETWORK_DNS'].includes(e.event_type));
+        return sourceEvents.filter((e: AgentEvent) => ['NETWORK_CONNECT', 'LATERAL_MOVEMENT', 'NETWORK_DNS'].includes(e.event_type));
     }, [sourceEvents]);
 
     const fileEvents = useMemo(() => {
-        return sourceEvents.filter(e => e.event_type.startsWith('FILE_'));
+        return sourceEvents.filter((e: AgentEvent) => e.event_type.startsWith('FILE_'));
     }, [sourceEvents]);
 
     const registryEvents = useMemo(() => {
-        return sourceEvents.filter(e => e.event_type.includes('REG_') || e.event_type.includes('REGISTRY'));
+        return sourceEvents.filter((e: AgentEvent) => e.event_type.includes('REG_') || e.event_type.includes('REGISTRY'));
     }, [sourceEvents]);
 
     const getProcessCreateDetail = () => {
@@ -309,9 +334,9 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
 
     if (loading && events.length === 0) {
         return (
-            <div className="h-full w-full flex flex-col items-center justify-center bg-[#050505] space-y-4">
-                <Loader2 className="text-brand-500 animate-spin" size={48} />
-                <p className="text-security-muted text-[10px] font-black uppercase tracking-widest animate-pulse">Reconstructing Telemetry Timeline...</p>
+            <div className="h-full w-full flex flex-col items-center justify-center bg-security-bg space-y-4">
+                <Loader2 className="text-security-active animate-spin" size={48} />
+                <p className="text-security-active/50 text-[10px] font-black uppercase tracking-[0.3em] animate-pulse">RECONSTRUCTING_TELEMETRY_TIMELINE...</p>
             </div>
         );
     }
@@ -319,35 +344,60 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     return (
         <div className="flex flex-col h-full bg-[#050505] text-white overflow-hidden animate-in fade-in duration-300 font-sans">
             {/* Header */}
-            <header className="h-14 border-b border-white/10 bg-[#0a0a0a] flex items-center justify-between px-6 shadow-2xl z-10">
+            <header className="h-16 border-b border-white/10 bg-security-surface/80 backdrop-blur-md flex items-center justify-between px-6 z-20 sticky top-0">
                 <div className="flex items-center gap-4">
-                    <button onClick={onBack} className="p-2 hover:bg-white/5 rounded-full text-zinc-400 hover:text-white transition-colors group">
-                        <ArrowLeft size={18} className="group-hover:-translate-x-1 transition-transform" />
+                    <button
+                        onClick={onBack}
+                        className="p-2 hover:bg-white/5 rounded-full text-security-active transition-all hover:scale-110 active:scale-90"
+                    >
+                        <ArrowLeft size={20} />
                     </button>
-                    <img src="/logo.png" alt="VooDooBox" className="h-8 w-auto object-contain bg-black/50 rounded-sm border border-white/10" />
+
+                    <div className="h-10 w-[1px] bg-white/10 mx-2"></div>
+
                     <div>
-                        <h1 className="text-[10px] font-black uppercase tracking-widest text-zinc-500">Telemetry Report: Neural Analysis</h1>
-                        <div className="flex items-center gap-2">
-                            <span className="text-base font-bold tracking-tight text-white">{taskId || 'LIVE_SESSION_CAPTURE'}</span>
-                            <span className="px-2 py-0.5 rounded bg-brand-500/10 text-brand-400 text-[9px] font-black border border-brand-500/20 uppercase tracking-wider">
-                                Dynamic Analysis
+                        <div className="flex items-center gap-3">
+                            <h1 className="text-xl font-black tracking-tighter text-white uppercase italic">
+                                Forensic Report <span className="text-security-active">#{taskId?.slice(-6) || 'LIVE'}</span>
+                            </h1>
+                            <span className="px-2 py-0.5 bg-brand-500/10 text-brand-500 text-[10px] font-black uppercase tracking-[0.2em] border border-brand-500/30">
+                                Analysis Complete
                             </span>
                         </div>
+                        <p className="text-[10px] text-security-active/50 font-mono flex items-center gap-2 mt-0.5">
+                            <Hash size={10} /> SESSION_ID: {taskId || 'TELEMETRY_STREAM_ACTIVE'}
+                        </p>
                     </div>
                 </div>
-                <div className="flex items-center gap-4 text-xs font-mono text-zinc-500">
-                    <span className="flex items-center gap-2"><Clock size={12} /> Duration: {stats.duration}</span>
-                    <span className="flex items-center gap-2"><Cpu size={12} /> {stats.count} Events Processed</span>
-                    {aiReport && (
-                        <button
-                            onClick={() => taskId && voodooApi.downloadPdf(taskId, aiReport)}
-                            className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 rounded-md transition-all shadow-lg shadow-brand-500/40 uppercase font-black tracking-wider text-[11px] animate-pulse"
-                            title="Download PDF Report"
-                        >
-                            <Download size={16} />
-                            Download PDF
-                        </button>
-                    )}
+
+                <div className="flex items-center gap-8">
+                    <div className="flex items-center gap-6 text-[10px] font-mono text-security-active/60">
+                        <div className="flex flex-col items-end">
+                            <span className="text-white/40 uppercase text-[8px] tracking-widest mb-0.5">Duration</span>
+                            <span className="flex items-center gap-2 text-security-active"><Clock size={12} /> {stats.duration}</span>
+                        </div>
+                        <div className="flex flex-col items-end">
+                            <span className="text-white/40 uppercase text-[8px] tracking-widest mb-0.5">Events</span>
+                            <span className="flex items-center gap-2 text-security-active"><Cpu size={12} /> {stats.count}</span>
+                        </div>
+                        <div className="flex flex-col items-end border-l border-white/10 pl-6">
+                            <span className="text-white/40 uppercase text-[8px] tracking-widest mb-0.5">Status</span>
+                            <span className="flex items-center gap-2 text-voodoo-toxic-green animate-pulse"><Disc size={12} /> SYNCED</span>
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => taskId && aiReport && voodooApi.downloadPdf(taskId, aiReport)}
+                        disabled={!aiReport}
+                        className={`group relative flex items-center gap-3 px-6 py-2.5 transition-all uppercase font-black tracking-[0.2em] text-[10px] border ${aiReport
+                            ? 'bg-brand-500 text-white border-brand-400/50 shadow-[0_0_15px_rgba(191,0,255,0.3)] hover:shadow-[0_0_25px_rgba(191,0,255,0.5)] hover:scale-105'
+                            : 'bg-zinc-900/50 text-zinc-600 border-white/5 cursor-not-allowed opacity-50'}`}
+                        title={aiReport ? "Download PDF Report" : "Run AI Analysis first to generate PDF"}
+                    >
+                        <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"></div>
+                        <Download size={14} className="group-hover:bounce" />
+                        EXPORT_PDF
+                    </button>
                 </div>
             </header>
 
@@ -404,6 +454,23 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                         <span className="flex items-center gap-1.5"><Hash size={12} className="text-zinc-600" /> PID: <span className="text-zinc-200">{selectedPid}</span></span>
                                         <span className="flex items-center gap-1.5"><Activity size={12} className="text-zinc-600" /> PPID: <span className="text-zinc-200">{selectedProcessNode.ppid}</span></span>
                                         <span className="flex items-center gap-1.5"><List size={12} className="text-zinc-600" /> Events: <span className="text-zinc-200">{selectedProcessNode.events.length}</span></span>
+
+                                        {/* Kill Process Action */}
+                                        <button
+                                            onClick={async () => {
+                                                if (selectedPid && confirm(`Are you sure you want to TERMINATE process ${selectedPid} (${selectedProcessNode.name})?`)) {
+                                                    const success = await voodooApi.killProcess(selectedPid);
+                                                    if (success) {
+                                                        alert("Termination signal sent successfully.");
+                                                    } else {
+                                                        alert("Failed to terminate process.");
+                                                    }
+                                                }
+                                            }}
+                                            className="ml-auto flex items-center gap-1.5 px-3 py-1 bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 rounded transition-all text-[10px] font-black uppercase tracking-widest"
+                                        >
+                                            <Zap size={10} /> Terminate Process
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -427,11 +494,12 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                     {/* Tabs Navigation */}
                     <div className="flex items-center px-4 border-b border-white/10 bg-[#0a0a0a] overflow-x-auto overflow-y-hidden custom-scrollbar whitespace-nowrap">
                         <TabButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} icon={<List size={14} />} label="Activity Timeline" count={timelineEvents.length} />
-                        <TabButton active={activeTab === 'screenshots'} onClick={() => setActiveTab('screenshots')} icon={<Image size={14} />} label="Screenshots" count={screenshots.length} />
+                        <TabButton active={activeTab === 'neural'} onClick={() => setActiveTab('neural')} icon={<Activity size={14} />} label="Neural Lineage" />
+                        <TabButton active={activeTab === 'screenshots'} onClick={() => setActiveTab('screenshots')} icon={<Image size={14} />} label="Screenshots" count={screenshotsList.length} />
                         <TabButton active={activeTab === 'network'} onClick={() => setActiveTab('network')} icon={<Globe size={14} />} label="Network" count={networkEvents.length} />
                         <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<FileText size={14} />} label="Files" count={fileEvents.length} />
-                        <TabButton active={activeTab === 'registry'} onClick={() => setActiveTab('registry')} icon={<Server size={14} />} label="Registry" count={registryEvents.length} />
-                        <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Ghidra Intelligence" count={ghidraFindings.length} />
+                        <TabButton active={activeTab === 'registry'} onClick={() => setActiveTab('registry')} icon={<Database size={14} />} label="Registry" count={registryEvents.length} />
+                        <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Ghidra Intelligence" count={ghidraFindingsList.length} />
                         <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} icon={<Sparkles size={14} />} label="AI Insight" />
                         <TabButton active={activeTab === 'console'} onClick={() => setActiveTab('console')} icon={<Terminal size={14} />} label="Raw Console" count={stats.count} />
                     </div>
@@ -440,6 +508,15 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                     <div className="flex-1 overflow-hidden relative bg-[#080808]">
                         {activeTab === 'timeline' && (
                             <TimelineView events={timelineEvents} />
+                        )}
+                        {activeTab === 'neural' && (
+                            <div className="absolute inset-0 p-6 flex flex-col">
+                                <ProcessTree
+                                    processes={treeProcesses}
+                                    selectedPid={selectedPid || undefined}
+                                    onNodeClick={setSelectedPid}
+                                />
+                            </div>
                         )}
                         {activeTab === 'screenshots' && (
                             <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6">
@@ -484,7 +561,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             <EventTable events={registryEvents} type="registry" />
                         )}
                         {activeTab === 'ghidra' && (
-                            <GhidraFindingsView findings={ghidraFindings} />
+                            <GhidraFindingsView findings={ghidraFindingsList} />
                         )}
                         {activeTab === 'intelligence' && (
                             <div className="absolute inset-0 bg-security-bg overflow-hidden shadow-2xl">
@@ -612,12 +689,11 @@ const TabButton = ({ active, onClick, icon, label, count }: TabButtonProps) => (
     </button>
 );
 
-const ProcessTreeNode = ({ node, selectedPid, onSelect, level }: { node: ProcessNode, selectedPid: number | null, onSelect: (pid: number) => void, level: number }) => {
+const ProcessTreeNode = ({ node, selectedPid, onSelect, level }: { node: ProcessNode, selectedPid: number | null, onSelect: (pid: number) => void, level: number, key?: any }) => {
     const isSelected = selectedPid === node.pid;
 
     return (
         <div className="select-none relative">
-            {/* Tree Connection Lines could go here via CSS/SVG if strictly visual tree needed, simplified for now */}
             <div
                 className={`flex items-center gap-3 py-2 px-3 rounded-lg mb-1 cursor-pointer transition-all border ${isSelected
                     ? 'bg-brand-500/10 border-brand-500/30 shadow-[0_0_10px_rgba(168,85,247,0.1)]'
@@ -626,7 +702,6 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, level }: { node: Process
                 style={{ marginLeft: `${level * 20}px` }}
                 onClick={() => onSelect(node.pid)}
             >
-                {/* Expand/Collapse UI placeholder - assuming auto-expanded for analysis report */}
                 <div className="p-1.5 rounded-md bg-zinc-800 border border-white/5 text-zinc-400">
                     <Terminal size={12} />
                 </div>
@@ -640,7 +715,6 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, level }: { node: Process
                             {node.pid}
                         </span>
                     </div>
-                    {/* Optional: Show first event type as status or similar */}
                     {node.children.length > 0 && (
                         <div className="mt-1 flex items-center gap-1">
                             <div className="h-px w-2 bg-zinc-700"></div>

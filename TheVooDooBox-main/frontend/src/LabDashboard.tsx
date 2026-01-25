@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Bug, Activity, Disc, Box, FileText, Play, Layers, Server, Sliders, Zap, MonitorPlay, ExternalLink } from 'lucide-react';
+import {
+    MonitorPlay, Activity, Shield, ChevronRight, Search,
+    Filter, Zap, Disc, Database, Terminal, ExternalLink, Globe,
+    Play, Sliders, Layers, Box, Download, FileText, Clock
+} from 'lucide-react';
 import { ViewModel, voodooApi, BASE_URL } from './voodooApi';
 
 interface AnalysisTask {
@@ -133,7 +137,7 @@ export default function LabDashboard({ vms, onRefresh, onSelectVm, onLaunchNativ
                     <div className="flex-1 card bg-black/40 border-voodoo-border overflow-y-auto custom-scrollbar p-2 space-y-2">
                         {filteredAllVms.map((vm: ViewModel) => (
                             <VmCrateItem
-                                key={vm.vmid}
+                                key={`${vm.node}-${vm.vmid}`}
                                 vm={vm}
                                 onSelect={onSelectVm}
                                 onLaunchNativeSpice={onLaunchNativeSpice}
@@ -207,13 +211,28 @@ export default function LabDashboard({ vms, onRefresh, onSelectVm, onLaunchNativ
                                                 </button>
                                             </td>
                                             <td className="p-3 text-right">
-                                                <button
-                                                    onClick={() => onSelectTask(task.id)}
-                                                    className="p-1 hover:text-white text-white/40 transition-colors"
-                                                    title="View Detailed Report"
-                                                >
-                                                    <FileText size={14} />
-                                                </button>
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={(e: React.MouseEvent) => {
+                                                            e.stopPropagation();
+                                                            voodooApi.downloadSample(task.id, task.original_filename || task.filename);
+                                                        }}
+                                                        className="p-1.5 hover:bg-voodoo-toxic-green/20 hover:text-voodoo-toxic-green text-white/40 border border-transparent hover:border-voodoo-toxic-green/30 rounded transition-all"
+                                                        title="Download Sample"
+                                                    >
+                                                        <Download size={14} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e: React.MouseEvent) => {
+                                                            e.stopPropagation();
+                                                            onSelectTask(task.id);
+                                                        }}
+                                                        className="p-1.5 hover:bg-voodoo-purple/20 hover:text-voodoo-purple text-white/40 border border-transparent hover:border-voodoo-purple/30 rounded transition-all"
+                                                        title="View Detailed Report"
+                                                    >
+                                                        <FileText size={14} />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
@@ -329,7 +348,8 @@ function VmCrateItem({ vm, onSelect, onLaunchNativeSpice, onOpenSubmission }: {
     vm: ViewModel,
     onSelect: (node: string, vmid: number, mode: 'vnc' | 'spice-html5') => void,
     onLaunchNativeSpice: (node: string, vmid: number) => void,
-    onOpenSubmission: (vm?: { node: string, vmid: number }) => void
+    onOpenSubmission: (vm?: { node: string, vmid: number }) => void,
+    key?: any
 }) {
     return (
         <div className={`p-3 border transition-all group flex flex-col gap-2 ${vm.status === 'running'

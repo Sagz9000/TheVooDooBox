@@ -250,5 +250,20 @@ export const voodooApi = {
         const resp = await fetch(`${BASE_URL}/tasks/${taskId}/analyze`, { method: 'POST' });
         if (!resp.ok) throw new Error("Failed to trigger task analysis");
         return resp.json();
+    },
+
+    downloadSample: async (taskId: string, filename: string) => {
+        const resp = await fetch(`${BASE_URL}/tasks/${taskId}/sample`);
+        if (!resp.ok) throw new Error("Failed to download sample");
+
+        const blob = await resp.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        window.URL.revokeObjectURL(url);
+        document.body.removeChild(a);
     }
 };

@@ -23,6 +23,8 @@ import SpiceViewer from './SpiceViewer';
 import VncViewer from './VncViewer';
 import { AgentEvent, voodooApi, BASE_URL } from './voodooApi';
 import AIInsightPanel, { AIReport } from './AIInsightPanel';
+import ExecutionPanel from './ExecutionPanel';
+import AIAnalysisButton from './AIAnalysisButton';
 
 interface Props {
     target: { node: string, vmid: number, mode: 'vnc' | 'spice-html5' };
@@ -32,7 +34,7 @@ interface Props {
 
 export default function AnalysisArena({ target, events, onBack }: Props) {
     const [fullScreen, setFullScreen] = useState(false);
-    const [activeTab, setActiveTab] = useState<'telemetry' | 'intelligence'>('telemetry');
+    const [activeTab, setActiveTab] = useState<'telemetry' | 'intelligence' | 'execution'>('telemetry');
     const [aiReport, setAiReport] = useState<AIReport | null>(null);
     const [aiLoading, setAiLoading] = useState(false);
     const [screenshots, setScreenshots] = useState<string[]>([]);
@@ -242,6 +244,15 @@ export default function AnalysisArena({ target, events, onBack }: Props) {
                                 {activeTab === 'intelligence' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white"></div>}
                             </span>
                         </button>
+                        <button
+                            onClick={() => setActiveTab('execution')}
+                            className={`flex-1 py-3 text-[10px] font-extrabold uppercase tracking-widest transition-all relative ${activeTab === 'execution' ? 'text-brand-500' : 'text-security-muted'}`}
+                        >
+                            <span className="flex items-center justify-center gap-2">
+                                <Zap size={12} /> Control
+                                {activeTab === 'execution' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-500"></div>}
+                            </span>
+                        </button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar bg-security-bg/10">
@@ -282,6 +293,30 @@ export default function AnalysisArena({ target, events, onBack }: Props) {
                                 loading={aiLoading}
                                 onAnalyze={handleAIAnalysis}
                             />
+                        ) : activeTab === 'intelligence' ? (
+                        <div className="space-y-6">
+                            <AIAnalysisButton
+                                processes={Array.from(new Set(events.map(e => e.process_id)))
+                                    .map(pid => {
+                                        const evt = events.find(e => e.process_id === pid);
+                                        return {
+                                            pid: pid,
+                                            parent_pid: evt?.parent_process_id || 0,
+                                            name: evt?.process_name || 'unknown',
+                                            status: 'active',
+                                            behaviors: events.filter(e => e.process_id === pid).map(e => e.event_type)
+                                        };
+                                    })}
+                                events={events}
+                            />
+                            <AIInsightPanel
+                                report={aiReport}
+                                loading={aiLoading}
+                                onAnalyze={handleAIAnalysis}
+                            />
+                        </div>
+                        ) : (
+                        <ExecutionPanel />
                         )}
                     </div>
 

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Brain, Sparkles, AlertTriangle, CheckCircle, Loader2, TrendingUp } from 'lucide-react';
-import { voodooApi } from './voodooApi';
+import { voodooApi, BASE_URL } from './voodooApi';
 
 interface AIAnalysisProps {
     processes: Array<{
