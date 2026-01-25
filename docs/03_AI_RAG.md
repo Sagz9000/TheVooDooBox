@@ -176,7 +176,7 @@ TheVooDooBox is specifically tuned for **self-hosted local inference** using Oll
 
 ### 1. Context Window Stewardship
 Local 14B models can struggle with massive log dumps. We preserve context accuracy by:
-*   **Process Lineage Tracing**: Instead of sending all 10,000+ driver events, we build a transitive closure of "Malware descendants." 
+*   **Patient Zero Filtering**: We identify the submitted binary and trace its descendants, effectively ignoring background OS chatter. 
 *   **High-Value Event Filtering**: We aggressively filter for critical Sysmon Event IDs (1: Process Create, 3: Network, 8: RemoteThread, 11: FileCreate), reducing noise by up to 95%.
 *   **Deduplication**: Repeated events (like constant registry polling) are rolled up into single entries with hit counts.
 

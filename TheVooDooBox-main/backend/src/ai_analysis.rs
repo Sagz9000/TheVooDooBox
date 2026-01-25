@@ -1,4 +1,4 @@
-use sqlx::{Pool, Postgres};
+use sqlx::{Pool, Postgres, Row};
 use std::env;
 use std::collections::HashMap;
 use chrono::Utc;
@@ -130,15 +130,15 @@ pub struct DecompiledFunction {
     pub pseudocode: String,
 }
 
-// --- Structured Analysis Context for LLM ---
-// Canonical Definition with Static Analysis
 #[derive(Serialize, Debug)]
 pub struct AnalysisContext {
     pub scan_id: String,
     pub generated_at: String,
     pub critical_alerts: Vec<CriticalAlert>,
     pub processes: Vec<ProcessSummary>,
-    pub static_analysis: StaticAnalysisData, 
+    pub static_analysis: StaticAnalysisData,
+    pub target_filename: String,
+    pub patient_zero_pid: String,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -205,7 +205,14 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://ollama:11434".to_string());
     let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5-coder:14b".to_string());
 
-    // 1. Fetch Raw Telemetry (Dynamic)
+    // 1. Fetch Task Info (Target Filename)
+    let task_row = sqlx::query("SELECT original_filename FROM tasks WHERE id = $1")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await?;
+    let target_filename: String = task_row.get(0);
+
+    // 2. Fetch Raw Telemetry (Dynamic)
     let rows = sqlx::query_as::<_, RawEvent>(
         "SELECT event_type, process_id, parent_process_id, process_name, details, timestamp 
          FROM events WHERE task_id = $1 ORDER BY timestamp ASC"
@@ -218,10 +225,10 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
         return Ok(());
     }
 
-    // 2. Aggregate Dynamic Data
-    let mut context = aggregate_telemetry(task_id, rows);
+    // 3. Aggregate Dynamic Data
+    let mut context = aggregate_telemetry(task_id, rows, &target_filename);
     
-    // 3. Fetch Static Data (Ghidra)
+    // 4. Fetch Static Data (Ghidra)
     context.static_analysis = fetch_ghidra_analysis(task_id, pool).await;
 
     // 4. Construct Hybrid Prompt
@@ -242,6 +249,11 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let prompt = format!(
         r#"You are an Elite Threat Hunter & Malware Analyst (Automated Forensic Engine).
 Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
+
+### TARGET PROFILE (FOCUS ANALYSIS HERE)
+- **Submitted File:** "{filename}"
+- **Assigned PID (Patient Zero):** "{root_pid}"
+- **Instruction:** You must center your timeline and narrative around the execution of PID {root_pid}. Any activity not stemming from this PID or its children (descendants) is likely background noise and should be ignored unless it involves direct interaction with the target process.
 
 ### DATA SOURCE PROTOCOL (CRITICAL)
 1. **Dynamic Events (Sysmon):**
@@ -266,6 +278,11 @@ Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
 ### TIMELINE FORMATTING RULES
 - If a PID is "1234", "0", or random, REPLACE IT with "STATIC_ANALYSIS".
 - Do not mix sources without labeling them.
+
+### SCOPE OF ANALYSIS
+1. **Root Cause Analysis:** Your narrative MUST begin with the execution of the Submitted File (Patient Zero).
+2. **Relevancy Filter:** Ignore standard Windows background noise unless it is directly interacted with by the Patient Zero PID (e.g., injection into svchost).
+3. **Verdict Criteria:** If the Patient Zero PID does nothing but exit immediately, the verdict is "Benign" or "Crashed". Do not blame the OS for the malware's failure.
 
 ### SAFETY CONSTRAINTS:
 {safety_check}
@@ -324,7 +341,9 @@ Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
         "command_lines": []
     }}
 }}
-"#, 
+"# , 
+        filename = context.target_filename,
+        root_pid = context.patient_zero_pid,
         pid_list = pid_list_str,
         safety_check = forced_benign_instruction,
         sysmon = sysmon_json,
@@ -473,51 +492,47 @@ Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
 }
 
 // Helper to identify the relevant process tree (submission + children)
-fn build_process_lineage(events: &[RawEvent]) -> std::collections::HashSet<i32> {
+fn build_process_lineage(events: &[RawEvent], target_filename: &str) -> (std::collections::HashSet<i32>, i32) {
     let mut relevant_pids = std::collections::HashSet::new();
     let mut parent_map: HashMap<i32, i32> = HashMap::new();
-    
-    // 1. Build Parent-Child Map & Find "Patient Zero"
-    // Heuristic: The earliest timestamp usually indicates start of analysis, 
-    // but in a multi-process environment, we look for the first EXECUTION/PROCESS_CREATE 
-    // that isn't a known system service.
-    // Better Heuristic: Look for process names matching the Task ID's original filename?
-    // Current Simpler Heuristic: The first non-noise PID to perform an action.
     
     for evt in events {
         parent_map.insert(evt.process_id, evt.parent_process_id);
     }
 
-    // Identify candidate root PIDs (not in noise list)
-    let candidate_roots: Vec<i32> = events.iter()
-        .filter(|e| !NOISE_PROCESSES.iter().any(|np| e.process_name.eq_ignore_ascii_case(np)))
-        .map(|e| e.process_id)
-        .collect();
+    // Identify Patient Zero: First PROCESS_CREATE matching filename
+    let patient_zero = events.iter()
+        .find(|e| e.event_type == "PROCESS_CREATE" && e.process_name.to_lowercase().ends_with(&target_filename.to_lowercase()));
         
-    if candidate_roots.is_empty() {
-        return relevant_pids; // No interesting processes found
-    }
-    
-    // Pick the first one seen as the root (Patient Zero)
-    // In a real sandbox, the agent reports the "submission_pid", but we derive it here.
-    let root_pid = candidate_roots[0];
-    relevant_pids.insert(root_pid);
-    
-    // 2. Transitive Closure: Find all descendants
-    let mut changed = true;
-    while changed {
-        changed = false;
-        // Find any PID whose Parent is in relevant_pids
-        for (child, parent) in &parent_map {
-            if !relevant_pids.contains(child) && relevant_pids.contains(parent) {
-                relevant_pids.insert(*child);
-                changed = true;
+    let root_pid = if let Some(pz) = patient_zero {
+        pz.process_id
+    } else {
+        // Fallback: If no direct match, find the first non-noise PID
+        events.iter()
+            .filter(|e| !NOISE_PROCESSES.iter().any(|np| e.process_name.eq_ignore_ascii_case(np)))
+            .map(|e| e.process_id)
+            .next()
+            .unwrap_or(0)
+    };
+        
+    if root_pid != 0 {
+        relevant_pids.insert(root_pid);
+        
+        // 2. Transitive Closure: Find all descendants
+        let mut changed = true;
+        while changed {
+            changed = false;
+            for (child, parent) in &parent_map {
+                if !relevant_pids.contains(child) && relevant_pids.contains(parent) {
+                    relevant_pids.insert(*child);
+                    changed = true;
+                }
             }
         }
     }
     
-    println!("[AI] Lineage Trace: Root PID {} -> Found {} descendant processes", root_pid, relevant_pids.len());
-    relevant_pids
+    println!("[AI] Patient Zero Identified: {} (PID: {}). Total lineage: {} processes.", target_filename, root_pid, relevant_pids.len());
+    (relevant_pids, root_pid)
 }
 
 const NOISE_PROCESSES: &[&str] = &[
@@ -540,11 +555,11 @@ const NOISE_PROCESSES: &[&str] = &[
     "ctfmon.exe",
 ];
 
-fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>) -> AnalysisContext {
+fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filename: &str) -> AnalysisContext {
     let mut process_map: HashMap<i32, ProcessSummary> = HashMap::new();
     let mut critical_alerts: Vec<CriticalAlert> = Vec::new();
 
-    let relevant_pids = build_process_lineage(&raw_events);
+    let (relevant_pids, root_pid) = build_process_lineage(&raw_events, target_filename);
 
     for evt in &raw_events {
         let is_critical = matches!(evt.event_type.as_str(), "MEMORY_ANOMALY" | "PROCESS_TAMPER" | "REMOTE_THREAD");
@@ -653,5 +668,7 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>) -> AnalysisC
             imported_dlls: vec![],
             strings: vec![],
         },
+        target_filename: target_filename.to_string(),
+        patient_zero_pid: root_pid.to_string(),
     }
 }

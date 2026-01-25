@@ -1450,6 +1450,11 @@ Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
 - If a PID is \"1234\", \"0\", or random, REPLACE IT with \"STATIC_ANALYSIS\".
 - Do not mix sources without labeling them.
 
+### SCOPE OF ANALYSIS
+1. **Root Cause Analysis:** Your narrative MUST begin with the execution of the primary suspicious process (Patient Zero).
+2. **Relevancy Filter:** Ignore standard Windows background noise unless it is directly interacted with by the malware (e.g., injection into svchost).
+3. **Verdict Criteria:** If the target process does nothing but exit immediately, the verdict is \"Benign\" or \"Crashed\". Do not blame the OS for the malware's failure.
+
 ### EFFICIENCY RULES (SPEED OPTIMIZATION)
 1. **CONCISE THINKING:** Do not over-analyze benign events. Focus ONLY on the suspicious chain.
 2. **Thinking Budget:** Limit your reasoning to the most critical findings. Be fast.
@@ -1585,6 +1590,11 @@ Assume the provided telemetry represents malicious activity. Your goal is to ide
    - If citing a Ghidra finding, you **MUST NOT** assign it a Sysmon PID.
    - **REQUIRED PID FORMAT:** Set the PID to \"STATIC_ANALYSIS\".
    - **REQUIRED DISCLAIMER:** You must append: \" *[Disclaimer: Feature identified in static code analysis; execution not observed in telemetry.]*\"
+
+### SCOPE OF ANALYSIS
+1. **Root Cause Analysis:** Your narrative MUST begin with the execution of the primary suspicious process (Patient Zero).
+2. **Relevancy Filter:** Ignore standard Windows background noise unless it is directly interacted with by the target process.
+3. **Verdict Criteria:** If the target process does nothing but exit immediately, the verdict is \"Benign\" or \"Crashed\".
 
 <EVIDENCE>
 {}

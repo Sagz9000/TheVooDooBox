@@ -188,8 +188,8 @@ export default function LabDashboard({ vms, onRefresh, onSelectVm, onLaunchNativ
                                                         {task.original_filename || task.filename}
                                                     </span>
                                                 </div>
-                                                <div className="text-[9px] text-white/30 truncate max-w-[150px]">
-                                                    {task.file_hash ? `SHA: ${task.file_hash.substring(0, 8)}...` : `ID: ${task.id}`}
+                                                <div className="text-[9px] text-white/30 break-all">
+                                                    {task.file_hash ? `SHA: ${task.file_hash}` : `ID: ${task.id}`}
                                                 </div>
                                             </td>
                                             <td className="p-3">

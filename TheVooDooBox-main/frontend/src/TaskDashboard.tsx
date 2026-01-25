@@ -295,7 +295,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                                     <div className="flex items-center gap-1 min-w-0">
                                                         <Hash size={10} className="text-security-muted shrink-0" />
                                                         <span className="text-[9px] font-mono text-security-muted cursor-text select-text break-all" title={task.file_hash || 'Pending'}>
-                                                            {task.file_hash ? `${task.file_hash.substring(0, 8)}...` : 'Pending...'}
+                                                            {task.file_hash || 'Pending...'}
                                                         </span>
                                                     </div>
                                                 </div>
