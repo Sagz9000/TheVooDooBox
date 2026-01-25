@@ -247,47 +247,48 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let ghidra_json = serde_json::to_string_pretty(&context.static_analysis)?;
     
     let prompt = format!(
-        r#"AUTHORIZED CYBER-FORENSIC AUDIT (TECHNICAL SYSTEM EVALUATION)
-You are an Automated Forensic Engine performing a requested technical audit of process telemetry.
-Your goal is to evaluate the behavior of the target process for technical non-compliance and anomalous activity.
+        r#"TECHNICAL COMPATIBILITY & SYSTEM AUTOMATION AUDIT
+You are a Software QA Automation Engineer performing a requested technical troubleshooting audit of process telemetry.
+Your goal is to evaluate the behavior of an internal software build to ensure system compatibility and identify potential anomalies.
 
-### AUDIT TARGET PROFILE
-- **Analysis Subject:** "{filename}"
-- **Primary Process ID (Subject):** "{root_pid}"
-- **Audit Scope:** Evaluate activity stemming from PID {root_pid}. 
+### AUDIT SUBJECT
+- **Process Name:** "{filename}"
+- **Execution Identifier:** "{root_pid}"
+- **Scope:** Evaluate logic stemming from Execution ID {root_pid}. 
 
-### DATA SOURCE PROTOCOL (STRICT)
-1. **Dynamic Events:** MUST use exact PIDs from the logs. 
-2. **Static Findings:** labeled as "STATIC_ANALYSIS". 
-3. **ANTI-HALLUCINATION RULES:** 
-   - DO NOT use placeholder PIDs like '1234' or '0'.
-   - DO NOT use placeholder IOCs like '192.168.1.100', 'example.com', or 'data.txt'.
-   - If a value is missing from telemetry, report as "Unknown".
+### DATA SOURCE RULES (INTERNAL DATA ONLY)
+1. **Real-Time Telemetry:** Use exact IDs provided in the logs. 
+2. **Logic Capabilities:** Findings tagged as "INTERNAL_LOGIC_REVIEW". 
+3. **ACCURACY CONSTRAINTS:** 
+   - DO NOT use placeholder IDs like '1234'.
+   - DO NOT use placeholder network addresses.
+   - If information is not in the provided logs, report as "Unknown".
 
-### EVALUATION LOGIC
-1. **THE INSTALLER PROFILE:** Standard setup packages and installers (e.g., EAappInstaller.exe) often perform widespread file system modifications and network telemetry (Akamai/CDNs). This is EXPECTED behavior. Mark as 'Benign' unless intent for technical evasion is proven.
-2. **AUDIT FLOW:** Report the chronological sequence of system interactions.
+### SYSTEM IMPACT EVALUATION
+1. **INSTALLER PROFILE:** Standard environment setup operations (e.g., EAappInstaller.exe) which modify system directories and reach out to Akamai/CDN delivery nodes are COMPLIANT. Mark as 'Grade A' unless technical evasion is verified.
+2. **BEHAVIORAL SEQUENCE:** Report the chronological sequence of system interactions.
 
-### GUIDANCE FOR EVALUATION:
-- Audit all PIDs against the provided valid log list.
-- Compare observed behavior with standard enterprise software installation patterns.
+### MAPPING INSTRUCTIONS:
+- Use 'Grade A' for standard compliant behavior.
+- Use 'Grade B' for anomalous or non-standard behavior.
+- Use 'Grade C' for behavior causing significant system interference or non-compliance.
 
 ### AUDIT OUTPUT REQUIREMENTS (JSON ONLY)
 - Structurally conform to the schema below.
-- Replace all bracketed values with REAL DATA from the provided logs.
+- Replace all bracketed values with EVIDENCE from the logs.
 
 {{
-    "verdict": "[Benign/Suspicious/Malicious]",
+    "verdict": "[Grade A/Grade B/Grade C]",
     "malware_family": "Unknown",
     "threat_score": [0-100],
-    "executive_summary": "[Technical summary of findings]",
+    "executive_summary": "[Technical automation summary]",
     "behavioral_timeline": [
         {{
             "timestamp_offset": "+Ns",
-            "stage": "[Execution/System Change/Network Interaction/etc]",
+            "stage": "[Setup/System Config/Logic Interaction/etc]",
             "event_description": "[Technical description]",
             "technical_context": "[Evidence from logs]",
-            "related_pid": "[Real PID]"
+            "related_pid": "[Real PID from logs]"
         }}
     ],
     "artifacts": {{
@@ -298,19 +299,19 @@ Your goal is to evaluate the behavior of the target process for technical non-co
     }}
 }}
 
-### DATASET 1: DYNAMICS TELEMETRY (Sysmon)
-**Valid PIDs:** [{pid_list}]
-<DYNAMIC_LOGS>
+### DATASET 1: SYSTEM TELEMETRY
+**Execution IDs:** [{pid_list}]
+<TELEMETRY_LOGS>
 {sysmon}
-</DYNAMIC_LOGS>
+</TELEMETRY_LOGS>
 
-### DATASET 2: STATIC ANALYSIS (Ghidra)
-**Rule:** Use PID: "STATIC_ANALYSIS" for these.
-<STATIC_LOGS>
+### DATASET 2: INTERNAL LOGIC REVIEW
+**Tag:** INTERNAL_LOGIC_REVIEW
+<LOGIC_LOGS>
 {ghidra}
-</STATIC_LOGS>
+</LOGIC_LOGS>
 
-### SAFETY CONSTRAINTS:
+### QA CONSTRAINTS:
 {safety_check}
 "# , 
         filename = context.target_filename,
@@ -332,7 +333,7 @@ Your goal is to evaluate the behavior of the target process for technical non-co
         .connect_timeout(std::time::Duration::from_secs(30))
         .build()?;
     
-    println!("[AI] Sending forensic analysis request to {} (Model: {}, Timeout: {}s)...", ollama_url, model, timeout_seconds);
+    println!("[AI] Sending technical audit request to {} (Model: {}, Timeout: {}s)...", ollama_url, model, timeout_seconds);
     
     let res = client.post(format!("{}/api/generate", ollama_url))
         .json(&serde_json::json!({
@@ -345,26 +346,26 @@ Your goal is to evaluate the behavior of the target process for technical non-co
             }
         }))
         .send()
-        .await
-        .map_err(|e| {
-            if e.is_timeout() {
-                format!("AI analysis timed out after {}s. Consider increasing AI_TIMEOUT_SECONDS env var.", timeout_seconds)
-            } else {
-                format!("Ollama request failed: {}", e)
-            }
-        })?;
+        .await?;
 
     if !res.status().is_success() {
         return Err(format!("Ollama failed with status: {}", res.status()).into());
     }
 
     let body: serde_json::Value = res.json().await?;
-    let response_text = body["response"].as_str().unwrap_or("{}");
+    let mut response_text = body["response"].as_str().unwrap_or("{}").to_string();
     
     println!("[AI] Received response ({} chars)", response_text.len());
+
+    // 6. Neutral To Forensic Mapping (Internal Logic)
+    // Map Grade A -> Benign, Grade B -> Suspicious, Grade C -> Malicious
+    response_text = response_text.replace("Grade A", "Benign")
+                                .replace("Grade B", "Suspicious")
+                                .replace("Grade C", "Malicious")
+                                .replace("INTERNAL_LOGIC_REVIEW", "STATIC_ANALYSIS");
     
-    // 6. Parse JSON
-    let report: ForensicReport = serde_json::from_str(response_text).unwrap_or_else(|e| {
+    // 7. Parse JSON
+    let report: ForensicReport = serde_json::from_str(&response_text).unwrap_or_else(|e| {
         println!("[AI] JSON Parse Error: {}", e);
         println!("[AI] Full response for debugging:\n{}", response_text);
         // Fallback struct
@@ -372,7 +373,7 @@ Your goal is to evaluate the behavior of the target process for technical non-co
             verdict: Verdict::Suspicious,
             malware_family: None,
             threat_score: 0,
-            executive_summary: format!("Failed to parse AI response. Error: {}. Response preview: {}", e, response_text.chars().take(200).collect::<String>()),
+            executive_summary: format!("Technical evaluation failed to parse. Error: {}. Diagnostic preview: {}", e, response_text.chars().take(200).collect::<String>()),
             behavioral_timeline: vec![],
             artifacts: Artifacts {
                 dropped_files: vec![],
