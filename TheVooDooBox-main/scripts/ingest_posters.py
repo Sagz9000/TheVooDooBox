@@ -4,6 +4,44 @@ import pypdf
 import chromadb
 from chromadb.config import Settings
 import requests
+import time
+
+REPO_URL = "https://api.github.com/repos/deepanshusood/SANS-Posters/contents/"
+
+def download_posters(posters_dir):
+    print(f"Checking for updates from {REPO_URL}...")
+    try:
+        response = requests.get(REPO_URL)
+        response.raise_for_status()
+        files = response.json()
+        
+        pdf_files = [f for f in files if f['type'] == 'file' and f['name'].lower().endswith('.pdf')]
+        print(f"Found {len(pdf_files)} posters in repository.")
+        
+        download_count = 0
+        for i, file_info in enumerate(pdf_files):
+            filename = file_info['name']
+            dest_path = os.path.join(posters_dir, filename)
+            
+            if not os.path.exists(dest_path):
+                print(f"  [{i+1}/{len(pdf_files)}] Downloading {filename}...")
+                file_res = requests.get(file_info['download_url'], stream=True)
+                file_res.raise_for_status()
+                with open(dest_path, 'wb') as f:
+                    for chunk in file_res.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                download_count += 1
+            else:
+                pass # Already exists
+        
+        if download_count > 0:
+            print(f"Downloaded {download_count} new posters.")
+        else:
+            print("All posters are up to date.")
+            
+    except Exception as e:
+        print(f"Warning: Failed to download posters from GitHub: {e}")
+        print("Proceeding with locally available files.")
 
 def ingest_pdfs():
     # Get the directory where the script is located
@@ -24,9 +62,11 @@ def ingest_pdfs():
         return
 
     if not os.path.exists(posters_dir):
-        print(f"Error: Directory '{posters_dir}' not found.")
-        print("Please create the 'sans_posters' directory at the project root and place your PDFs there.")
-        return
+        print(f"Creating directory: {posters_dir}")
+        os.makedirs(posters_dir, exist_ok=True)
+
+    # Automatically download from GitHub
+    download_posters(posters_dir)
 
     pdf_files = [f for f in os.listdir(posters_dir) if f.lower().endswith('.pdf')]
     if not pdf_files:
