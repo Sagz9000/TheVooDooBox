@@ -19,4 +19,5 @@ backend/uploads/
 backend/screenshots/
 ghidra/projects/
 chroma_data/
-sans_posters/
+sans_posters/*
+!sans_posters/README.md

@@ -23,7 +23,17 @@ def ingest_pdfs():
         print(f"Error getting/creating collection: {e}")
         return
 
+    if not os.path.exists(posters_dir):
+        print(f"Error: Directory '{posters_dir}' not found.")
+        print("Please create the 'sans_posters' directory at the project root and place your PDFs there.")
+        return
+
     pdf_files = [f for f in os.listdir(posters_dir) if f.lower().endswith('.pdf')]
+    if not pdf_files:
+        print(f"No PDF files found in {posters_dir}")
+        print("Please place your SANS Posters (PDFs) in the 'sans_posters' directory.")
+        return
+        
     print(f"Found {len(pdf_files)} PDF files.")
 
     for i, filename in enumerate(pdf_files):
