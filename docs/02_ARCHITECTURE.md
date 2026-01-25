@@ -87,10 +87,16 @@ TheVooDooBox supports two primary communication channels between the Guest Agent
 ### `tasks` Table
 | Column | Type | Description |
 |--------|------|-------------|
-| `id` | UUID | Primary Key |
-| `status` | VARCHAR | `pending`, `running`, `completed` |
-| `verdict` | VARCHAR | `malicious`, `suspicious`, `benign` |
+| `id` | UUID | Primary Key (also used as Task ID) |
+| `filename` | VARCHAR | Tracked filename (or URL display) |
+| `original_filename`| VARCHAR | Original submitted filename |
+| `file_hash` | VARCHAR | Full SHA256 of the sample |
+| `status` | VARCHAR | e.g., `Queued`, `Running`, `Analysis Complete` |
+| `verdict` | VARCHAR | `Malicious`, `Suspicious`, `Benign` |
 | `risk_score` | INT | 0-100 |
+| `sandbox_id` | TEXT | Linked VM Name and ID (e.g., `Win10-01 [101]`) |
+| `ghidra_status` | VARCHAR | Status of the background static analysis job |
+| `verdict_manual` | BOOLEAN | Indicates if the AI verdict was overridden |
 
 ### `analysis_reports` Table
 Stores the final output of the AI Analyst.

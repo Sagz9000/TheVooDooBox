@@ -56,5 +56,7 @@ The sandboxes are resilient. If you prefer to work entirely outside the VoodooBo
 *   **FlareVM Powered**: Pre-standardized with the most powerful open-source forensic toolsets.
 *   **Live Interaction**: Full mouse and keyboard control over the guest VM.
 *   **Agentic AI Analysis (Paranoid Mode)**: Features a dual-mode "Detective vs Clerk" AI core. It extracts exact process data (using the **PID Menu** technique) while maintaining a paranoid behavioral bias to catch living-off-the-land (LOLBin) attacks.
-*   **Performance-Optimized Context**: Implements aggressive Rust-side noise filtering (95% reduction in log volume) to enable sub-60s analysis even with high-parameter 14B/32B models.
+*   **Performance-Optimized Context**: Implements aggressive Rust-side noise filtering (95% reduction in log volume) including **Patient Zero Lineage Tracing** to enable sub-60s analysis even with high-parameter 14B/32B models.
+*   **Sandbox Identity Tracking**: Every analysis task is labeled with the specific Proxmox VM Name/ID, ensuring researchers have machine-level traceability.
+*   **Full Forensic Visibility**: Hashes and file metadata are displayed without truncation, allowing for seamless cross-referencing with external threat intelligence APIs.
 *   **Ghidra-Powered RAG**: Static decompilation patterns are automatically cross-referenced with dynamic behavior using a local Vector Database (ChromaDB) and SANS-quality forensic templates.

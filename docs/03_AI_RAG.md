@@ -192,6 +192,17 @@ The prompts were engineered to exploit the specific strengths of the Qwen-Coder 
 *   **Extended Timeouts**: Default timeouts are set to 600-1200 seconds (`AI_TIMEOUT_SECONDS`) to accommodate 14B inference on mid-range GPUs.
 *   **Vector DB Grounding**: We use a local **ChromaDB** to query MITRE ATT&CK techniques, providing the model with a "second-brain" knowledge base that bypasses its internal cutoff limits.
 
+### 4. Scope of Analysis Rules
+To ensure the AI produces actionable forensic reports, we enforce three core scope rules:
+1.  **Root Cause Analysis**: The narrative MUST begin with the execution of the primary suspicious process (Patient Zero).
+2.  **Relevancy Filter**: Ignore standard Windows background noise unless it is directly interacted with by the target process (e.g., process injection).
+3.  **Verdict Criteria**: If the target process crashes or exits immediately without behavior, it is marked "Benign/Crashed".
+
+### 5. UI Refinement: Full Data Visibility
+To support high-fidelity forensic verification, the UI displays:
+*   **Full SHA256 Hash**: We display the complete hash on the tasks page, ensuring researchers can cross-reference samples with external databases like VirusTotal without truncation.
+*   **Sandbox Identity Tracking**: Every task records and displays the specific machine identity (e.g., `Win10-Sandbox-01 [101]`) it was executed on, providing hardware-level traceability.
+
 ## ⚠️ Known Limitations
 
 While `qwen2.5-coder:14b` is a highly capable local model, users should be aware of the following:
