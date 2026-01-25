@@ -1,30 +1,7 @@
 import React, { useState } from 'react';
 import { Brain, ShieldAlert, Clock, FileText, Globe, Terminal, Sparkles, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 
-// Forensic Report Structure (matches backend ForensicReport)
-export interface ForensicReport {
-    verdict: 'Benign' | 'Suspicious' | 'Malicious';
-    malware_family: string | null;
-    threat_score: number;
-    executive_summary: string;
-    behavioral_timeline: TimelineEvent[];
-    artifacts: Artifacts;
-}
-
-export interface TimelineEvent {
-    timestamp_offset: string;
-    stage: string;
-    event_description: string;
-    technical_context: string;
-    related_pid: number;
-}
-
-export interface Artifacts {
-    dropped_files: string[];
-    c2_domains: string[];
-    mutual_exclusions: string[];
-    command_lines: string[];
-}
+import { ForensicReport, TimelineEvent, Artifacts } from './voodooApi';
 
 interface AIInsightPanelProps {
     report: ForensicReport | null;

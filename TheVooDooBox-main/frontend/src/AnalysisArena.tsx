@@ -21,10 +21,9 @@ import {
 } from 'lucide-react';
 import SpiceViewer from './SpiceViewer';
 import VncViewer from './VncViewer';
-import { AgentEvent, voodooApi, BASE_URL } from './voodooApi';
-import AIInsightPanel, { ForensicReport } from './AIInsightPanel';
+import { AgentEvent, voodooApi, BASE_URL, ForensicReport } from './voodooApi';
+import AIInsightPanel from './AIInsightPanel';
 import ExecutionPanel from './ExecutionPanel';
-import AIAnalysisButton from './AIAnalysisButton';
 
 interface Props {
     target: { node: string, vmid: number, mode: 'vnc' | 'spice-html5' };
@@ -289,24 +288,11 @@ export default function AnalysisArena({ target, events, onBack }: Props) {
                             )
                         ) : activeTab === 'intelligence' ? (
                             <div className="space-y-6">
-                                <AIAnalysisButton
-                                    processes={Array.from(new Set(events.map(e => e.process_id)))
-                                        .map(pid => {
-                                            const evt = events.find(e => e.process_id === pid);
-                                            return {
-                                                pid: pid,
-                                                parent_pid: evt?.parent_process_id || 0,
-                                                name: evt?.process_name || 'unknown',
-                                                status: 'active',
-                                                behaviors: events.filter(e => e.process_id === pid).map(e => e.event_type)
-                                            };
-                                        })}
-                                    events={events}
-                                />
                                 <AIInsightPanel
                                     report={aiReport}
                                     loading={aiLoading}
                                     onAnalyze={handleAIAnalysis}
+                                    taskId={`QEMU-${target.vmid}`}
                                 />
                             </div>
                         ) : (

@@ -2061,6 +2061,7 @@ async fn init_db() -> Pool<Postgres> {
             suspicious_pids INTEGER[],
             mitre_tactics TEXT[],
             recommendations TEXT[],
+            forensic_report_json TEXT DEFAULT '{}',
             created_at BIGINT
         )"
     )
@@ -2069,6 +2070,9 @@ async fn init_db() -> Pool<Postgres> {
     .expect("Failed to create analysis_reports table");
 
     println!("[DATABASE] Analysis Reports table ready.");
+    
+    // Migration for forensic_report_json
+    let _ = sqlx::query("ALTER TABLE analysis_reports ADD COLUMN IF NOT EXISTS forensic_report_json TEXT DEFAULT '{}'").execute(&pool).await;
 
     pool
 }

@@ -4,8 +4,8 @@ import {
     Hash, Globe, Code2, Sparkles, Binary, ChevronRight,
     Loader2, ArrowLeft, Clock, Cpu, Disc, Download, FileText
 } from 'lucide-react';
-import { AgentEvent, voodooApi } from './voodooApi';
-import AIInsightPanel, { ForensicReport } from './AIInsightPanel';
+import { AgentEvent, voodooApi, ForensicReport } from './voodooApi';
+import AIInsightPanel from './AIInsightPanel';
 import ProcessTree, { Process } from './ProcessTree';
 
 interface Props {

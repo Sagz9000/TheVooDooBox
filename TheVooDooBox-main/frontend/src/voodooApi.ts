@@ -25,6 +25,30 @@ export interface GhidraFinding {
     severity: string;
 }
 
+export interface ForensicReport {
+    verdict: 'Benign' | 'Suspicious' | 'Malicious';
+    malware_family: string | null;
+    threat_score: number;
+    executive_summary: string;
+    behavioral_timeline: TimelineEvent[];
+    artifacts: Artifacts;
+}
+
+export interface TimelineEvent {
+    timestamp_offset: string;
+    stage: string;
+    event_description: string;
+    technical_context: string;
+    related_pid: number;
+}
+
+export interface Artifacts {
+    dropped_files: string[];
+    c2_domains: string[];
+    mutual_exclusions: string[];
+    command_lines: string[];
+}
+
 // Dynamically determine the base URL based on the current host
 // If accessed via localhost, use localhost:8080
 // If accessed via IP or domain, use the same host with port 8080
@@ -131,7 +155,7 @@ export const voodooApi = {
         return resp.ok;
     },
 
-    getAIAnalysis: async (events: AgentEvent[]) => {
+    getAIAnalysis: async (events: AgentEvent[]): Promise<ForensicReport> => {
         // Construct a simple process list from events for the analysis
         const processes = Array.from(new Set(events.map(e => e.process_id)))
             .map(pid => {
@@ -240,7 +264,7 @@ export const voodooApi = {
         document.body.removeChild(a);
     },
 
-    fetchAIReport: async (taskId: string) => {
+    fetchAIReport: async (taskId: string): Promise<ForensicReport | null> => {
         const resp = await fetch(`${BASE_URL}/tasks/${taskId}/ai-report`);
         if (!resp.ok) return null;
         return resp.json();
