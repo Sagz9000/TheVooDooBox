@@ -242,7 +242,29 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     // Specialist Swap: Use 'voodoo-analyst' (14B Reasoning) for heavy lifting
     let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "voodoo-analyst".to_string());
 
-    // 1. Fetch Task Info (Target Filename)
+    // 1. Wait for Ghidra analysis if it's currently running
+    println!("[AI] Checking Ghidra status for task {}...", task_id);
+    let mut ghidra_ready = false;
+    for i in 0..12 { // Wait up to 2 minutes (12 * 10s)
+        let status: String = sqlx::query_scalar("SELECT ghidra_status FROM tasks WHERE id = $1")
+            .bind(task_id)
+            .fetch_one(pool)
+            .await?;
+        
+        if status == "Analysis Complete" || status == "Failed" {
+            ghidra_ready = true;
+            break;
+        }
+        
+        println!("[AI] Ghidra analysis for {} still pending (attempt {}/12). Waiting...", task_id, i+1);
+        tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+    }
+    
+    if !ghidra_ready {
+        println!("[AI] Warning: Ghidra analysis timed out for task {}. Proceeding with partial data.", task_id);
+    }
+
+    // 2. Fetch Task Info (Target Filename)
     let task_row = sqlx::query("SELECT original_filename FROM tasks WHERE id = $1")
         .bind(task_id)
         .fetch_one(pool)
@@ -272,7 +294,17 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let mut context = aggregate_telemetry(task_id, rows, &target_filename, exclude_ips);
     
     // 4. Fetch Static Data (Ghidra)
-    context.static_analysis = fetch_ghidra_analysis(task_id, pool).await;
+    let mut static_data = fetch_ghidra_analysis(task_id, pool).await;
+    
+    // CAP context: Sort by significance (suspicious_tag != Analyzed) and limit to top 20 functions
+    static_data.functions.sort_by(|a, b| {
+        let a_is_suspicious = a.suspicious_tag != "Analyzed";
+        let b_is_suspicious = b.suspicious_tag != "Analyzed";
+        b_is_suspicious.cmp(&a_is_suspicious)
+    });
+    static_data.functions.truncate(20); // Limit to top 20 high-value functions to avoid context bloat/loops
+    
+    context.static_analysis = static_data;
 
     // 4. Construct Hybrid Prompt
     // Extract valid PIDs for the "Menu" technique
@@ -329,7 +361,7 @@ Your task is to classify raw telemetry logs and static code artifacts into a uni
     "verdict": "[Diagnostic Alpha/Diagnostic Beta/Diagnostic Gamma]",
     "malware_family": "Unknown",
     "threat_score": [0-100],
-    "executive_summary": "[Correlation focused summary citing static capabilities verify by dynamic events]",
+    "executive_summary": "Forensic audit summary. Cite BOTH static identifiers and dynamic PIDs.",
     "behavioral_timeline": [
         {{
             "timestamp_offset": "+Ns",
@@ -346,6 +378,15 @@ Your task is to classify raw telemetry logs and static code artifacts into a uni
         "command_lines": []
     }}
 }}
+
+### SCORING PROTOCOL (THREAT_SCORE WEIGHTS):
+- 0-30: Purely diagnostic/legitimate activity (Diagnostic Alpha).
+- 31-60: Suspicious but unconfirmed intent (Diagnostic Beta).
+- 61-100: Verified malicious intent or known-threat signatures (Diagnostic Gamma).
+  - (+20) Process Injection verified by memory anomaly.
+  - (+20) External C2 communication to non-standard ports.
+  - (+20) Persistence mechanism creation (Registry/Task).
+
 
 ### DATASET 1: SYSTEM TELEMETRY
 **Execution IDs:** [{pid_list}]
@@ -391,7 +432,9 @@ Your task is to classify raw telemetry logs and static code artifacts into a uni
             "stream": false,
             "format": "json",
             "options": {
-                "temperature": 0.05
+                "temperature": 0.2, // Increased slightly to prevent repetitive looping
+                "num_predict": 4096, // Ensure enough room for full audit
+                "top_p": 0.9
             }
         }))
         .send()

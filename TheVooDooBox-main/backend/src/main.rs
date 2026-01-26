@@ -1846,6 +1846,8 @@ async fn ghidra_ingest(
     println!("[GHIDRA] Ingesting {} functions for Task {}", batch.functions.len(), task_id);
     let now = Utc::now().timestamp_millis();
 
+    let mut tx = pool.get_ref().begin().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+
     for func in batch.functions {
         let res = sqlx::query(
             "INSERT INTO ghidra_findings (task_id, binary_name, function_name, entry_point, decompiled_code, assembly, timestamp)
@@ -1858,13 +1860,15 @@ async fn ghidra_ingest(
         .bind(&func.decompiled_code)
         .bind(&func.assembly)
         .bind(now)
-        .execute(pool.get_ref())
+        .execute(&mut *tx)
         .await;
         
         if let Err(e) = res {
              println!("[GHIDRA] Insert failed for {}: {}", func.function_name, e);
         }
     }
+
+    tx.commit().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
     if task_id != "unsorted" {
         println!("[GHIDRA] Marking task {} as Analysis Complete", task_id);
