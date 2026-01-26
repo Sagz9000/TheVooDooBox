@@ -1840,7 +1840,7 @@ pub struct GhidraFunction {
 async fn ghidra_ingest(
     req: web::Json<GhidraIngestBatch>,
     pool: web::Data<Pool<Postgres>>
-) -> impl Responder {
+) -> Result<HttpResponse, actix_web::Error> {
     let batch = req.into_inner();
     let task_id = batch.task_id.unwrap_or_else(|| "unsorted".to_string());
     println!("[GHIDRA] Ingesting {} functions for Task {}", batch.functions.len(), task_id);
@@ -1878,7 +1878,7 @@ async fn ghidra_ingest(
             .await;
     }
 
-    HttpResponse::Ok().json(serde_json::json!({ "status": "success" }))
+    Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "success" })))
 }
 
 #[get("/ghidra/scripts")]
