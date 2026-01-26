@@ -33,6 +33,7 @@ pub struct ProcessSummary {
     pub pid: i32,
     pub ppid: i32,
     pub image_name: String,
+    pub command_line: String,
     // Deduplicated activities
     pub file_activity: Vec<FileOp>,
     pub network_activity: Vec<NetworkOp>,
@@ -584,11 +585,11 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
             continue; 
         }
 
-        // Ensure process entry exists
         process_map.entry(evt.process_id).or_insert(ProcessSummary {
             pid: evt.process_id,
             ppid: evt.parent_process_id,
             image_name: evt.process_name.clone(),
+            command_line: "Unknown".to_string(), // Default
             file_activity: Vec::new(),
             network_activity: Vec::new(),
             registry_mods: Vec::new(),
@@ -598,6 +599,15 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
         let proc = process_map.get_mut(&evt.process_id).unwrap();
 
         match evt.event_type.as_str() {
+            "PROCESS_CREATE" => {
+               // Parse Command Line
+               // Format usually: "Process Created: c:\path\malware.exe Command Line: malware.exe -evil"
+               if let Some(pos) = evt.details.find("Command Line: ") {
+                   proc.command_line = evt.details[pos+14..].trim().to_string();
+               } else {
+                   proc.command_line = evt.details.clone();
+               }
+            },
             "NETWORK_CONNECT" | "NETWORK_DNS" => {
                 // Parse details: "SYSMON: TCP 192.168.1.5:5433 -> 142.250.1.1:443" OR "SYSMON: DNS: query -> result"
                 // Simplified fuzzy parsing for robustness
