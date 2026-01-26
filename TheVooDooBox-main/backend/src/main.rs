@@ -1268,13 +1268,27 @@ async fn chat_handler(
         manager.get_any_active_task_id().await
     };
     
+    // Fetch Task Filename if we have a Task ID
+    let mut target_filename = String::new();
+    if let Some(tid) = &target_task_id {
+         let row = sqlx::query("SELECT original_filename FROM tasks WHERE id = $1")
+             .bind(tid)
+             .fetch_optional(pool.get_ref())
+             .await
+             .unwrap_or(None);
+         if let Some(r) = row {
+             use sqlx::Row;
+             target_filename = r.get("original_filename");
+         }
+    }
+
     let telemetry_events = if let Some(tid) = &target_task_id {
+        // CHANGED: ASC order to capture start of execution, Limit increased to 2000
         sqlx::query_as::<_, RawAgentEvent>(
             "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
              FROM events 
              WHERE task_id = $1 
-             AND LOWER(process_name) NOT IN (SELECT value FROM (VALUES ('svchost.exe'), ('conhost.exe'), ('searchindexer.exe'), ('mallab-agent-windows.exe')))
-             ORDER BY timestamp DESC LIMIT 300"
+             ORDER BY timestamp ASC LIMIT 2000"
         )
         .bind(tid)
         .fetch_all(pool.get_ref())
@@ -1288,36 +1302,54 @@ async fn chat_handler(
     }
     .unwrap_or_default();
 
-    // Filter out noise processes (benign Windows processes and agent)
-    let noise_processes = vec![
-        "mallab-agent-windows.exe",
-        "svchost.exe",
-        "conhost.exe",
-        "explorer.exe",
-        "searchindexer.exe",
-        "wermgr.exe",
-        "audiodg.exe",
-        "lsass.exe",
-        "csrss.exe",
-        "winlogon.exe",
-        "services.exe",
-        "dwm.exe",
-        "spoolsv.exe",
-        "taskhostw.exe",
-        "runtimebroker.exe",
-        "sihost.exe",
-        "ctfmon.exe",
-        "smartscreen.exe",
-        "registry",
-        "system",
-        "smss.exe",
-        "discord.exe"
-    ];
-    
-    let filtered_events: Vec<_> = telemetry_events.iter()
-        .filter(|e| !noise_processes.iter().any(|np| e.process_name.to_lowercase() == *np))
-        .take(100)  // Limit to 100 relevant events after filtering
-        .collect();
+    // Patient Zero / Lineage Filtering
+    let filtered_events: Vec<&RawAgentEvent> = if target_task_id.is_some() && !target_filename.is_empty() {
+         let mut parent_map: std::collections::HashMap<i32, i32> = std::collections::HashMap::new();
+         for evt in &telemetry_events {
+             parent_map.insert(evt.process_id, evt.parent_process_id);
+         }
+
+         // Find Patient Zero: First PROCESS_CREATE matching filename
+         let patient_zero = telemetry_events.iter()
+            .find(|e| e.event_type == "PROCESS_CREATE" && e.process_name.to_lowercase().ends_with(&target_filename.to_lowercase()));
+         
+         let root_pid = if let Some(pz) = patient_zero {
+             pz.process_id
+         } else {
+             // Fallback: If no direct match, find the first non-noise PID
+             telemetry_events.iter()
+                .filter(|e| !NOISE_PROCESSES.iter().any(|np| e.process_name.to_lowercase().contains(np)))
+                .map(|e| e.process_id)
+                .next()
+                .unwrap_or(0)
+         };
+
+         let mut relevant_pids = std::collections::HashSet::new();
+         if root_pid != 0 {
+             relevant_pids.insert(root_pid);
+             let mut changed = true;
+             while changed {
+                 changed = false;
+                 for (child, parent) in &parent_map {
+                     if !relevant_pids.contains(child) && relevant_pids.contains(parent) {
+                         relevant_pids.insert(*child);
+                         changed = true;
+                     }
+                 }
+             }
+         }
+
+         // Filter events by lineage
+         telemetry_events.iter()
+            .filter(|e| relevant_pids.contains(&e.process_id) || relevant_pids.contains(&e.parent_process_id))
+            .collect()
+    } else {
+        // Global / No Task Fallback: Use standard noise filtering
+        telemetry_events.iter()
+            .filter(|e| !NOISE_PROCESSES.iter().any(|np| e.process_name.to_lowercase().contains(np)))
+            .take(100)
+            .collect()
+    };
 
     // Fetch Ghidra findings for the target task
     let ghidra_findings: Vec<GhidraFunction> = if let Some(tid) = &target_task_id {

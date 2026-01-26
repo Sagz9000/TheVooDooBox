@@ -260,9 +260,16 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let ghidra_json = serde_json::to_string_pretty(&context.static_analysis)?;
     
     let prompt = format!(
-        r#"TECHNICAL COMPATIBILITY & SYSTEM AUTOMATION AUDIT
-You are a Software QA Automation Engineer performing a requested technical troubleshooting audit of process telemetry.
-Your goal is to evaluate the behavior of an internal software build to ensure system compatibility and identify potential anomalies.
+        r#"TECHNICAL FORENSIC AUDIT
+You are a Senior Digital Forensics Data Engineer.
+Your goal is to parse raw telemetry into a structured JSON Threat Report.
+
+**CORE DIRECTIVE:**
+1. Analyze the telemetry for MALICIOUS BEHAVIOR (Persistence, Injection, Exfiltration).
+2. If the software behaves "perfectly" but does something dangerous (like modifying the registry), flag it as MALICIOUS.
+
+**STRICT COMPLIANCE:**
+You MUST output the EXACT JSON schema below.
 
 ### AUDIT SUBJECT
 - **Process Name:** "{filename}"

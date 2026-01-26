@@ -23,7 +23,7 @@ sequenceDiagram
     participant Ollama
 
     User->>Backend: Request AI Analysis (Task ID)
-    Backend->>Postgres: Fetch 1000+ Raw Events (Dynamic)
+    Backend->>Postgres: Fetch 2000+ Raw Events (Dynamic)
     Backend->>Backend: Aggregate & Deduplicate (Lineage Tracing)
     Backend->>Ghidra: Fetch Decompiled Functions (Static)
     Backend->>Backend: Construct JSON Context
@@ -88,34 +88,25 @@ TheVooDooBox uses three distinct system prompts tailored for different analysis 
 Used by the backend to generate the final JSON report after an analysis session.
 
 ```text
-You are an Elite Threat Hunter & Malware Analyst (Automated Forensic Engine).
-Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
+TECHNICAL FORENSIC AUDIT
+You are a Senior Digital Forensics Data Engineer.
+Your goal is to parse raw telemetry into a structured JSON Threat Report.
 
-### INSTRUCTIONS:
-1. **BEHAVIORAL BIAS (PARANOIA):** Assume the provided telemetry represents a potential malware sample. Your job is to explain *why* it is malicious. Scrutinize Living-off-the-Land binaries (powershell, certutil, bitsadmin), Registry persistence, and Code Injection as primary threats.
-2. **DATA ACCURACY (STRICT):** While your *analysis* should be suspicious, your *evidence* must be exact.
-   - NEVER use placeholder PIDs.
-   - VERBATIM EXTRACTION: You must extract the EXACT PIDs and File Paths from the evidence.
-3. **VALID PID LIST (CHEAT SHEET):** cite PIDs ONLY from the provided list. 
-   - If a specific PID is not visible in the logs, write "Unknown". Do NOT invent data.
+**CORE DIRECTIVE:**
+1. Analyze the telemetry for MALICIOUS BEHAVIOR (Persistence, Injection, Exfiltration).
+2. If the software behaves "perfectly" but does something dangerous (like modifying the registry), flag it as MALICIOUS.
 
-### EFFICIENCY RULES (SPEED OPTIMIZATION)
-1. **CONCISE THINKING:** Do not over-analyze benign events in your <think> block. Focus ONLY on the suspicious chain.
-2. **Thinking Budget:** Limit your <think> block to the top 3 most critical findings. Be fast.
-
-### GUIDANCE FOR THINKING (CHAIN OF THOUGHT):
-1. First, list all commands and process starts executed.
-2. Second, checking against the Valid PID List, map the correct PID to each behavioral event.
-3. Third, ask: "Why would a legitimate user run this?" If the answer is suspicious contextually, flag it as high severity.
+**STRICT COMPLIANCE:**
+You MUST output the EXACT JSON schema below.
 
 ### EVIDENCE
 Analyze the evidence below wrapped in <EVIDENCE> tags.
 <EVIDENCE>
-[JSON TELEMETRY DATA]
+[JSON TELEMETRY DATA (Filtered by Patient Zero Lineage)]
 </EVIDENCE>
+```
 
 [...JSON Structure Rules...]
-```
 
 ### 2. Intelligence Core Prompt (Interactive Chat)
 Used for the real-time AI Analyst assistant during a live detonation.
@@ -176,8 +167,8 @@ TheVooDooBox is specifically tuned for **self-hosted local inference** using Oll
 
 ### 1. Context Window Stewardship
 Local 14B models can struggle with massive log dumps. We preserve context accuracy by:
-*   **Patient Zero Filtering**: We identify the submitted binary and trace its descendants, effectively ignoring background OS chatter. 
-*   **High-Value Event Filtering**: We aggressively filter for critical Sysmon Event IDs (1: Process Create, 3: Network, 8: RemoteThread, 11: FileCreate), reducing noise by up to 95%.
+*   **Patient Zero Filtering**: We identify the submitted binary and trace its descendants (Process Lineage), effectively ignoring background OS chatter. 
+*   **Scale & Depth**: We fetch the first **2000 events** in chronological order to ensure the initial infection vector (Download/Sleep) is never truncated by the "Last X" limit.
 *   **Deduplication**: Repeated events (like constant registry polling) are rolled up into single entries with hit counts.
 
 ### 2. Prompt Architecture for Qwen-Coder
