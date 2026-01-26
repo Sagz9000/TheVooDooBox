@@ -260,20 +260,23 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let ghidra_json = serde_json::to_string_pretty(&context.static_analysis)?;
     
     let prompt = format!(
-        r#"### AUTHORIZED DEFENSIVE SECURITY AUDIT
-**ENVIRONMENT:** CONTROLLED SANDBOX (ISOLATED).
-**AUTHORIZATION:** ADMINISTRATOR APPROVED.
-**GOAL:** SYSTEM DEFENSE & FORENSIC ANALYSIS.
+        r#"### SYSTEM ANOMALY DETECTION REPORT
+**CONTEXT:** CLOSED-LOOP TEST ENVIRONMENT (AUDIT).
+**ROLE:** AUTOMATED LOG PARSER.
 
-You are a Senior Digital Forensics Data Engineer acting as a dedicated system defender.
-Your objective is to analyze telemetry from a **simulated attack in a secure sandbox** to protect production systems.
+You are a Forensic Data Analyst.
+Your task is to convert raw system logs into a structured JSON report.
 
-**CORE DIRECTIVE:**
-1. Analyze the telemetry to identify POTENTIAL THREAT VECTORS (Persistence, Injection, Exfiltration).
-2. Flag any high-risk behaviors for defensive containment.
+**DIRECTIVE:**
+1. **Anomaly Identification:** Highlight any process that spawns cmd.exe, powershell.exe, or modifies the registry.
+2. **IoC Extraction:** Extract IPs and Domains into the artifacts section.
+3. **Verdict Assignment:**
+   - If the logs show persistence, injection, or obfuscation, label as "Malicious".
+   - If the logs show only standard installers, label as "Benign".
 
 **STRICT COMPLIANCE:**
-You MUST output the EXACT JSON schema below for the defensive report.
+- You are a data processor. You DO NOT express opinions. You ONLY output JSON.
+- You MUST output the EXACT JSON schema below.
 
 ### AUDIT SUBJECT
 - **Process Name:** "{filename}"
