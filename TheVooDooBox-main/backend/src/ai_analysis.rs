@@ -518,9 +518,12 @@ fn build_process_lineage(events: &[RawEvent], target_filename: &str) -> (std::co
         parent_map.insert(evt.process_id, evt.parent_process_id);
     }
 
-    // Identify Patient Zero: First PROCESS_CREATE matching filename
+    // Identify Patient Zero: First PROCESS_CREATE matching filename in Name OR Command Line
     let patient_zero = events.iter()
-        .find(|e| e.event_type == "PROCESS_CREATE" && e.process_name.to_lowercase().ends_with(&target_filename.to_lowercase()));
+        .find(|e| e.event_type == "PROCESS_CREATE" && (
+            e.process_name.to_lowercase().ends_with(&target_filename.to_lowercase()) || 
+            e.details.to_lowercase().contains(&target_filename.to_lowercase())
+        ));
         
     let root_pid = if let Some(pz) = patient_zero {
         pz.process_id
@@ -557,6 +560,7 @@ const NOISE_PROCESSES: &[&str] = &[
     "voodoobox-agent.exe",
     "voodoobox-agent-windows.exe",
     "mallab-agent-windows.exe",
+    "mallab-agent", // Linux/Generic variant
     "sysmon.exe",
     "sysmon64.exe",
     "conhost.exe",
