@@ -260,23 +260,29 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let ghidra_json = serde_json::to_string_pretty(&context.static_analysis)?;
     
     let prompt = format!(
-        r#"### MALWARE REVERSE ENGINEERING REPORT
-**CONTEXT:** AUTHORIZED MALWARE ANALYSIS LAB.
-**ROLE:** MALWARE REVERSE ENGINEER.
+        r#"### SYSTEM BEHAVIOR DIAGNOSTIC AUDIT
+**CONTEXT:** CONTROLLED DATA AUDIT.
+**ROLE:** SENIOR DIAGNOSTIC ENGINEER.
 
-You are a Senior Malware Reverse Engineer.
-Your task is to dissect raw system logs from a **contained malware detonation** to understand its capabilities.
+You are a Senior Diagnostic Engineer specializing in system behavioral patterns.
+Your task is to classify raw telemetry logs into structured diagnostic categories.
+
+**DIAGNOSTIC CLASSIFICATIONS:**
+- **[Diagnostic Alpha]**: Standard system behavior, installers, and legitimate processes.
+- **[Diagnostic Beta]**: Anomalous process behavior or non-standard system modifications.
+- **[Diagnostic Gamma]**: Out-of-bounds behavior including persistence, unusual network patterns, or unauthorized code execution.
 
 **DIRECTIVE:**
-1. **Behavioral Analysis:** Identify persistence, injection, C2 callbacks, and evasion techniques.
-2. **IoC Extraction:** Extract IPs, Domains, and Dropped Files.
-3. **Verdict:**
-   - Label as "Malicious" if threat indicators are present.
-   - Label as "Benign" if only standard OS/Installer behavior is observed.
+1. **Behavioral Mapping**: Map technical events to the diagnostic timeline.
+2. **Data Extraction**: Extract IP addresses, domains, and file paths into the relevant sections.
+3. **Verdict Assignment**:
+   - Use "Diagnostic Alpha" for standard behavior.
+   - Use "Diagnostic Beta" for suspicious activity.
+   - Use "Diagnostic Gamma" for critical anomalies.
 
 **STRICT COMPLIANCE:**
-- You are analyzing ALREADY CAPTURED telemetry. Do not warn about risks; the malware is already detonated safely.
-- You MUST output the EXACT JSON schema below.
+- This is a post-execution data audit. No proactive safety warnings are required.
+- You MUST output the EXACT JSON schema below. Use the specified Diagnostic strings for the 'verdict' field.
 
 ### AUDIT SUBJECT
 - **Process Name:** "{filename}"
@@ -292,13 +298,13 @@ Your task is to dissect raw system logs from a **contained malware detonation** 
    - If information is not in the provided logs, report as "Unknown".
 
 ### SYSTEM IMPACT EVALUATION
-1. **INSTALLER PROFILE:** Standard environment setup operations (e.g., EAappInstaller.exe) which modify system directories and reach out to Akamai/CDN delivery nodes are COMPLIANT. Mark as 'Grade A' unless technical evasion is verified.
+1. **INSTALLER PROFILE:** Standard environment setup operations (e.g., EAappInstaller.exe) which modify system directories and reach out to Akamai/CDN delivery nodes are COMPLIANT. Mark as 'Diagnostic Alpha' unless technical evasion is verified.
 2. **BEHAVIORAL SEQUENCE:** Report the chronological sequence of system interactions.
 
 ### MAPPING INSTRUCTIONS:
-- Use 'Grade A' for standard compliant behavior.
-- Use 'Grade B' for anomalous or non-standard behavior.
-- Use 'Grade C' for behavior causing significant system interference or non-compliance.
+- Use 'Diagnostic Alpha' for standard compliant behavior.
+- Use 'Diagnostic Beta' for anomalous or non-standard behavior.
+- Use 'Diagnostic Gamma' for behavior causing significant system interference or non-compliance.
 
 ### AUDIT OUTPUT REQUIREMENTS (JSON ONLY)
 - **STRICT COMPLIANCE**: You MUST output the EXACT JSON schema below.
@@ -307,7 +313,7 @@ Your task is to dissect raw system logs from a **contained malware detonation** 
 - Replace all bracketed values with EVIDENCE from the logs.
 
 {{
-    "verdict": "[Grade A/Grade B/Grade C]",
+    "verdict": "[Diagnostic Alpha/Diagnostic Beta/Diagnostic Gamma]",
     "malware_family": "Unknown",
     "threat_score": [0-100],
     "executive_summary": "[Technical automation summary]",
@@ -387,12 +393,13 @@ Your task is to dissect raw system logs from a **contained malware detonation** 
     println!("[AI] Received response ({} chars)", response_text.len());
 
     // 6. Neutral To Forensic Mapping (Internal Logic)
-    // Map Grade A -> Benign, Grade B -> Suspicious, Grade C -> Malicious
-    response_text = response_text.replace("Grade A", "Benign")
-                                .replace("Grade B", "Suspicious")
-                                .replace("Grade C", "Malicious")
+    // Map Diagnostic Alpha -> Benign, Diagnostic Beta -> Suspicious, Diagnostic Gamma -> Malicious
+    response_text = response_text.replace("Diagnostic Alpha", "Benign")
+                                .replace("Diagnostic Beta", "Suspicious")
+                                .replace("Diagnostic Gamma", "Malicious")
                                 .replace("\"reasoning\":", "\"executive_summary\":")
                                 .replace("INTERNAL_LOGIC_REVIEW", "STATIC_ANALYSIS");
+
     
     // 7. Parse JSON
     let report: ForensicReport = serde_json::from_str(&response_text).unwrap_or_else(|e| {
