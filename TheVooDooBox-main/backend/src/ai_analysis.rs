@@ -576,14 +576,12 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
         let is_critical = matches!(evt.event_type.as_str(), "MEMORY_ANOMALY" | "PROCESS_TAMPER" | "REMOTE_THREAD");
         let is_relevant = relevant_pids.contains(&evt.process_id);
 
-        // High-Value Event Filtering (Speed Optimization)
-        let is_high_value = match evt.event_type.as_str() {
-            "PROCESS_CREATE" | "NETWORK_CONNECT" | "NETWORK_DNS" | "REMOTE_THREAD" | "FILE_CREATE" | "DOWNLOAD_DETECTED" => true,
-            _ => false,
-        };
-
-        if !is_critical && (!is_relevant || !is_high_value) {
-            continue; // Skip noise and non-critical low-value events
+        // Logic Fix:
+        // 1. If Critical -> Keep.
+        // 2. If PID is Relevant (Patient Zero Lineage) -> Keep EVERYTHING.
+        // 3. Else (Noise) -> Skip.
+        if !is_critical && !is_relevant {
+            continue; 
         }
 
         // Ensure process entry exists
