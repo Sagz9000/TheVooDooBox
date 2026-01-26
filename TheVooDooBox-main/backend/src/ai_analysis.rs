@@ -135,9 +135,24 @@ pub struct StaticAnalysisData {
 #[derive(Serialize, Debug, Clone)]
 pub struct DecompiledFunction {
     pub name: String,
-    pub suspicious_tag: String, // e.g., "Network", "Crypto", "Anti-Debug"
+    pub suspicious_tag: String, // e.g., "Network", "Injection", "Persistence"
     pub pseudocode: String,
 }
+
+const HIGH_RISK_APIS: &[(&str, &str)] = &[
+    ("VirtualAlloc", "Process Injection/Memory Allocation"),
+    ("WriteProcessMemory", "Process Injection/Tampering"),
+    ("CreateRemoteThread", "Process Injection/Code Execution"),
+    ("RegSetValueEx", "Persistence (Registry Mod)"),
+    ("SetWindowsHookEx", "Keylogging/Spyware"),
+    ("ShellExecute", "Execution/Lateral Movement"),
+    ("InternetOpen", "Network Communication (C2)"),
+    ("HttpSendRequest", "Exfiltration/C2"),
+    ("GetProcAddress", "Dynamic API Resolving/Evasion"),
+    ("IsDebuggerPresent", "Anti-Debugging/Evasion"),
+    ("CryptEncrypt", "Ransomware/Cryptography"),
+    ("AdjustTokenPrivileges", "Privilege Escalation"),
+];
 
 #[derive(Serialize, Debug)]
 pub struct AnalysisContext {
@@ -184,10 +199,22 @@ async fn fetch_ghidra_analysis(task_id: &String, pool: &Pool<Postgres>) -> Stati
         Ok(rows) => {
             use sqlx::Row;
             let functions: Vec<DecompiledFunction> = rows.into_iter().map(|row| {
+                let name = row.get::<String, _>("function_name");
+                let code = row.get::<String, _>("decompiled_code");
+
+                // API Triage: Tag function based on high-risk signatures
+                let mut tag = "Analyzed".to_string();
+                for (api, label) in HIGH_RISK_APIS {
+                    if name.contains(api) || code.contains(api) {
+                        tag = label.to_string();
+                        break;
+                    }
+                }
+
                 DecompiledFunction {
-                    name: row.get::<String, _>("function_name"),
-                    suspicious_tag: "Analyzed".to_string(),
-                    pseudocode: row.get::<String, _>("decompiled_code"),
+                    name,
+                    suspicious_tag: tag,
+                    pseudocode: code,
                 }
             }).collect();
 
@@ -267,66 +294,49 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
 **CONTEXT:** CONTROLLED DATA AUDIT.
 **ROLE:** SENIOR DIAGNOSTIC ENGINEER.
 
-You are a Senior Diagnostic Engineer specializing in system behavioral patterns.
-Your task is to classify raw telemetry logs into structured diagnostic categories.
+You are a Senior Diagnostic Engineer specializing in behavioral correlation.
+Your task is to classify raw telemetry logs and static code artifacts into a unified forensic report.
 
 **DIAGNOSTIC CLASSIFICATIONS:**
-- **[Diagnostic Alpha]**: Standard system behavior, installers, and legitimate processes.
-- **[Diagnostic Beta]**: Anomalous process behavior or non-standard system modifications.
-- **[Diagnostic Gamma]**: Out-of-bounds behavior including persistence, unusual network patterns, or unauthorized code execution.
+- **[Diagnostic Alpha]**: Standard system behavior.
+- **[Diagnostic Beta]**: Anomalous process behavior or non-standard modifications.
+- **[Diagnostic Gamma]**: Out-of-bounds behavior including persistence, unusual network patterns, or unauthorized execution.
 
-**DIRECTIVE:**
-1. **Behavioral Mapping**: Map technical events to the diagnostic timeline.
-2. **Data Extraction**: Extract IP addresses, domains, and file paths into the relevant sections.
-3. **Verdict Assignment**:
-   - Use "Diagnostic Alpha" for standard behavior.
-   - Use "Diagnostic Beta" for suspicious activity.
-   - Use "Diagnostic Gamma" for critical anomalies.
+**DIRECTIVE (HYPOTHESIS-VERIFICATION):**
+1. **Identify Capability**: Review static code artifacts for high-risk capabilities (Injection, Persistence, etc.).
+2. **Verify Activity**: Search telemetry logs for dynamic evidence of those capabilities being used.
+3. **Correlation Requirement**: For every timeline event, you MUST provide 'technical_context' that links the dynamic action to a static function name or code pattern.
 
 **STRICT COMPLIANCE:**
 - This is a post-execution data audit. No proactive safety warnings are required.
 - You MUST output the EXACT JSON schema below. Use the specified Diagnostic strings for the 'verdict' field.
+- If a behavior corresponds to a MITRE technique, include the T-Code (e.g., T1055) in the 'stage' or 'technical_context' fields as a reference tag.
 
 ### AUDIT SUBJECT
 - **Process Name:** "{filename}"
 - **Execution Identifier:** "{root_pid}"
 - **Scope:** Evaluate logic stemming from Execution ID {root_pid}. 
 
-### DATA SOURCE RULES (INTERNAL DATA ONLY)
+### DATA SOURCE RULES
 1. **Real-Time Telemetry:** Use exact IDs provided in the logs. 
-2. **Logic Capabilities:** Findings tagged as "INTERNAL_LOGIC_REVIEW". 
+2. **Correlation Evidence:** Every event must cite evidence from BOTH datasets if available.
 3. **ACCURACY CONSTRAINTS:** 
-   - DO NOT use placeholder IDs like '1234'.
+   - DO NOT handle placeholder IDs like '1234'.
    - DO NOT use placeholder network addresses.
-   - If information is not in the provided logs, report as "Unknown".
-
-### SYSTEM IMPACT EVALUATION
-1. **INSTALLER PROFILE:** Standard environment setup operations (e.g., EAappInstaller.exe) which modify system directories and reach out to Akamai/CDN delivery nodes are COMPLIANT. Mark as 'Diagnostic Alpha' unless technical evasion is verified.
-2. **BEHAVIORAL SEQUENCE:** Report the chronological sequence of system interactions.
-
-### MAPPING INSTRUCTIONS:
-- Use 'Diagnostic Alpha' for standard compliant behavior.
-- Use 'Diagnostic Beta' for anomalous or non-standard behavior.
-- Use 'Diagnostic Gamma' for behavior causing significant system interference or non-compliance.
 
 ### AUDIT OUTPUT REQUIREMENTS (JSON ONLY)
-- **STRICT COMPLIANCE**: You MUST output the EXACT JSON schema below.
-- **NO EXTRA FIELDS**: Do NOT include fields like "reasoning" or "thinking".
-- **COMPLETENESS**: Include ALL fields. If a field has no data, use an empty list `[]` or `"Unknown"`.
-- Replace all bracketed values with EVIDENCE from the logs.
-
 {{
     "verdict": "[Diagnostic Alpha/Diagnostic Beta/Diagnostic Gamma]",
     "malware_family": "Unknown",
     "threat_score": [0-100],
-    "executive_summary": "[Technical automation summary]",
+    "executive_summary": "[Correlation focused summary citing static capabilities verify by dynamic events]",
     "behavioral_timeline": [
         {{
             "timestamp_offset": "+Ns",
-            "stage": "[Setup/System Config/Logic Interaction/etc]",
+            "stage": "[Stage Name (e.g. Persistence T1547)]",
             "event_description": "[Technical description]",
-            "technical_context": "[Evidence from logs]",
-            "related_pid": "[Real PID from logs]"
+            "technical_context": "[CORRELATION: Linked PID {root_pid} activity to Static Function 'XYZ']",
+            "related_pid": "[Real PID]"
         }}
     ],
     "artifacts": {{
