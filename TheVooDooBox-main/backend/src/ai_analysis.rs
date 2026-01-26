@@ -91,12 +91,19 @@ pub struct AIReport {
 #[derive(Serialize, Deserialize, Debug)]
 pub struct ForensicReport {
     pub verdict: Verdict, 
+    #[serde(default)]
     pub malware_family: Option<String>,
+    #[serde(default = "default_threat_score")]
     pub threat_score: i32,
+    #[serde(default)]
     pub executive_summary: String,
+    #[serde(default)]
     pub behavioral_timeline: Vec<TimelineEvent>,
+    #[serde(default)]
     pub artifacts: Artifacts,
 }
+
+fn default_threat_score() -> i32 { 0 }
 
 #[derive(Serialize, Deserialize, Debug)]
 pub enum Verdict {
@@ -274,7 +281,9 @@ Your goal is to evaluate the behavior of an internal software build to ensure sy
 - Use 'Grade C' for behavior causing significant system interference or non-compliance.
 
 ### AUDIT OUTPUT REQUIREMENTS (JSON ONLY)
-- Structurally conform to the schema below.
+- **STRICT COMPLIANCE**: You MUST output the EXACT JSON schema below.
+- **NO EXTRA FIELDS**: Do NOT include fields like "reasoning" or "thinking".
+- **COMPLETENESS**: Include ALL fields. If a field has no data, use an empty list `[]` or `"Unknown"`.
 - Replace all bracketed values with EVIDENCE from the logs.
 
 {{
@@ -362,6 +371,7 @@ Your goal is to evaluate the behavior of an internal software build to ensure sy
     response_text = response_text.replace("Grade A", "Benign")
                                 .replace("Grade B", "Suspicious")
                                 .replace("Grade C", "Malicious")
+                                .replace("\"reasoning\":", "\"executive_summary\":")
                                 .replace("INTERNAL_LOGIC_REVIEW", "STATIC_ANALYSIS");
     
     // 7. Parse JSON
