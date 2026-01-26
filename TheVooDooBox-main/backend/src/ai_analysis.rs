@@ -1,4 +1,4 @@
-use sqlx::{Pool, Postgres, Row};
+use sqlx::{Pool, Postgres};
 use std::env;
 use std::collections::HashMap;
 use chrono::Utc;
