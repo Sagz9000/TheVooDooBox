@@ -500,7 +500,8 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
                 c2_domains: vec![],
                 mutual_exclusions: vec![],
                 command_lines: vec![]
-            }
+            },
+            virustotal: None,
         }
     });
 
