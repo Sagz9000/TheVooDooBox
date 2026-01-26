@@ -32,6 +32,18 @@ export interface ForensicReport {
     executive_summary: string;
     behavioral_timeline: TimelineEvent[];
     artifacts: Artifacts;
+    virustotal?: VirusTotalData;
+}
+
+export interface VirusTotalData {
+    hash: string;
+    scanned_at: string;
+    malicious_votes: number;
+    total_votes: number;
+    threat_label: string;
+    family_labels: string[];
+    behavior_tags: string[];
+    sandbox_verdicts: string[];
 }
 
 export interface TimelineEvent {

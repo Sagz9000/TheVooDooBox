@@ -136,6 +136,38 @@ pub fn generate_pdf_file(_task_id: &String, report: &ForensicReport, context: &A
     doc.push(elements::Paragraph::new(&report.executive_summary).styled(style::Style::new().italic()));
     doc.push(elements::Break::new(2.0));
 
+    // --- THREAT INTELLIGENCE (VirusTotal) ---
+    if let Some(vt) = &context.virustotal {
+        doc.push(elements::Paragraph::new("Threat Intelligence (VirusTotal)").styled(summary_style));
+        doc.push(elements::Break::new(0.5));
+
+        let mut vt_table = elements::TableLayout::new(vec![3, 9]);
+        vt_table.set_cell_decorator(elements::FrameCellDecorator::new(true, true, false));
+        
+        let score_color = if vt.malicious_votes > 0 { style::Color::Rgb(220, 38, 38) } else { style::Color::Rgb(22, 163, 74) };
+        let _ = vt_table.push_row(vec![
+            Box::new(elements::Paragraph::new("Detection Score").styled(style::Style::new().bold())),
+            Box::new(elements::Paragraph::new(format!("{}/{}", vt.malicious_votes, vt.total_votes)).styled(style::Style::new().bold().with_color(score_color)))
+        ]);
+        let _ = vt_table.push_row(vec![
+            Box::new(elements::Paragraph::new("Threat Label").styled(style::Style::new().bold())),
+            Box::new(elements::Paragraph::new(&vt.threat_label))
+        ]);
+         let _ = vt_table.push_row(vec![
+            Box::new(elements::Paragraph::new("Family Labels").styled(style::Style::new().bold())),
+            Box::new(elements::Paragraph::new(vt.family_labels.join(", ")))
+        ]);
+         // Limit behavior tags to prevent page overflow, e.g., take 10
+         let tags = vt.behavior_tags.iter().take(15).cloned().collect::<Vec<_>>().join(", ");
+         let _ = vt_table.push_row(vec![
+            Box::new(elements::Paragraph::new("Behavior Tags").styled(style::Style::new().bold())),
+            Box::new(elements::Paragraph::new(tags))
+        ]);
+
+        doc.push(vt_table);
+        doc.push(elements::Break::new(2.0));
+    }
+
     // --- PROCESS TREE ---
     doc.push(elements::Paragraph::new("Process Execution Tree").styled(summary_style));
     doc.push(elements::Paragraph::new("Hierarchical view of spawned processes during detonation.").styled(style::Style::new().italic().with_font_size(10).with_color(style::Color::Rgb(100,100,100))));

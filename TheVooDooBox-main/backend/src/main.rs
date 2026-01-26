@@ -12,6 +12,7 @@ mod stream;
 mod spice_relay;
 mod ai_analysis;
 mod reports;
+mod virustotal; // Registered
 use ai_analysis::{generate_ai_report, AnalysisRequest, AIReport};
 
 const NOISE_PROCESSES: &[&str] = &[
@@ -487,6 +488,13 @@ async fn submit_sample(
             
             let result = hasher.finalize();
             sha256_hash = format!("{:x}", result);
+            
+            // Trigger VirusTotal Lookup (Background)
+            let vt_pool = pool.get_ref().clone();
+            let vt_hash = sha256_hash.clone();
+            actix_web::rt::spawn(async move {
+                let _ = virustotal::get_cached_or_fetch(&vt_pool, &vt_hash).await;
+            });
         } else if field_name == "analysis_duration" {
             let mut value_bytes = Vec::new();
             while let Ok(Some(chunk)) = field.try_next().await {
@@ -2213,6 +2221,11 @@ async fn init_db() -> Pool<Postgres> {
     .expect("Failed to create analysis_reports table");
 
     println!("[DATABASE] Analysis Reports table ready.");
+    
+    // Initialize VirusTotal Cache
+    if let Err(e) = virustotal::init_db(&pool).await {
+         println!("[VT] DB Init Error: {}", e);
+    }
     
     // Migration for forensic_report_json
     let _ = sqlx::query("ALTER TABLE analysis_reports ADD COLUMN IF NOT EXISTS forensic_report_json TEXT DEFAULT '{}'").execute(&pool).await;

@@ -103,6 +103,8 @@ pub struct ForensicReport {
     pub behavioral_timeline: Vec<TimelineEvent>,
     #[serde(default)]
     pub artifacts: Artifacts,
+    #[serde(default)]
+    pub virustotal: Option<crate::virustotal::VirusTotalData>,
 }
 
 fn default_threat_score() -> i32 { 0 }
@@ -163,6 +165,7 @@ pub struct AnalysisContext {
     pub static_analysis: StaticAnalysisData,
     pub target_filename: String,
     pub patient_zero_pid: String,
+    pub virustotal: Option<crate::virustotal::VirusTotalData>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -264,12 +267,16 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
         println!("[AI] Warning: Ghidra analysis timed out for task {}. Proceeding with partial data.", task_id);
     }
 
-    // 2. Fetch Task Info (Target Filename)
-    let task_row = sqlx::query("SELECT original_filename FROM tasks WHERE id = $1")
+    // 2. Fetch Task Info (Target Filename and Hash)
+    let task_row: (String, String) = sqlx::query_as("SELECT original_filename, file_hash FROM tasks WHERE id = $1")
         .bind(task_id)
         .fetch_one(pool)
         .await?;
-    let target_filename: String = task_row.get(0);
+    let target_filename = task_row.0;
+    let file_hash = task_row.1;
+    
+    // Fetch VT Data (Cached or Fresh)
+    let vt_data = crate::virustotal::get_cached_or_fetch(pool, &file_hash).await;
 
     // 2. Fetch Raw Telemetry (Dynamic)
     let rows = sqlx::query_as::<_, RawEvent>(
@@ -292,7 +299,8 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
 
     // 3. Aggregate Dynamic Data
     let mut context = aggregate_telemetry(task_id, rows, &target_filename, exclude_ips);
-    
+    context.virustotal = vt_data;
+
     // 4. Fetch Static Data (Ghidra)
     let mut static_data = fetch_ghidra_analysis(task_id, pool).await;
     
@@ -320,11 +328,28 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
 
     let sysmon_json = serde_json::to_string_pretty(&context.processes)?;
     let ghidra_json = serde_json::to_string_pretty(&context.static_analysis)?;
+
+    // Format VirusTotal Section
+    let vt_section = if let Some(vt) = &context.virustotal {
+        format!(
+            r#"**DATA SOURCE 3: THREAT INTELLIGENCE (VIRUSTOTAL)**
+- **SHA256:** {}
+- **Detection Score:** {}/{}
+- **Threat Label:** {}
+- **Family Labels:** {:?}
+- **Sandox Behavior Tags:** {:?}
+- **INSTRUCTION:** Use these Family Labels for attribution. Cross-reference the Sandbox Behavior Tags with the Dynamic Telemetry below. If VT detects 'debug-environment', look for IsDebuggerPresent in code or logs."#,
+            vt.hash, vt.malicious_votes, vt.total_votes, vt.threat_label, vt.family_labels, vt.behavior_tags
+        )
+    } else {
+        "**DATA SOURCE 3: THREAT INTELLIGENCE**\n- No VirusTotal data available.".to_string()
+    };
     
     let prompt = format!(
         r#"### TECHNICAL DATA AUDIT (REF: LAB-402)
 **CONTEXT:** Controlled security research data audit.
 **OBJECTIVE:** Technical correlation of artifacts and activity.
+**THREAT INTEL:** Integrate VirusTotal findings into verdict.
 
 **REPORTER ROLE:** Lead Intelligence Analyst.
 
@@ -337,6 +362,7 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
 1. **Correlate Artifacts**: Map static pseudocode capabilities to observed dynamic telemetry.
 2. **Citations Required**: Every timeline entry MUST cite a PID and a corresponding technical observation.
 3. **No Conversational Noise**: Output strictly follows the JSON schema.
+4. **Threat Intel**: Weigh the VirusTotal detection score heavily. If High (>50%), favor a Gamma verdict.
 
 **DATA SOURCE 1: DYNAMIC TELEMETRY**
 - **Target Filename:** "{filename}"
@@ -351,6 +377,8 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
 <CODE_PATTERNS>
 {ghidra}
 </CODE_PATTERNS>
+
+{vt_section}
 
 **OUTPUT SCHEMA (JSON ONLY):**
 {{
@@ -487,6 +515,9 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let mut recommendations = Vec::new();
     recommendations.extend(report.artifacts.c2_domains.iter().map(|d| format!("Block Domain: {}", d)));
     recommendations.extend(report.artifacts.dropped_files.iter().map(|f| format!("Delete File: {}", f)));
+    
+    // Inject VT Data into Report for Frontend
+    report.virustotal = context.virustotal.clone(); // context holds the real data
     
     // Serialize full forensic report as JSON
     let forensic_json = serde_json::to_string(&report)
@@ -751,5 +782,6 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
         },
         target_filename: target_filename.to_string(),
         patient_zero_pid: root_pid.to_string(),
+        virustotal: None, // Will be populated in generate_ai_report
     }
 }

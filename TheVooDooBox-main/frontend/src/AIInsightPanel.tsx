@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { Brain, ShieldAlert, Clock, FileText, Globe, Terminal, Sparkles, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
 import { voodooApi, ForensicReport, TimelineEvent, Artifacts } from './voodooApi';
 
+import VirusTotalCard from './VirusTotalCard';
+
 interface AIInsightPanelProps {
     report: ForensicReport | null;
     loading: boolean;
@@ -106,6 +108,11 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                             </div>
                         </div>
                     </div>
+
+                    {/* Threat Intelligence (VirusTotal) */}
+                    {report.virustotal && (
+                        <VirusTotalCard data={report.virustotal} />
+                    )}
 
                     {/* Executive Summary */}
                     <div className="space-y-3">
