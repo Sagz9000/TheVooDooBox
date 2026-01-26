@@ -520,6 +520,7 @@ fn build_process_lineage(events: &[RawEvent], target_filename: &str) -> (std::co
 const NOISE_PROCESSES: &[&str] = &[
     "voodoobox-agent.exe",
     "voodoobox-agent-windows.exe",
+    "mallab-agent-windows.exe",
     "sysmon.exe",
     "sysmon64.exe",
     "conhost.exe",
