@@ -1251,7 +1251,8 @@ async fn chat_handler(
     pool: web::Data<Pool<Postgres>>
 ) -> impl Responder {
     let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://192.168.50.98:11434".to_string());
-    let ollama_model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5-coder:14b".to_string());
+    // Specialist Swap: Use 7b model for snappy chat response
+    let ollama_model = "qwen2.5-coder:7b".to_string();
 
     // Fetch recent analysis context
     let recent_tasks = sqlx::query_as::<_, Task>(

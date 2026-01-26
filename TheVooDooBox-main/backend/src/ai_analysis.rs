@@ -5,6 +5,7 @@ use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::fs::File;
 use std::io::Write;
+use regex::Regex; // Added for cleaning <think> tags
 
 // --- Raw DB Event ---
 #[derive(sqlx::FromRow, Serialize, Deserialize, Debug, Clone)]
@@ -211,7 +212,8 @@ async fn fetch_ghidra_analysis(task_id: &String, pool: &Pool<Postgres>) -> Stati
 
 pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Result<(), Box<dyn std::error::Error>> {
     let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://ollama:11434".to_string());
-    let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5-coder:14b".to_string());
+    // Specialist Swap: Use 'voodoo-analyst' (14B Reasoning) for heavy lifting
+    let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "voodoo-analyst".to_string());
 
     // 1. Fetch Task Info (Target Filename)
     let task_row = sqlx::query("SELECT original_filename FROM tasks WHERE id = $1")
@@ -394,16 +396,21 @@ Your task is to classify raw telemetry logs into structured diagnostic categorie
     
     println!("[AI] Received response ({} chars)", response_text.len());
 
-    // 6. Neutral To Forensic Mapping (Internal Logic)
+    // 6. Output Cleaning (Specialist Swap - DeepSeek R1 Support)
+    // Remove <think>...</think> blocks from reasoning models
+    let re = Regex::new(r"(?s)<think>.*?</think>").unwrap();
+    let cleaned_response = re.replace_all(&response_text, "");
+    response_text = cleaned_response.trim().to_string();
+
+    // 7. Neutral To Forensic Mapping (Internal Logic)
     // Map Diagnostic Alpha -> Benign, Diagnostic Beta -> Suspicious, Diagnostic Gamma -> Malicious
-    // Robustly handle both bracketed and unbracketed variations
     response_text = response_text.replace("[Diagnostic Alpha]", "Benign")
                                 .replace("[Diagnostic Beta]", "Suspicious")
                                 .replace("[Diagnostic Gamma]", "Malicious")
                                 .replace("Diagnostic Alpha", "Benign")
                                 .replace("Diagnostic Beta", "Suspicious")
                                 .replace("Diagnostic Gamma", "Malicious")
-                                .replace("\"[Benign]\"", "\"Benign\"") // Cleanup if double bracketed
+                                .replace("\"[Benign]\"", "\"Benign\"")
                                 .replace("\"[Suspicious]\"", "\"Suspicious\"")
                                 .replace("\"[Malicious]\"", "\"Malicious\"")
                                 .replace("\"reasoning\":", "\"executive_summary\":")
