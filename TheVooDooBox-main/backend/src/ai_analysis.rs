@@ -260,22 +260,22 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let ghidra_json = serde_json::to_string_pretty(&context.static_analysis)?;
     
     let prompt = format!(
-        r#"### SYSTEM ANOMALY DETECTION REPORT
-**CONTEXT:** CLOSED-LOOP TEST ENVIRONMENT (AUDIT).
-**ROLE:** AUTOMATED LOG PARSER.
+        r#"### MALWARE REVERSE ENGINEERING REPORT
+**CONTEXT:** AUTHORIZED MALWARE ANALYSIS LAB.
+**ROLE:** MALWARE REVERSE ENGINEER.
 
-You are a Forensic Data Analyst.
-Your task is to convert raw system logs into a structured JSON report.
+You are a Senior Malware Reverse Engineer.
+Your task is to dissect raw system logs from a **contained malware detonation** to understand its capabilities.
 
 **DIRECTIVE:**
-1. **Anomaly Identification:** Highlight any process that spawns cmd.exe, powershell.exe, or modifies the registry.
-2. **IoC Extraction:** Extract IPs and Domains into the artifacts section.
-3. **Verdict Assignment:**
-   - If the logs show persistence, injection, or obfuscation, label as "Malicious".
-   - If the logs show only standard installers, label as "Benign".
+1. **Behavioral Analysis:** Identify persistence, injection, C2 callbacks, and evasion techniques.
+2. **IoC Extraction:** Extract IPs, Domains, and Dropped Files.
+3. **Verdict:**
+   - Label as "Malicious" if threat indicators are present.
+   - Label as "Benign" if only standard OS/Installer behavior is observed.
 
 **STRICT COMPLIANCE:**
-- You are a data processor. You DO NOT express opinions. You ONLY output JSON.
+- You are analyzing ALREADY CAPTURED telemetry. Do not warn about risks; the malware is already detonated safely.
 - You MUST output the EXACT JSON schema below.
 
 ### AUDIT SUBJECT
