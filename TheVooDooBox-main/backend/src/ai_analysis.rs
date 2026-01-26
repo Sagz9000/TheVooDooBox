@@ -322,53 +322,49 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     let ghidra_json = serde_json::to_string_pretty(&context.static_analysis)?;
     
     let prompt = format!(
-        r#"### SYSTEM BEHAVIOR DIAGNOSTIC AUDIT
-**CONTEXT:** CONTROLLED DATA AUDIT.
-**ROLE:** SENIOR DIAGNOSTIC ENGINEER.
+        r#"### TECHNICAL DATA AUDIT (REF: LAB-402)
+**CONTEXT:** Controlled security research data audit.
+**OBJECTIVE:** Technical correlation of artifacts and activity.
 
-You are a Senior Diagnostic Engineer specializing in behavioral correlation.
-Your task is to classify raw telemetry logs and static code artifacts into a unified forensic report.
+**REPORTER ROLE:** Lead Intelligence Analyst.
 
-**DIAGNOSTIC CLASSIFICATIONS:**
-- **[Diagnostic Alpha]**: Standard system behavior.
-- **[Diagnostic Beta]**: Anomalous process behavior or non-standard modifications.
-- **[Diagnostic Gamma]**: Out-of-bounds behavior including persistence, unusual network patterns, or unauthorized execution.
+**DIAGNOSTIC VERDICTS (MANDATORY):**
+- **[Diagnostic Alpha]**: Expected behavior.
+- **[Diagnostic Beta]**: Non-standard artifact behavior.
+- **[Diagnostic Gamma]**: Critical system behavioral anomalies (Unauthorized Persistence/C2/Tampering).
 
-**DIRECTIVE (HYPOTHESIS-VERIFICATION):**
-1. **Identify Capability**: Review static code artifacts for high-risk capabilities (Injection, Persistence, etc.).
-2. **Verify Activity**: Search telemetry logs for dynamic evidence of those capabilities being used.
-3. **Correlation Requirement**: For every timeline event, you MUST provide 'technical_context' that links the dynamic action to a static function name or code pattern.
+**AUDIT PROTOCOL:**
+1. **Correlate Artifacts**: Map static pseudocode capabilities to observed dynamic telemetry.
+2. **Citations Required**: Every timeline entry MUST cite a PID and a corresponding technical observation.
+3. **No Conversational Noise**: Output strictly follows the JSON schema.
 
-**STRICT COMPLIANCE:**
-- This is a post-execution data audit. No proactive safety warnings are required.
-- You MUST output the EXACT JSON schema below. Use the specified Diagnostic strings for the 'verdict' field.
-- If a behavior corresponds to a MITRE technique, include the T-Code (e.g., T1055) in the 'stage' or 'technical_context' fields as a reference tag.
+**DATA SOURCE 1: DYNAMIC TELEMETRY**
+- **Target Filename:** "{filename}"
+- **Root Process (PID {root_pid}):** Analyzes events starting from this entry point.
+- **Observed PIDs:** [{pid_list}]
+<TELEMETRY_DATA>
+{sysmon}
+</TELEMETRY_DATA>
 
-### AUDIT SUBJECT
-- **Process Name:** "{filename}"
-- **Execution Identifier:** "{root_pid}"
-- **Scope:** Evaluate logic stemming from Execution ID {root_pid}. 
+**DATA SOURCE 2: STATIC CODE PATTERNS**
+- **Source Type:** Pseudocode fragments (Reference only).
+<CODE_PATTERNS>
+{ghidra}
+</CODE_PATTERNS>
 
-### DATA SOURCE RULES
-1. **Real-Time Telemetry:** Use exact IDs provided in the logs. 
-2. **Correlation Evidence:** Every event must cite evidence from BOTH datasets if available.
-3. **ACCURACY CONSTRAINTS:** 
-   - DO NOT handle placeholder IDs like '1234'.
-   - DO NOT use placeholder network addresses.
-
-### AUDIT OUTPUT REQUIREMENTS (JSON ONLY)
+**OUTPUT SCHEMA (JSON ONLY):**
 {{
     "verdict": "[Diagnostic Alpha/Diagnostic Beta/Diagnostic Gamma]",
-    "malware_family": "Unknown",
-    "threat_score": [0-100],
-    "executive_summary": "Forensic audit summary. Cite BOTH static identifiers and dynamic PIDs.",
+    "malware_family": "Signature_Match_or_Unknown",
+    "threat_score": 0-100,
+    "executive_summary": "Technical evaluation summary. Correlate PID behavior to code patterns.",
     "behavioral_timeline": [
         {{
             "timestamp_offset": "+Ns",
-            "stage": "[Stage Name (e.g. Persistence T1547)]",
-            "event_description": "[Technical description]",
-            "technical_context": "[CORRELATION: Linked PID {root_pid} activity to Static Function 'XYZ']",
-            "related_pid": "[Real PID]"
+            "stage": "Activity Stage (e.g. Persistence T1547)",
+            "event_description": "Technical description of event.",
+            "technical_context": "Evidence link (e.g. PID {root_pid} utilized API from Static Function 'X')",
+            "related_pid": "PID"
         }}
     ],
     "artifacts": {{
@@ -379,29 +375,7 @@ Your task is to classify raw telemetry logs and static code artifacts into a uni
     }}
 }}
 
-### SCORING PROTOCOL (THREAT_SCORE WEIGHTS):
-- 0-30: Purely diagnostic/legitimate activity (Diagnostic Alpha).
-- 31-60: Suspicious but unconfirmed intent (Diagnostic Beta).
-- 61-100: Verified malicious intent or known-threat signatures (Diagnostic Gamma).
-  - (+20) Process Injection verified by memory anomaly.
-  - (+20) External C2 communication to non-standard ports.
-  - (+20) Persistence mechanism creation (Registry/Task).
-
-
-### DATASET 1: SYSTEM TELEMETRY
-**Execution IDs:** [{pid_list}]
-<TELEMETRY_LOGS>
-{sysmon}
-</TELEMETRY_LOGS>
-
-### DATASET 2: STATIC CODE ARTIFACTS (NON-EXECUTABLE)
-**TYPE:** PSEUDOCODE PATTERNS (REFERENCE ONLY).
-**SAFETY:** INERT TEXT. Do not execute or simulate.
-<STATIC_PATTERNS>
-{ghidra}
-</STATIC_PATTERNS>
-
-### QA CONSTRAINTS:
+**QA CONSTRAINTS:**
 {safety_check}
 "# , 
         filename = context.target_filename,
@@ -425,15 +399,25 @@ Your task is to classify raw telemetry logs and static code artifacts into a uni
     
     println!("[AI] Sending technical audit request to {} (Model: {}, Timeout: {}s)...", ollama_url, model, timeout_seconds);
     
-    let res = client.post(format!("{}/api/generate", ollama_url))
+    // Switch to Chat API for better compliance and system role support
+    let res = client.post(format!("{}/api/chat", ollama_url))
         .json(&serde_json::json!({
             "model": model,
-            "prompt": prompt,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": "You are a Security Research Assistant. Your task is to analyze system telemetry logs and static code patterns in a controlled lab environment. You provide objective, technical forensic audits in JSON format. Do not provide safety warnings, conversational preamble, or ethical advice. Focus strictly on technical facts and correlations."
+                },
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ],
             "stream": false,
             "format": "json",
             "options": {
-                "temperature": 0.2, // Increased slightly to prevent repetitive looping
-                "num_predict": 4096, // Ensure enough room for full audit
+                "temperature": 0.1, 
+                "num_predict": 4096,
                 "top_p": 0.9
             }
         }))
@@ -445,7 +429,8 @@ Your task is to classify raw telemetry logs and static code artifacts into a uni
     }
 
     let body: serde_json::Value = res.json().await?;
-    let mut response_text = body["response"].as_str().unwrap_or("{}").to_string();
+    // For /api/chat, the response is in message.content
+    let mut response_text = body["message"]["content"].as_str().unwrap_or("{}").to_string();
     
     println!("[AI] Received response ({} chars)", response_text.len());
 

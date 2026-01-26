@@ -227,6 +227,47 @@ pub fn generate_pdf_file(_task_id: &String, report: &ForensicReport, context: &A
         }
     }
 
+    // --- DETAILED ACTIVITY LOG ---
+    doc.push(elements::Break::new(2.0));
+    doc.push(elements::Paragraph::new("Detailed Activity Log").styled(summary_style));
+    doc.push(elements::Paragraph::new("Comprehensive list of all observed system interactions.").styled(style::Style::new().italic().with_font_size(10)));
+    doc.push(elements::Break::new(0.5));
+
+    for proc in &context.processes {
+        if proc.file_activity.is_empty() && proc.network_activity.is_empty() && proc.registry_mods.is_empty() {
+            continue;
+        }
+
+        doc.push(elements::Paragraph::new(format!("Process: {} (PID: {})", proc.image_name, proc.pid))
+            .styled(style::Style::new().bold().with_font_size(11)));
+
+        // File Activity
+        if !proc.file_activity.is_empty() {
+            doc.push(elements::Paragraph::new("  File Operations:").styled(style::Style::new().bold().with_font_size(9)));
+            for file in &proc.file_activity {
+                doc.push(elements::Paragraph::new(format!("    - [{}]: {}", file.action, file.path)).styled(style::Style::new().with_font_size(9)));
+            }
+        }
+
+        // Network Activity
+        if !proc.network_activity.is_empty() {
+             doc.push(elements::Paragraph::new("  Network Connections:").styled(style::Style::new().bold().with_font_size(9)));
+            for net in &proc.network_activity {
+                doc.push(elements::Paragraph::new(format!("    - [{}]: {} ({}) [Count: {}]", net.protocol, net.dest, net.port, net.count)).styled(style::Style::new().with_font_size(9)));
+            }
+        }
+
+        // Registry Activity
+        if !proc.registry_mods.is_empty() {
+             doc.push(elements::Paragraph::new("  Registry Modifications:").styled(style::Style::new().bold().with_font_size(9)));
+            for reg in &proc.registry_mods {
+                doc.push(elements::Paragraph::new(format!("    - {}: {}", reg.key, reg.value_name)).styled(style::Style::new().with_font_size(9)));
+            }
+        }
+        
+        doc.push(elements::Break::new(1.0));
+    }
+
     // Render to buffer
     let mut buffer = Vec::new();
     doc.render(&mut buffer)?;
