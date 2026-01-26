@@ -148,7 +148,7 @@ pub struct AnalysisContext {
     pub patient_zero_pid: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct TimelineEvent {
     pub timestamp_offset: String,
     pub stage: String, // "Execution", "Persistence", etc
@@ -157,7 +157,7 @@ pub struct TimelineEvent {
     pub related_pid: String, // Dynamic PID or "STATIC_ANALYSIS"
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Default)]
 pub struct Artifacts {
     #[serde(default)]
     pub dropped_files: Vec<String>,
