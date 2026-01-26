@@ -240,7 +240,7 @@ async fn fetch_ghidra_analysis(task_id: &String, pool: &Pool<Postgres>) -> Stati
 pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Result<(), Box<dyn std::error::Error>> {
     let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://ollama:11434".to_string());
     // Specialist Swap: Use 'voodoo-analyst' (14B Reasoning) for heavy lifting
-    let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "voodoo-analyst".to_string());
+    let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "deepcoder:14b".to_string());
 
     // 1. Wait for Ghidra analysis if it's currently running
     println!("[AI] Checking Ghidra status for task {}...", task_id);
