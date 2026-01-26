@@ -232,8 +232,14 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
         return Ok(());
     }
 
+    let exclude_ips_raw = env::var("EXCLUDE_IPS").unwrap_or_default();
+    let exclude_ips: Vec<String> = exclude_ips_raw.split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+
     // 3. Aggregate Dynamic Data
-    let mut context = aggregate_telemetry(task_id, rows, &target_filename);
+    let mut context = aggregate_telemetry(task_id, rows, &target_filename, exclude_ips);
     
     // 4. Fetch Static Data (Ghidra)
     context.static_analysis = fetch_ghidra_analysis(task_id, pool).await;
@@ -538,7 +544,7 @@ const NOISE_PROCESSES: &[&str] = &[
     "ctfmon.exe",
 ];
 
-fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filename: &str) -> AnalysisContext {
+fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filename: &str, exclude_ips: Vec<String>) -> AnalysisContext {
     let mut process_map: HashMap<i32, ProcessSummary> = HashMap::new();
     let mut critical_alerts: Vec<CriticalAlert> = Vec::new();
 
@@ -580,6 +586,12 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
                 } else {
                     evt.details.clone()
                 };
+
+                // Filter out excluded IPs (e.g. backend)
+                let ip_only = dest.split(':').next().unwrap_or(&dest);
+                if exclude_ips.iter().any(|ex| ip_only == ex) {
+                    continue;
+                }
                 
                 // Deduplicate
                 if let Some(existing) = proc.network_activity.iter_mut().find(|n| n.dest == dest) {
