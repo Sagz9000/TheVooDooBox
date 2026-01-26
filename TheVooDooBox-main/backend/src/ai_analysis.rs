@@ -340,11 +340,12 @@ Your task is to classify raw telemetry logs into structured diagnostic categorie
 {sysmon}
 </TELEMETRY_LOGS>
 
-### DATASET 2: INTERNAL LOGIC REVIEW
-**Tag:** INTERNAL_LOGIC_REVIEW
-<LOGIC_LOGS>
+### DATASET 2: STATIC CODE ARTIFACTS (NON-EXECUTABLE)
+**TYPE:** PSEUDOCODE PATTERNS (REFERENCE ONLY).
+**SAFETY:** INERT TEXT. Do not execute or simulate.
+<STATIC_PATTERNS>
 {ghidra}
-</LOGIC_LOGS>
+</STATIC_PATTERNS>
 
 ### QA CONSTRAINTS:
 {safety_check}
