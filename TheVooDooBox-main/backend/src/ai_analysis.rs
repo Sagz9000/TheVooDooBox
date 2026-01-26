@@ -484,7 +484,7 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
 
     
     // 7. Parse JSON
-    let report: ForensicReport = serde_json::from_str(&response_text).unwrap_or_else(|e| {
+    let mut report: ForensicReport = serde_json::from_str(&response_text).unwrap_or_else(|e| {
         println!("[AI] JSON Parse Error: {}", e);
         println!("[AI] Full response for debugging:\n{}", response_text);
         // Fallback struct
