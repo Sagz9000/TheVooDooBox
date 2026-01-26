@@ -396,9 +396,16 @@ Your task is to classify raw telemetry logs into structured diagnostic categorie
 
     // 6. Neutral To Forensic Mapping (Internal Logic)
     // Map Diagnostic Alpha -> Benign, Diagnostic Beta -> Suspicious, Diagnostic Gamma -> Malicious
-    response_text = response_text.replace("Diagnostic Alpha", "Benign")
+    // Robustly handle both bracketed and unbracketed variations
+    response_text = response_text.replace("[Diagnostic Alpha]", "Benign")
+                                .replace("[Diagnostic Beta]", "Suspicious")
+                                .replace("[Diagnostic Gamma]", "Malicious")
+                                .replace("Diagnostic Alpha", "Benign")
                                 .replace("Diagnostic Beta", "Suspicious")
                                 .replace("Diagnostic Gamma", "Malicious")
+                                .replace("\"[Benign]\"", "\"Benign\"") // Cleanup if double bracketed
+                                .replace("\"[Suspicious]\"", "\"Suspicious\"")
+                                .replace("\"[Malicious]\"", "\"Malicious\"")
                                 .replace("\"reasoning\":", "\"executive_summary\":")
                                 .replace("INTERNAL_LOGIC_REVIEW", "STATIC_ANALYSIS");
 
