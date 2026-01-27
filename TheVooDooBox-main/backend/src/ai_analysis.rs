@@ -105,6 +105,8 @@ pub struct ForensicReport {
     pub artifacts: Artifacts,
     #[serde(default)]
     pub virustotal: Option<crate::virustotal::VirusTotalData>,
+    #[serde(default)]
+    pub related_samples: Vec<crate::memory::BehavioralFingerprint>,
 }
 
 fn default_threat_score() -> i32 { 0 }
@@ -182,6 +184,7 @@ pub struct AnalysisContext {
     pub virustotal: Option<crate::virustotal::VirusTotalData>,
     pub analyst_notes: Vec<AnalystNote>,
     pub manual_tags: Vec<TelemetryTag>,
+    pub related_samples: Vec<crate::memory::BehavioralFingerprint>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -339,6 +342,9 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     context.analyst_notes = analyst_notes;
     context.manual_tags = manual_tags;
 
+    context.analyst_notes = analyst_notes;
+    context.manual_tags = manual_tags;
+
     // 4. Fetch Static Data (Ghidra)
     let mut static_data = fetch_ghidra_analysis(task_id, pool).await;
     
@@ -348,11 +354,37 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
         let b_is_suspicious = b.suspicious_tag != "Analyzed";
         b_is_suspicious.cmp(&a_is_suspicious)
     });
-    static_data.functions.truncate(20); // Limit to top 20 high-value functions to avoid context bloat/loops
+    static_data.functions.truncate(20); 
     
     context.static_analysis = static_data;
 
-    // 4. Construct Hybrid Prompt
+    // 5. THE HIVE MIND: Generate Fingerprint and Query
+    // Create a text representation of the current behavior for embedding
+    let mut behavioral_text = format!("Target: {}. Root PID: {}. ", context.target_filename, context.patient_zero_pid);
+    if !context.critical_alerts.is_empty() {
+        behavioral_text.push_str("Critical Alerts: ");
+        for alert in &context.critical_alerts {
+            behavioral_text.push_str(&format!("{} ({}), ", alert.rule_name, alert.details));
+        }
+    }
+    
+    for proc in &context.processes {
+        if !proc.network_activity.is_empty() {
+             behavioral_text.push_str(&format!("Network: {:?}. ", proc.network_activity.iter().map(|n| &n.dest).collect::<Vec<_>>()));
+        }
+        if !proc.registry_mods.is_empty() {
+             behavioral_text.push_str(&format!("Registry: {:?}. ", proc.registry_mods.iter().map(|r| &r.key).collect::<Vec<_>>()));
+        }
+    }
+
+    println!("[HiveMind] Querying for similar samples...");
+    let related_samples = crate::memory::query_similar_behaviors(behavioral_text.clone()).await.unwrap_or_default();
+    if !related_samples.is_empty() {
+        println!("[HiveMind] Found {} related samples.", related_samples.len());
+    }
+    context.related_samples = related_samples;
+
+    // 6. Construct Hybrid Prompt
     // Extract valid PIDs for the "Menu" technique
     let valid_pids: Vec<String> = context.processes.iter().map(|p| p.pid.to_string()).collect();
     let pid_list_str = valid_pids.join(", ");
@@ -406,6 +438,18 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     } else {
         "".to_string()
     };
+
+    let hive_mind_section = if !context.related_samples.is_empty() {
+        let mut hive_str = "**DATA SOURCE 6: THE HIVE MIND (HISTORICAL CORRELATIONS)**\n".to_string();
+        for sample in &context.related_samples {
+            hive_str.push_str(&format!("- SIMILAR TO: Task {} | Verdict: {} | Family: {}\n", sample.task_id, sample.verdict, sample.malware_family));
+            hive_str.push_str(&format!("  Summary: {}\n", sample.summary.chars().take(150).collect::<String>()));
+        }
+        hive_str.push_str("INSTRUCTION: If the current telemetry matches these historical samples, align your verdict and attribution accordingly.");
+        hive_str
+    } else {
+        "**DATA SOURCE 6: THE HIVE MIND**\n- No similar historical samples found.".to_string()
+    };
     
     let prompt = format!(
         r#"### TECHNICAL DATA AUDIT (REF: LAB-402)
@@ -446,6 +490,8 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
 
 {tags_section}
 
+{hive_section}
+
 **OUTPUT SCHEMA (JSON ONLY):**
 {{
     "verdict": "[Diagnostic Alpha/Diagnostic Beta/Diagnostic Gamma]",
@@ -477,10 +523,14 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
         pid_list = pid_list_str,
         safety_check = forced_benign_instruction,
         sysmon = sysmon_json,
-        ghidra = ghidra_json
+        ghidra = ghidra_json,
+        vt_section = vt_section,
+        notes_section = notes_section,
+        tags_section = tags_section,
+        hive_section = hive_mind_section
     );
 
-    // 5. Call Ollama with proper timeout configuration
+    // 7. Call Ollama with proper timeout configuration
     let timeout_seconds = env::var("AI_TIMEOUT_SECONDS")
         .unwrap_or_else(|_| "900".to_string())
         .parse::<u64>()
@@ -568,6 +618,7 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
                 command_lines: vec![]
             },
             virustotal: None,
+            related_samples: vec![],
         }
     });
 
@@ -585,6 +636,7 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     
     // Inject VT Data into Report for Frontend
     report.virustotal = context.virustotal.clone(); // context holds the real data
+    report.related_samples = context.related_samples.clone();
     
     // Serialize full forensic report as JSON
     let forensic_json = serde_json::to_string(&report)
@@ -648,6 +700,23 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     }
 
     println!("[AI] Forensic Analysis Complete. Score: {}", report.threat_score);
+
+    // 10. Store Fingerprint in The Hive Mind (Async, don't block heavily but wait for result)
+    // We reuse the behavioral_text generated earlier for the embedding
+    println!("[HiveMind] Storing fingerprint for Task {}...", task_id);
+    let fingerprint = crate::memory::BehavioralFingerprint {
+        task_id: task_id.clone(),
+        verdict: report.verdict.to_string(),
+        malware_family: report.malware_family.clone().unwrap_or("Unknown".to_string()),
+        summary: report.executive_summary.clone(),
+        tags: report.behavioral_timeline.iter().map(|t| t.stage.clone()).collect(),
+    };
+    
+    if let Err(e) = crate::memory::store_fingerprint(fingerprint, behavioral_text).await {
+        println!("[HiveMind] Failed to store fingerprint: {}", e);
+    } else {
+        println!("[HiveMind] Fingerprint stored successfully.");
+    }
 
     Ok(())
 }
@@ -852,5 +921,6 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
         virustotal: None, // Will be populated in generate_ai_report
         analyst_notes: vec![],
         manual_tags: vec![],
+        related_samples: vec![],
     }
 }

@@ -33,6 +33,15 @@ export interface ForensicReport {
     behavioral_timeline: TimelineEvent[];
     artifacts: Artifacts;
     virustotal?: VirusTotalData;
+    related_samples?: RelatedSample[];
+}
+
+export interface RelatedSample {
+    task_id: string;
+    verdict: string;
+    malware_family: string;
+    summary: string;
+    tags: string[];
 }
 
 export interface VirusTotalData {

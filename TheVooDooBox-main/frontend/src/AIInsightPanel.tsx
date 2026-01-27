@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Brain, ShieldAlert, Clock, FileText, Globe, Terminal, Sparkles, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
-import { voodooApi, ForensicReport, TimelineEvent, Artifacts } from './voodooApi';
+import { Brain, ShieldAlert, Clock, FileText, Globe, Terminal, Sparkles, Loader2, ChevronDown, ChevronRight, Share2 } from 'lucide-react';
+import { voodooApi, ForensicReport, TimelineEvent, Artifacts, RelatedSample } from './voodooApi';
 
 import VirusTotalCard from './VirusTotalCard';
 
@@ -15,6 +15,7 @@ interface AIInsightPanelProps {
 export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onSelectPid }: AIInsightPanelProps) {
     const [expandedTimeline, setExpandedTimeline] = useState(true);
     const [expandedArtifacts, setExpandedArtifacts] = useState(true);
+    const [expandedHive, setExpandedHive] = useState(true);
 
     const getVerdictColor = (verdict: string) => {
         switch (verdict) {
@@ -162,6 +163,56 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                             </div>
                         )}
                     </div>
+
+                    {/* Hive Mind / Related Samples */}
+                    {report.related_samples && report.related_samples.length > 0 && (
+                        <div className="space-y-3">
+                            <button
+                                onClick={() => setExpandedHive(!expandedHive)}
+                                className="w-full flex items-center justify-between text-[9px] text-slate-500 uppercase font-black tracking-[0.2em] hover:text-brand-400 transition-colors"
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Share2 size={12} className="text-purple-400" />
+                                    The Hive Mind (Related Samples)
+                                </div>
+                                {expandedHive ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                            </button>
+
+                            {expandedHive && (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {report.related_samples.map((sample, i) => (
+                                        <div key={i} className="bg-security-panel border border-security-border rounded-lg p-3 hover:border-purple-500/50 transition-colors group relative overflow-hidden">
+                                            <div className="absolute top-0 right-0 p-1.5 opacity-10 group-hover:opacity-20 transition-opacity">
+                                                <Share2 size={40} />
+                                            </div>
+                                            <div className="flex items-center justify-between mb-2 relative z-10">
+                                                <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${sample.verdict === 'Malicious' ? 'bg-threat-critical/20 text-threat-critical border-threat-critical/20' :
+                                                        sample.verdict === 'Suspicious' ? 'bg-threat-high/20 text-threat-high border-threat-high/20' :
+                                                            'bg-brand-500/10 text-brand-500 border-brand-500/20'
+                                                    }`}>
+                                                    {sample.verdict}
+                                                </span>
+                                                <span className="text-[9px] font-mono text-slate-500">{sample.malware_family}</span>
+                                            </div>
+                                            <div className="text-[10px] text-slate-400 mb-2 font-mono h-12 overflow-hidden relative z-10">
+                                                {sample.summary}
+                                            </div>
+                                            <div className="flex flex-wrap gap-1 relative z-10">
+                                                {sample.tags.slice(0, 3).map((tag, t) => (
+                                                    <span key={t} className="text-[8px] px-1 py-0.5 rounded bg-white/5 text-slate-400 border border-white/5">
+                                                        {tag}
+                                                    </span>
+                                                ))}
+                                                {sample.tags.length > 3 && (
+                                                    <span className="text-[8px] px-1 py-0.5 rounded bg-white/5 text-slate-500">+{sample.tags.length - 3}</span>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     {/* Artifacts / IOCs */}
                     <div className="space-y-3">

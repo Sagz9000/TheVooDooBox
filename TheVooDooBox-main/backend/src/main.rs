@@ -14,6 +14,7 @@ mod ai_analysis;
 mod reports;
 mod virustotal; // Registered
 mod notes;
+mod memory;
 use ai_analysis::{generate_ai_report, AnalysisRequest, AIReport};
 
 const NOISE_PROCESSES: &[&str] = &[
