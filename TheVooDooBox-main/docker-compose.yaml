@@ -10,6 +10,7 @@ services:
       - PROXMOX_TOKEN_ID=MalwareLab
       - PROXMOX_TOKEN_SECRET=${PROXMOX_TOKEN_SECRET}
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY}
       - OLLAMA_URL=http://192.168.50.98:11434
       - OLLAMA_MODEL=qwen2.5-coder:14b
       - EMBEDDING_MODEL=nomic-embed-text:v1.5
