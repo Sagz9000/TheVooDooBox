@@ -85,6 +85,31 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     const [showCheatsheet, setShowCheatsheet] = useState(false);
     const [tags, setTags] = useState<Tag[]>([]);
     const [contextMenu, setContextMenu] = useState<{ x: number, y: number, eventId: number } | null>(null);
+    const navRef = React.useRef<HTMLDivElement>(null);
+    const [canScrollLeft, setCanScrollLeft] = useState(false);
+    const [canScrollRight, setCanScrollRight] = useState(false);
+
+    const checkScroll = () => {
+        if (navRef.current) {
+            const { scrollLeft, scrollWidth, clientWidth } = navRef.current;
+            setCanScrollLeft(scrollLeft > 0);
+            setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 5);
+        }
+    };
+
+    useEffect(() => {
+        const nav = navRef.current;
+        if (nav) {
+            checkScroll();
+            nav.addEventListener('scroll', checkScroll);
+            window.addEventListener('resize', checkScroll);
+            return () => {
+                nav.removeEventListener('scroll', checkScroll);
+                window.removeEventListener('resize', checkScroll);
+            };
+        }
+    }, [activeTab]); // Also re-check when tab changes in case it scrolls automatically
+
 
     useEffect(() => {
         if (taskId) {
@@ -531,16 +556,35 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                     )}
 
                     {/* Tabs Navigation - Scrollable */}
-                    <div className="flex items-center px-4 border-b border-white/10 bg-[#0a0a0a] overflow-x-auto overflow-y-hidden custom-scrollbar whitespace-nowrap scroll-smooth min-h-[48px]">
-                        <TabButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} icon={<List size={14} />} label="Timeline" count={timelineEvents.length} />
-                        <TabButton active={activeTab === 'screenshots'} onClick={() => setActiveTab('screenshots')} icon={<Image size={14} />} label="Screenshots" count={screenshots.length} />
-                        <TabButton active={activeTab === 'network'} onClick={() => setActiveTab('network')} icon={<Globe size={14} />} label="Network" count={networkEvents.length} />
-                        <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<FileText size={14} />} label="Files" count={fileEvents.length} />
-                        <TabButton active={activeTab === 'registry'} onClick={() => setActiveTab('registry')} icon={<Server size={14} />} label="Registry" count={registryEvents.length} />
-                        <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Static Findings" count={ghidraFindings.length} />
-                        <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} icon={<Sparkles size={14} />} label="Intelligence" />
-                        <TabButton active={activeTab === 'notes'} onClick={() => setActiveTab('notes')} icon={<Pencil size={14} />} label="Notes" />
-                        <TabButton active={activeTab === 'console'} onClick={() => setActiveTab('console')} icon={<Terminal size={14} />} label="Raw Feed" count={stats.count} />
+                    <div className="relative border-b border-white/10 bg-[#0a0a0a]">
+                        {/* Left Gradient/Indicator */}
+                        {canScrollLeft && (
+                            <div className="absolute left-0 top-0 bottom-0 w-12 z-20 pointer-events-none bg-gradient-to-r from-[#0a0a0a] to-transparent flex items-center pl-2">
+                                <ArrowLeft size={16} className="text-brand-500 animate-pulse" />
+                            </div>
+                        )}
+
+                        <div
+                            ref={navRef}
+                            className="flex items-center px-4 overflow-x-auto overflow-y-hidden custom-scrollbar whitespace-nowrap scroll-smooth min-h-[48px]"
+                        >
+                            <TabButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} icon={<List size={14} />} label="Timeline" count={timelineEvents.length} />
+                            <TabButton active={activeTab === 'screenshots'} onClick={() => setActiveTab('screenshots')} icon={<Image size={14} />} label="Screenshots" count={screenshots.length} />
+                            <TabButton active={activeTab === 'network'} onClick={() => setActiveTab('network')} icon={<Globe size={14} />} label="Network" count={networkEvents.length} />
+                            <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<FileText size={14} />} label="Files" count={fileEvents.length} />
+                            <TabButton active={activeTab === 'registry'} onClick={() => setActiveTab('registry')} icon={<Server size={14} />} label="Registry" count={registryEvents.length} />
+                            <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Static Findings" count={ghidraFindings.length} />
+                            <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} icon={<Sparkles size={14} />} label="Intelligence" />
+                            <TabButton active={activeTab === 'notes'} onClick={() => setActiveTab('notes')} icon={<Pencil size={14} />} label="Notes" />
+                            <TabButton active={activeTab === 'console'} onClick={() => setActiveTab('console')} icon={<Terminal size={14} />} label="Raw Feed" count={stats.count} />
+                        </div>
+
+                        {/* Right Gradient/Indicator */}
+                        {canScrollRight && (
+                            <div className="absolute right-0 top-0 bottom-0 w-12 z-20 pointer-events-none bg-gradient-to-l from-[#0a0a0a] to-transparent flex items-center justify-end pr-2">
+                                <ChevronRight size={16} className="text-brand-500 animate-pulse" />
+                            </div>
+                        )}
                     </div>
 
                     {/* Tab Content Area */}

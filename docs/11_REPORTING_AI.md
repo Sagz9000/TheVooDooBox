@@ -56,6 +56,9 @@ Once the AI report is finalized, the `genpdf` engine generates a forensic docume
 
 ![Forensic Report View](../TheVooDooBox-main/pictures/reportview.png)
 
+![VirusTotal Intelligence Corroboration](../TheVooDooBox-main/pictures/virustotal.png)
+*Figure: VirusTotal data is automatically correlated with behavioral telemetry to provide high-fidelity verdicts.*
+
 ## 5. Persistence & Retrieval
 
 ![Generated PDF Report](../TheVooDooBox-main/pictures/aigeneratedindicatorreport.png)

@@ -35,6 +35,36 @@ The final forensic summary for a completed task.
 *   **Forensic Timeline**: A chronological reconstruction of the attack chain.
 *   **IOC Export**: A copy-paste ready list of IPs, domains, and file hashes.
 
+### 4. Analyst Toolkit (New)
+Advanced features for manual verification and collaboration.
+
+#### Precision Tagging
+Analysts can manually tag specific process events to guide the investigation or train the AI.
+*   **Access**: Click the **Fingerprint Icon** on the far right of any event row, or right-click the row.
+*   **Tags**:
+    *   🛡️ **Mark as Malicious**: Highlights the event in red and flags it as a critical threat.
+    *   ✅ **Mark as Benign**: Greys out the event, effectively filtering it from the threat feed.
+    *   🏷️ **Key Artifact**: Marks the event as a pivotal moment in the attack chain (e.g., the initial payload drop).
+    *   👁️ **Ignore/Background**: Hides the event from the main view to reduce noise.
+
+![Precision Tagging Menu](../TheVooDooBox-main/pictures/tagging.png)
+*Figure: The Precision Tagging menu allows for granular event classification.*
+
+![Telemetry Event Tagging](../TheVooDooBox-main/pictures/telemetrytagging.png)
+*Figure: Tagging a specific process creation event in the telemetry timeline.*
+
+#### Collaborative Notepad
+A slide-out drawer for persistent, task-specific notes.
+*   **Access**: Click the **Pencil Icon** in the top navigation bar.
+*   **Function**: Notes are auto-saved to the backend and synced in real-time for all analysts viewing the task.
+
+#### Intelligence Integration
+*   **VirusTotal**: Hashes are automatically checked against cached VirusTotal data. Results (Detection Ratio, Vendor Verdicts) are displayed in the **AI Insight Panel**.
+
+![VirusTotal & Intelligence Integration](../TheVooDooBox-main/pictures/virustotal.png)
+*Figure: The Intelligence tab showing automated VirusTotal attribution and threat scoring.*
+
+
 ## 🤖 AI Interaction Components
 
 ### Intelligence Core Chat (`FloatingChat.tsx`)

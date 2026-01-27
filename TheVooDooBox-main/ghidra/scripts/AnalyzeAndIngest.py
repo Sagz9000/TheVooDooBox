@@ -105,7 +105,38 @@ def analyze_and_ingest():
     if len(batch) > 0:
         send_to_api({"functions": batch})
         
+    # NEW: Send completion signal explicitly
+    send_completion_signal()
+        
     print("Ingestion Complete.")
+
+def send_completion_signal():
+    if not TASK_ID:
+        print("No Task ID found, skipping completion signal.")
+        return
+
+    print("Sending Completion Signal for Task: " + str(TASK_ID))
+    payload = {"task_id": TASK_ID}
+    
+    success = False
+    for base_url in API_URLS:
+        # API_URLS are like ".../ghidra/ingest"
+        # We want ".../ghidra/ingest/complete"
+        url = base_url + "/complete"
+        try:
+            print("Attempting to signal completion to: " + url)
+            req = urllib2.Request(url)
+            req.add_header('Content-Type', 'application/json')
+            
+            response = urllib2.urlopen(req, json.dumps(payload))
+            print("Successfully signaled completion to API (" + url + "): " + str(response.getcode()))
+            success = True
+            break
+        except Exception as e:
+            print("Failed signaling completion to " + url + ": " + str(e))
+            
+    if not success:
+        print("CRITICAL: Failed to signal completion to any endpoint.")
 
 if __name__ == "__main__":
     analyze_and_ingest()

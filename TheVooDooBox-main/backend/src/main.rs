@@ -1899,15 +1899,31 @@ async fn ghidra_ingest(
 
     tx.commit().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
-    if task_id != "unsorted" {
-        println!("[GHIDRA] Marking task {} as Analysis Complete", task_id);
-        let _ = sqlx::query("UPDATE tasks SET ghidra_status = 'Analysis Complete' WHERE id = $1")
-            .bind(&task_id)
-            .execute(pool.get_ref())
-            .await;
-    }
-
     Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "success" })))
+}
+
+#[derive(serde::Deserialize)]
+struct GhidraIngestComplete {
+    task_id: String,
+}
+
+#[post("/ghidra/ingest/complete")]
+async fn ghidra_ingest_complete(
+    req: web::Json<GhidraIngestComplete>,
+    pool: web::Data<Pool<Postgres>>
+) -> impl Responder {
+    let task_id = &req.task_id;
+    println!("[GHIDRA] Received COMPLETION SIGNAL for Task {}", task_id);
+    
+    let res = sqlx::query("UPDATE tasks SET ghidra_status = 'Analysis Complete' WHERE id = $1")
+        .bind(task_id)
+        .execute(pool.get_ref())
+        .await;
+
+    match res {
+        Ok(_) => HttpResponse::Ok().json(serde_json::json!({ "status": "completed" })),
+        Err(e) => HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })),
+    }
 }
 
 #[get("/ghidra/scripts")]
@@ -2430,6 +2446,7 @@ async fn main() -> std::io::Result<()> {
             .service(ghidra_functions)
             .service(ghidra_decompile)
             .service(ghidra_ingest)
+            .service(ghidra_ingest_complete)
             .service(ghidra_list_scripts)
             .service(ghidra_run_script)
             .service(get_ghidra_findings)
