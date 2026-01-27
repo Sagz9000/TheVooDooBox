@@ -2,7 +2,7 @@ use actix_web::{get, post, delete, web, App, HttpResponse, HttpServer, Responder
 use dotenv::dotenv;
 use std::env;
 use std::fs;
-use sqlx::{postgres::PgPoolOptions, Pool, Postgres};
+use sqlx::{postgres::PgPoolOptions, Pool, Postgres, Row};
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use sha2::{Sha256, Digest};
@@ -356,13 +356,9 @@ async fn start_tcp_listener(
                                         println!("[TELEMETRY] Captured global event (No Task ID): {} ({})", evt.event_type, evt.process_name);
                                     }
 
-                                    // Broadcast enriched event
-                                    if let Ok(json) = serde_json::to_string(&evt) {
-                                        broadcaster.send_message(&json);
-                                    }
-                                    
+                                    // 1. Insert into DB and capturing the generated ID
                                     let db_res = sqlx::query(
-                                        "INSERT INTO events (event_type, process_id, parent_process_id, process_name, details, timestamp, task_id, session_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)"
+                                        "INSERT INTO events (event_type, process_id, parent_process_id, process_name, details, timestamp, task_id, session_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id"
                                     )
                                     .bind(&evt.event_type)
                                     .bind(&evt.process_id)
@@ -372,11 +368,27 @@ async fn start_tcp_listener(
                                     .bind(&evt.timestamp)
                                     .bind(&evt.task_id)
                                     .bind(&session_id)
-                                    .execute(&pool)
+                                    .fetch_one(&pool)
                                     .await;
 
-                                    if let Err(e) = db_res {
-                                        println!("[DATABASE] Error inserting event: {}", e);
+                                    match db_res {
+                                        Ok(row) => {
+                                            // 2. Update event with generated ID
+                                            let generated_id: i32 = row.get("id");
+                                            evt.id = Some(generated_id);
+
+                                            // 3. Broadcast enriched event WITH ID
+                                            if let Ok(json) = serde_json::to_string(&evt) {
+                                                broadcaster.send_message(&json);
+                                            }
+                                        },
+                                        Err(e) => {
+                                            println!("[DATABASE] Error inserting event: {}", e);
+                                            // Fallback: Broadcast without ID if DB fails (unlikely, but preserves liveness)
+                                            if let Ok(json) = serde_json::to_string(&evt) {
+                                                broadcaster.send_message(&json);
+                                            }
+                                        }
                                     }
                                 }
                                 line.clear();
