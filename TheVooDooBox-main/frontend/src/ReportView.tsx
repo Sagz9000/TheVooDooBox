@@ -126,6 +126,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     const onEventContextMenu = (e: React.MouseEvent, eventId?: number) => {
         if (!eventId) return;
         e.preventDefault();
+        e.stopPropagation();
 
         const menuWidth = 192;
         const menuHeight = 180;
@@ -725,6 +726,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                 <div
                     className="fixed z-[9999] bg-[#111] border border-white/10 shadow-2xl rounded-lg py-1 w-48 animate-in fade-in zoom-in-95 duration-100"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
+                    onClick={(e: React.MouseEvent) => e.stopPropagation()}
                 >
                     <div className="px-3 py-1.5 text-[9px] font-black text-zinc-500 uppercase tracking-widest border-b border-white/5 mb-1">
                         Precision Tagging
