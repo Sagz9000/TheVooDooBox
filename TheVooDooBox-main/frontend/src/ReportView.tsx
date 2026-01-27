@@ -626,10 +626,24 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                 </div>
                                 <div className="flex-1 overflow-y-auto custom-scrollbar p-4 font-mono text-xs">
                                     {events.map((e: AgentEvent, i: number) => (
-                                        <div key={i} className="mb-1 border-b border-white/5 pb-1 flex gap-2 hover:bg-white/5">
+                                        <div
+                                            key={i}
+                                            className={`mb-1 border-b border-white/5 pb-1 flex gap-2 hover:bg-white/5 cursor-context-menu select-none transition-colors ${getTagStyle(tags, e.id)}`}
+                                            onContextMenu={(evt) => onEventContextMenu(evt, e.id)}
+                                        >
                                             <span className="text-zinc-600 whitespace-nowrap">[{new Date(e.timestamp).toLocaleTimeString()}]</span>
                                             <span className={`whitespace-nowrap ${e.event_type.includes('ERR') ? 'text-red-500' : 'text-brand-500'}`}>{e.event_type}</span>
-                                            <span className="text-zinc-400 break-all">{e.details}</span>
+                                            <span className="text-zinc-400 break-all flex-1">
+                                                {e.details}
+                                                {tags.find(t => t.event_id === e.id) && (
+                                                    <span className={`ml-2 text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider ${tags.find(t => t.event_id === e.id)?.tag_type === 'Malicious' ? 'bg-red-500 text-white' :
+                                                            tags.find(t => t.event_id === e.id)?.tag_type === 'KeyArtifact' ? 'bg-yellow-500 text-black' :
+                                                                'bg-zinc-700 text-zinc-300'
+                                                        }`}>
+                                                        {tags.find(t => t.event_id === e.id)?.tag_type}
+                                                    </span>
+                                                )}
+                                            </span>
                                         </div>
                                     ))}
                                     {events.length === 0 && (
