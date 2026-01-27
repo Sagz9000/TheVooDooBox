@@ -13,6 +13,7 @@ mod spice_relay;
 mod ai_analysis;
 mod reports;
 mod virustotal; // Registered
+mod notes;
 use ai_analysis::{generate_ai_report, AnalysisRequest, AIReport};
 
 const NOISE_PROCESSES: &[&str] = &[
@@ -2200,7 +2201,36 @@ async fn init_db() -> Pool<Postgres> {
     )
     .execute(&pool)
     .await
-    .expect("Failed to create ghidra_findings table");
+    .expect("Failed to create analysis_reports table");
+
+    // Analyst Notes Table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS analyst_notes (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL,
+            author TEXT DEFAULT 'analyst',
+            content TEXT NOT NULL,
+            is_hint BOOLEAN DEFAULT FALSE,
+            created_at BIGINT
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create analyst_notes table");
+
+    // Telemetry Tags Table
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS telemetry_tags (
+            task_id TEXT NOT NULL,
+            event_id INTEGER NOT NULL,
+            tag_type TEXT NOT NULL,
+            comment TEXT,
+            PRIMARY KEY (task_id, event_id)
+        )"
+    )
+    .execute(&pool)
+    .await
+    .expect("Failed to create telemetry_tags table");
 
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS analysis_reports (
@@ -2382,6 +2412,10 @@ async fn main() -> std::io::Result<()> {
             .service(get_telemetry_history)
             .service(update_task_verdict)
             .service(generate_pdf_report)
+            .service(notes::add_note)
+            .service(notes::get_notes)
+            .service(notes::add_tag)
+            .service(notes::get_tags)
             .service(actix_files::Files::new("/uploads", "./uploads").show_files_listing())
             .service(actix_files::Files::new("/screenshots", "./screenshots").show_files_listing())
             .route("/ws", web::get().to(stream::ws_route))

@@ -61,6 +61,22 @@ export interface Artifacts {
     command_lines: string[];
 }
 
+export interface Note {
+    id: string;
+    task_id: string;
+    author: string;
+    content: string;
+    is_hint: boolean;
+    created_at: number;
+}
+
+export interface Tag {
+    task_id: string;
+    event_id: number;
+    tag_type: 'Malicious' | 'Benign' | 'Ignored' | 'KeyArtifact';
+    comment?: string;
+}
+
 // Dynamically determine the base URL based on the current host
 // If accessed via localhost, use localhost:8080
 // If accessed via IP or domain, use the same host with port 8080
@@ -301,5 +317,37 @@ export const voodooApi = {
         a.click();
         window.URL.revokeObjectURL(url);
         document.body.removeChild(a);
+    },
+
+    addNote: async (taskId: string, content: string, is_hint: boolean) => {
+        const resp = await fetch(`${BASE_URL}/tasks/notes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_id: taskId, content, is_hint })
+        });
+        if (!resp.ok) throw new Error("Failed to add note");
+        return resp.json();
+    },
+
+    getNotes: async (taskId: string): Promise<Note[]> => {
+        const resp = await fetch(`${BASE_URL}/tasks/${taskId}/notes`);
+        if (!resp.ok) throw new Error("Failed to get notes");
+        return resp.json();
+    },
+
+    addTag: async (taskId: string, eventId: number, tagType: string, comment?: string) => {
+        const resp = await fetch(`${BASE_URL}/tasks/tags`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ task_id: taskId, event_id: eventId, tag_type: tagType, comment })
+        });
+        if (!resp.ok) throw new Error("Failed to add tag");
+        return resp.json();
+    },
+
+    getTags: async (taskId: string): Promise<Tag[]> => {
+        const resp = await fetch(`${BASE_URL}/tasks/${taskId}/tags`);
+        if (!resp.ok) throw new Error("Failed to get tags");
+        return resp.json();
     }
 };
