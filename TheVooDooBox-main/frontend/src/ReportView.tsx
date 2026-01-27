@@ -631,7 +631,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                     {events.map((e: AgentEvent, i: number) => (
                                         <div
                                             key={i}
-                                            className={`mb-1 border-b border-white/5 pb-1 flex gap-2 hover:bg-white/5 cursor-context-menu select-none transition-colors ${getTagStyle(tags, e.id)}`}
+                                            className={`mb-1 border-b border-white/5 pb-1 flex gap-2 hover:bg-white/5 cursor-context-menu select-none transition-colors group ${getTagStyle(tags, e.id)}`}
                                             onContextMenu={(evt) => onEventContextMenu(evt, e.id)}
                                         >
                                             <span className="text-zinc-600 whitespace-nowrap">[{new Date(e.timestamp).toLocaleTimeString()}]</span>
@@ -647,6 +647,12 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                                     </span>
                                                 )}
                                             </span>
+                                            <button
+                                                onClick={(evt) => onEventContextMenu(evt, e.id)}
+                                                className="self-start p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-400 opacity-20 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                            >
+                                                <MoreVertical size={12} />
+                                            </button>
                                         </div>
                                     ))}
                                     {events.length === 0 && (
@@ -724,7 +730,7 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, tags, onTag, level }: { 
     return (
         <div className="select-none relative">
             <div
-                className={`flex items-center gap-3 py-2 px-3 rounded-lg mb-1 cursor-pointer transition-all border ${isSelected
+                className={`flex items-center gap-3 py-2 px-3 rounded-lg mb-1 cursor-pointer transition-all border group ${isSelected
                     ? 'bg-brand-500/10 border-brand-500/30'
                     : 'border-transparent hover:bg-white/5 hover:border-white/10'
                     } ${getTagStyle(tags, processEventId)}`}
@@ -754,7 +760,7 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, tags, onTag, level }: { 
                                     e.stopPropagation();
                                     onTag(e, processEventId);
                                 }}
-                                className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-300 opacity-20 group-hover:opacity-100 transition-opacity"
                             >
                                 <MoreVertical size={10} />
                             </button>
@@ -845,8 +851,8 @@ const TimelineView = ({ events, tags, onTag }: { events: AgentEvent[], tags: Tag
                         <div className="p-3 rounded bg-[#111] border border-white/5 text-xs text-zinc-400 font-mono break-all group-hover:border-white/10 transition-colors shadow-sm relative flex justify-between gap-4">
                             <span>{e.details}</span>
                             <button
-                                onClick={(evt) => onEventContextMenu(evt, e.id)}
-                                className="self-start p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                onClick={(evt) => onTag(evt, e.id)}
+                                className="self-start p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-300 opacity-20 group-hover:opacity-100 transition-opacity flex-shrink-0"
                             >
                                 <MoreVertical size={12} />
                             </button>
@@ -875,12 +881,9 @@ const TimelineView = ({ events, tags, onTag }: { events: AgentEvent[], tags: Tag
                             </button>
                         )}
                     </div>
-                        </div>
+                ))}
+            </div>
         </div>
-    ))
-}
-            </div >
-        </div >
     );
 };
 
@@ -919,7 +922,7 @@ const EventTable = ({ events, type, tags, onTag }: { events: AgentEvent[], type:
                                 <span>{evt.details}</span>
                                 <button
                                     onClick={(e) => onTag(e, evt.id)}
-                                    className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                    className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-300 opacity-20 group-hover:opacity-100 transition-opacity"
                                 >
                                     <MoreVertical size={12} />
                                 </button>
