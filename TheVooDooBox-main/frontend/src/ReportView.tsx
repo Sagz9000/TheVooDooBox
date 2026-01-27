@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
     Activity,
     Server,
@@ -133,34 +134,25 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         let x = e.clientX;
         let y = e.clientY;
 
-        console.log('[ContextMenu] Initial click position:', { x, y, eventId });
-        console.log('[ContextMenu] Viewport size:', { width: window.innerWidth, height: window.innerHeight });
-
         // Check if the click came from a button element (Fingerprint icon)
         const target = e.target as HTMLElement;
         const isButtonClick = target.closest('button') !== null;
-
-        console.log('[ContextMenu] Is button click:', isButtonClick);
 
         // If it's a button click, position relative to the button
         if (isButtonClick) {
             const button = target.closest('button');
             if (button) {
                 const rect = button.getBoundingClientRect();
-                console.log('[ContextMenu] Button rect:', rect);
 
                 // Check if there's enough space on the right
                 const spaceOnRight = window.innerWidth - rect.right;
-                console.log('[ContextMenu] Space on right:', spaceOnRight);
 
                 if (spaceOnRight < menuWidth + margin) {
                     // Position to the left of the button
                     x = rect.left - menuWidth - margin;
-                    console.log('[ContextMenu] Positioning to left of button, x:', x);
                 } else {
                     // Position to the right of the button
                     x = rect.right + margin;
-                    console.log('[ContextMenu] Positioning to right of button, x:', x);
                 }
 
                 // Vertically align with the button
@@ -171,25 +163,20 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         // Final boundary checks
         if (x + menuWidth + margin > window.innerWidth) {
             x = window.innerWidth - menuWidth - margin;
-            console.log('[ContextMenu] Adjusted for right edge, x:', x);
         }
 
         if (x < margin) {
             x = margin;
-            console.log('[ContextMenu] Adjusted for left edge, x:', x);
         }
 
         if (y + menuHeight + margin > window.innerHeight) {
             y = window.innerHeight - menuHeight - margin;
-            console.log('[ContextMenu] Adjusted for bottom edge, y:', y);
         }
 
         if (y < margin) {
             y = margin;
-            console.log('[ContextMenu] Adjusted for top edge, y:', y);
         }
 
-        console.log('[ContextMenu] Final position:', { x, y });
         setContextMenu({ x, y, eventId });
     };
 
@@ -734,7 +721,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
             </div>
 
             {/* Context Menu */}
-            {contextMenu && (
+            {contextMenu && createPortal(
                 <div
                     className="fixed z-[9999] bg-[#111] border border-white/10 shadow-2xl rounded-lg py-1 w-48 animate-in fade-in zoom-in-95 duration-100"
                     style={{ top: contextMenu.y, left: contextMenu.x }}
@@ -757,7 +744,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             {item.label}
                         </button>
                     ))}
-                </div>
+                </div>,
+                document.body
             )}
         </div>
     );
