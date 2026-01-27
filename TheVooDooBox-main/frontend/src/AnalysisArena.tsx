@@ -21,8 +21,10 @@ import {
 } from 'lucide-react';
 import SpiceViewer from './SpiceViewer';
 import VncViewer from './VncViewer';
-import { AgentEvent, voodooApi, BASE_URL, ForensicReport } from './voodooApi';
+import { AgentEvent, voodooApi, BASE_URL, ForensicReport, Tag } from './voodooApi';
 import AIInsightPanel from './AIInsightPanel';
+import AnalystNotepad from './AnalystNotepad';
+import { Pencil } from 'lucide-react';
 
 interface Props {
     target: { node: string, vmid: number, mode: 'vnc' | 'spice-html5' };
@@ -32,12 +34,48 @@ interface Props {
 
 export default function AnalysisArena({ target, events, onBack }: Props) {
     const [fullScreen, setFullScreen] = useState(false);
-    const [activeTab, setActiveTab] = useState<'telemetry' | 'intelligence'>('telemetry');
+    const [activeTab, setActiveTab] = useState<'telemetry' | 'intelligence' | 'notes'>('telemetry');
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, event: AgentEvent } | null>(null);
+    const [tags, setTags] = useState<Tag[]>([]);
     const [aiReport, setAiReport] = useState<ForensicReport | null>(null);
     const [aiLoading, setAiLoading] = useState(false);
     const [screenshots, setScreenshots] = useState<string[]>([]);
     const [selectedScreenshot, setSelectedScreenshot] = useState<number>(0);
     const [showSpice, setShowSpice] = useState(false);
+
+    // Get the most recent task ID from events for this session
+    const activeTaskId = React.useMemo(() => {
+        // If there are events, find the most common non-null task_id or just the latest
+        const latestWithId = events.slice().reverse().find(e => e.task_id);
+        return latestWithId?.task_id;
+    }, [events]);
+
+    useEffect(() => {
+        if (activeTaskId) {
+            refreshTags();
+        }
+    }, [activeTaskId]);
+
+    const refreshTags = async () => {
+        if (!activeTaskId) return;
+        try {
+            const data = await voodooApi.getTags(activeTaskId);
+            setTags(data);
+        } catch (e) {
+            console.error("Failed to fetch tags", e);
+        }
+    };
+
+    const handleTag = async (type: Tag['tag_type']) => {
+        if (!contextMenu || !activeTaskId) return;
+        try {
+            await voodooApi.addTag(activeTaskId, contextMenu.event.id || 0, type);
+            refreshTags();
+            setContextMenu(null);
+        } catch (e) {
+            console.error("Tagging failed", e);
+        }
+    };
 
     // Initial load + polling for screenshots
     React.useEffect(() => {
@@ -242,6 +280,15 @@ export default function AnalysisArena({ target, events, onBack }: Props) {
                                 {activeTab === 'intelligence' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-white"></div>}
                             </span>
                         </button>
+                        <button
+                            onClick={() => setActiveTab('notes')}
+                            className={`flex-1 py-3 text-[10px] font-extrabold uppercase tracking-widest transition-all relative ${activeTab === 'notes' ? 'text-brand-400' : 'text-security-muted'}`}
+                        >
+                            <span className="flex items-center justify-center gap-2">
+                                <Pencil size={12} /> Notes
+                                {activeTab === 'notes' && <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-brand-400"></div>}
+                            </span>
+                        </button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar bg-security-bg/10">
@@ -254,33 +301,60 @@ export default function AnalysisArena({ target, events, onBack }: Props) {
                                     </p>
                                 </div>
                             ) : (
-                                events.slice().reverse().map((evt, i) => (
-                                    <div key={i} className="bg-security-panel/40 border border-security-border rounded p-3 hover:border-security-muted transition-all group relative animate-in slide-in-from-right duration-300">
-                                        <div className="flex justify-between items-start mb-1.5">
-                                            <span className={`text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded ${evt.event_type.includes("ERROR") || evt.process_name.includes("malware")
-                                                ? "bg-threat-critical/20 text-threat-critical border border-threat-critical/20"
-                                                : "bg-brand-500/10 text-brand-500 border border-brand-500/20"
-                                                }`}>
-                                                {evt.event_type}
-                                            </span>
-                                            <span className="text-[9px] font-mono text-security-muted">{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                                events.slice().reverse().map((evt, i) => {
+                                    const tag = tags.find(t => t.event_id === evt.id);
+                                    const tagColors = {
+                                        'Malicious': 'border-threat-critical shadow-[0_0_10px_rgba(248,81,73,0.3)]',
+                                        'Benign': 'opacity-40 grayscale',
+                                        'KeyArtifact': 'border-amber-500 shadow-[0_0_10px_rgba(242,192,55,0.3)]',
+                                        'Ignored': 'opacity-20'
+                                    };
+
+                                    return (
+                                        <div
+                                            key={i}
+                                            onContextMenu={(e) => {
+                                                e.preventDefault();
+                                                setContextMenu({ x: e.clientX, y: e.clientY, event: evt });
+                                            }}
+                                            className={`bg-security-panel/40 border border-security-border rounded p-3 hover:border-brand-500 transition-all group relative animate-in slide-in-from-right duration-300 ${tag ? tagColors[tag.tag_type as keyof typeof tagColors] : ''}`}
+                                        >
+                                            {tag && (
+                                                <div className="absolute -top-2 -right-2 px-1.5 py-0.5 rounded bg-black border border-white/10 text-[8px] font-black uppercase tracking-tighter shadow-lg z-10">
+                                                    {tag.tag_type}
+                                                </div>
+                                            )}
+                                            <div className="flex justify-between items-start mb-1.5">
+                                                <span className={`text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded ${evt.event_type.includes("ERROR") || evt.process_name.includes("malware")
+                                                    ? "bg-threat-critical/20 text-threat-critical border border-threat-critical/20"
+                                                    : "bg-brand-500/10 text-brand-500 border border-brand-500/20"
+                                                    }`}>
+                                                    {evt.event_type}
+                                                </span>
+                                                <span className="text-[9px] font-mono text-security-muted">{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                                            </div>
+                                            <div className="flex items-center gap-2 text-white font-mono text-[11px] font-bold">
+                                                <Terminal size={10} className="text-security-muted" />
+                                                <span className="truncate">{evt.process_name}</span>
+                                                <span className="px-1 bg-security-bg text-security-muted rounded text-[9px] font-bold border border-security-border">PID {evt.process_id}</span>
+                                            </div>
+                                            <div className="mt-2 text-[10px] text-security-muted leading-relaxed font-mono italic break-words border-t border-security-border/30 pt-1.5">
+                                                {evt.details}
+                                            </div>
                                         </div>
-                                        <div className="flex items-center gap-2 text-white font-mono text-[11px] font-bold">
-                                            <Terminal size={10} className="text-security-muted" />
-                                            <span className="truncate">{evt.process_name}</span>
-                                            <span className="px-1 bg-security-bg text-security-muted rounded text-[9px] font-bold border border-security-border">PID {evt.process_id}</span>
-                                        </div>
-                                        <div className="mt-2 text-[10px] text-security-muted leading-relaxed font-mono italic break-words border-t border-security-border/30 pt-1.5">
-                                            {evt.details}
-                                        </div>
-                                    </div>
-                                ))
+                                    );
+                                })
                             )
-                        ) : (
+                        ) : activeTab === 'intelligence' ? (
                             <AIInsightPanel
                                 report={aiReport}
                                 loading={aiLoading}
                                 onAnalyze={handleAIAnalysis}
+                            />
+                        ) : (
+                            <AnalystNotepad
+                                taskId={activeTaskId}
+                                onNoteAdded={() => setActiveTab('intelligence')} // Pivot back after hint?
                             />
                         )}
                     </div>
@@ -303,7 +377,37 @@ export default function AnalysisArena({ target, events, onBack }: Props) {
                     </div>
                 </aside>
             </main>
+
+            {/* Context Menu for Tagging */}
+            {contextMenu && (
+                <>
+                    <div className="fixed inset-0 z-[100]" onClick={() => setContextMenu(null)}></div>
+                    <div
+                        className="fixed z-[101] bg-slate-900 border border-white/10 shadow-2xl rounded p-1 w-48 font-mono"
+                        style={{ top: contextMenu.y, left: contextMenu.x }}
+                    >
+                        <div className="px-2 py-1.5 text-[9px] text-slate-500 border-b border-white/5 mb-1 uppercase font-black tracking-widest">
+                            Tag Telemetry
+                        </div>
+                        <ContextMenuItem label="Malicious" color="text-threat-critical" onClick={() => handleTag('Malicious')} />
+                        <ContextMenuItem label="Key Artifact" color="text-amber-400" onClick={() => handleTag('KeyArtifact')} />
+                        <ContextMenuItem label="Benign / Noise" color="text-slate-400" onClick={() => handleTag('Benign')} />
+                        <ContextMenuItem label="Ignore Entirely" color="text-slate-600" onClick={() => handleTag('Ignored')} />
+                    </div>
+                </>
+            )}
         </div>
+    );
+}
+
+function ContextMenuItem({ label, color, onClick }: { label: string, color: string, onClick: () => void }) {
+    return (
+        <button
+            onClick={onClick}
+            className={`w-full text-left px-3 py-1.5 text-[10px] font-bold uppercase tracking-tight hover:bg-white/5 rounded transition-all ${color}`}
+        >
+            {label}
+        </button>
     );
 }
 

@@ -156,6 +156,20 @@ const HIGH_RISK_APIS: &[(&str, &str)] = &[
     ("AdjustTokenPrivileges", "Privilege Escalation"),
 ];
 
+#[derive(Serialize, Debug, Clone)]
+pub struct AnalystNote {
+    pub author: String,
+    pub content: String,
+    pub is_hint: bool,
+}
+
+#[derive(Serialize, Debug, Clone)]
+pub struct TelemetryTag {
+    pub event_id: i32,
+    pub tag_type: String,
+    pub comment: Option<String>,
+}
+
 #[derive(Serialize, Debug)]
 pub struct AnalysisContext {
     pub scan_id: String,
@@ -166,6 +180,8 @@ pub struct AnalysisContext {
     pub target_filename: String,
     pub patient_zero_pid: String,
     pub virustotal: Option<crate::virustotal::VirusTotalData>,
+    pub analyst_notes: Vec<AnalystNote>,
+    pub manual_tags: Vec<TelemetryTag>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Default)]
@@ -287,6 +303,26 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     .fetch_all(pool)
     .await?;
 
+    // Fetch Analyst Notes
+    let analyst_notes: Vec<AnalystNote> = sqlx::query_as!(
+        AnalystNote,
+        "SELECT author, content, is_hint FROM analyst_notes WHERE task_id = $1",
+        task_id
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
+    // Fetch Manual Tags
+    let manual_tags: Vec<TelemetryTag> = sqlx::query_as!(
+        TelemetryTag,
+        "SELECT event_id, tag_type, comment FROM telemetry_tags WHERE task_id = $1",
+        task_id
+    )
+    .fetch_all(pool)
+    .await
+    .unwrap_or_default();
+
     if rows.is_empty() {
         return Ok(());
     }
@@ -300,6 +336,8 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     // 3. Aggregate Dynamic Data
     let mut context = aggregate_telemetry(task_id, rows, &target_filename, exclude_ips);
     context.virustotal = vt_data;
+    context.analyst_notes = analyst_notes;
+    context.manual_tags = manual_tags;
 
     // 4. Fetch Static Data (Ghidra)
     let mut static_data = fetch_ghidra_analysis(task_id, pool).await;
@@ -344,6 +382,30 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     } else {
         "**DATA SOURCE 3: THREAT INTELLIGENCE**\n- No VirusTotal data available.".to_string()
     };
+
+    // Format Analyst Input Section
+    let notes_section = if !context.analyst_notes.is_empty() {
+        let mut notes_str = "**DATA SOURCE 4: ANALYST FIELD NOTES (HARD CONSTRAINTS)**\n".to_string();
+        for note in &context.analyst_notes {
+            let prefix = if note.is_hint { "[AI HINT]" } else { "[OBSERVATION]" };
+            notes_str.push_str(&format!("- {} ({}): {}\n", prefix, note.author, note.content));
+        }
+        notes_str.push_str("INSTRUCTION: You MUST respect these hints. If the analyst identifies a specific IP as C2, treat it as confirmed malicious.");
+        notes_str
+    } else {
+        "**DATA SOURCE 4: ANALYST FIELD NOTES**\n- No analyst notes provided.".to_string()
+    };
+
+    let tags_section = if !context.manual_tags.is_empty() {
+        let mut tags_str = "**DATA SOURCE 5: HUMAN-TAGGED TELEMETRY**\n".to_string();
+        for tag in &context.manual_tags {
+            tags_str.push_str(&format!("- Event #{} marked as {}\n", tag.event_id, tag.tag_type));
+        }
+        tags_str.push_str("INSTRUCTION: These tags represent human verification. If an event is tagged 'Malicious', it is a definitive indicator.");
+        tags_str
+    } else {
+        "".to_string()
+    };
     
     let prompt = format!(
         r#"### TECHNICAL DATA AUDIT (REF: LAB-402)
@@ -379,6 +441,10 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
 </CODE_PATTERNS>
 
 {vt_section}
+
+{notes_section}
+
+{tags_section}
 
 **OUTPUT SCHEMA (JSON ONLY):**
 {{
@@ -784,5 +850,7 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
         target_filename: target_filename.to_string(),
         patient_zero_pid: root_pid.to_string(),
         virustotal: None, // Will be populated in generate_ai_report
+        analyst_notes: vec![],
+        manual_tags: vec![],
     }
 }
