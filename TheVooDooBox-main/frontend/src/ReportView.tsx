@@ -133,6 +133,19 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         let x = e.clientX;
         let y = e.clientY;
 
+        // Check if the click came from a button element (Fingerprint icon)
+        const target = e.target as HTMLElement;
+        const isButtonClick = target.closest('button') !== null;
+
+        // If it's a button click and would go off-screen, position to the left of the button
+        if (isButtonClick && x + menuWidth + margin > window.innerWidth) {
+            const button = target.closest('button');
+            if (button) {
+                const rect = button.getBoundingClientRect();
+                x = rect.left - menuWidth - margin;
+            }
+        }
+
         // Ensure menu doesn't go off the right edge
         if (x + menuWidth + margin > window.innerWidth) {
             x = Math.max(margin, window.innerWidth - menuWidth - margin);
