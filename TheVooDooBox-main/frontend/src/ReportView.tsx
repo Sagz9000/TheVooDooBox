@@ -23,7 +23,7 @@ import {
     CheckCircle,
     EyeOff,
     Tag as TagIcon,
-    MoreVertical
+    Fingerprint
 } from 'lucide-react';
 import { AgentEvent, voodooApi, ForensicReport, Tag } from './voodooApi';
 import AIInsightPanel from './AIInsightPanel';
@@ -649,9 +649,10 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                             </span>
                                             <button
                                                 onClick={(evt) => onEventContextMenu(evt, e.id)}
-                                                className="self-start p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-400 opacity-20 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                                className="self-start p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-brand-500 opacity-20 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                                title="Tag Event"
                                             >
-                                                <MoreVertical size={12} />
+                                                <Fingerprint size={12} />
                                             </button>
                                         </div>
                                     ))}
@@ -730,7 +731,7 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, tags, onTag, level }: { 
     return (
         <div className="select-none relative">
             <div
-                className={`flex items-center gap-3 py-2 px-3 rounded-lg mb-1 cursor-pointer transition-all border group ${isSelected
+                className={`flex items-center gap-3 py-1.5 px-3 rounded-lg mb-0.5 cursor-pointer transition-all border group ${isSelected
                     ? 'bg-brand-500/10 border-brand-500/30'
                     : 'border-transparent hover:bg-white/5 hover:border-white/10'
                     } ${getTagStyle(tags, processEventId)}`}
@@ -738,19 +739,19 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, tags, onTag, level }: { 
                 onClick={() => onSelect(node.pid)}
                 onContextMenu={(e) => onTag(e, processEventId)}
             >
-                <div className="p-1.5 rounded-md bg-zinc-800 border border-white/5 text-zinc-400">
+                <div className="p-1.5 rounded-md bg-zinc-800 border border-white/5 text-zinc-400 shrink-0">
                     <Terminal size={12} />
                 </div>
 
                 <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                        <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-zinc-300'}`}>
+                    <div className="flex items-center justify-between gap-2">
+                        <span className={`text-[11px] font-bold truncate ${isSelected ? 'text-white' : 'text-zinc-300'}`} title={node.name}>
                             {node.name}
                         </span>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 shrink-0">
                             {/* Tag Indicator for Sidebar */}
-                            {tags.find(t => t.event_id === processEventId) && (
-                                <div className={`w-2 h-2 rounded-full ${tags.find(t => t.event_id === processEventId)?.tag_type === 'Malicious' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-yellow-500'}`}></div>
+                            {tags.some(t => node.events.some(ev => ev.id === t.event_id)) && (
+                                <div className={`w-2 h-2 rounded-full ${tags.find(t => node.events.some(ev => ev.id === t.event_id))?.tag_type === 'Malicious' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-yellow-500 animate-pulse'}`}></div>
                             )}
                             <span className="text-[9px] font-mono text-zinc-600 bg-zinc-900 px-1 rounded border border-white/5">
                                 {node.pid}
@@ -760,21 +761,16 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, tags, onTag, level }: { 
                                     e.stopPropagation();
                                     onTag(e, processEventId);
                                 }}
-                                className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-300 opacity-20 group-hover:opacity-100 transition-opacity"
+                                className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-brand-500 opacity-20 group-hover:opacity-100 transition-opacity"
+                                title="Tag Process"
                             >
-                                <MoreVertical size={10} />
+                                <Fingerprint size={12} />
                             </button>
                         </div>
                     </div>
-                    {node.children.length > 0 && (
-                        <div className="mt-1 flex items-center gap-1">
-                            <div className="h-px w-2 bg-zinc-700"></div>
-                            <span className="text-[8px] uppercase font-bold text-zinc-600">{node.children.length} Children</span>
-                        </div>
-                    )}
                 </div>
 
-                {isSelected && <ChevronRight size={14} className="text-brand-500 animate-pulse" />}
+                {isSelected && <ChevronRight size={14} className="text-brand-500 shrink-0" />}
             </div>
 
             <div className="relative">
@@ -854,9 +850,10 @@ const TimelineView = ({ events, tags, onTag }: { events: AgentEvent[], tags: Tag
                             <span>{e.details}</span>
                             <button
                                 onClick={(evt) => onTag(evt, e.id)}
-                                className="self-start p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-300 opacity-20 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                className="self-start p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-brand-500 opacity-20 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                title="Tag Event"
                             >
-                                <MoreVertical size={12} />
+                                <Fingerprint size={12} />
                             </button>
                         </div>
                         {e.event_type === 'DOWNLOAD_DETECTED' && (
@@ -909,25 +906,39 @@ const EventTable = ({ events, type, tags, onTag }: { events: AgentEvent[], type:
                             className={`hover:bg-white/5 transition-colors group cursor-context-menu select-none ${getTagStyle(tags, evt.id)}`}
                             onContextMenu={(e: React.MouseEvent) => onTag(e, evt.id)}
                         >
-                            <td className="p-3 text-zinc-500 whitespace-nowrap">{new Date(evt.timestamp).toLocaleTimeString()}</td>
-                            <td className="p-3 font-bold text-zinc-400 flex items-center gap-2">
-                                {evt.event_type}
-                                {tags.find(t => t.event_id === evt.id) && (
-                                    <TagIcon size={10} className={
-                                        tags.find(t => t.event_id === evt.id)?.tag_type === 'Malicious' ? 'text-red-500' :
-                                            tags.find(t => t.event_id === evt.id)?.tag_type === 'KeyArtifact' ? 'text-yellow-500' :
-                                                'text-zinc-500'
-                                    } />
-                                )}
+                            <td className="p-3 text-zinc-500 whitespace-nowrap align-top">
+                                <div className="flex items-center gap-2">
+                                    <div className={`w-1.5 h-1.5 rounded-full shrink-0 ${evt.event_type.includes('ERR') ? 'bg-red-500' :
+                                        evt.event_type.includes('NET') || evt.event_type === 'GET' || evt.event_type === 'POST' ? 'bg-blue-500' :
+                                            evt.event_type.includes('FILE') ? 'bg-yellow-500' :
+                                                'bg-zinc-600'
+                                        }`}></div>
+                                    {new Date(evt.timestamp).toLocaleTimeString()}
+                                </div>
                             </td>
-                            <td className="p-3 break-all text-zinc-400 flex justify-between items-start gap-2">
-                                <span>{evt.details}</span>
-                                <button
-                                    onClick={(e) => onTag(e, evt.id)}
-                                    className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-300 opacity-20 group-hover:opacity-100 transition-opacity"
-                                >
-                                    <MoreVertical size={12} />
-                                </button>
+                            <td className="p-3 font-bold text-zinc-400 align-top">
+                                <div className="flex items-center gap-2">
+                                    {evt.event_type}
+                                    {tags.find(t => t.event_id === evt.id) && (
+                                        <TagIcon size={10} className={
+                                            tags.find(t => t.event_id === evt.id)?.tag_type === 'Malicious' ? 'text-red-500' :
+                                                tags.find(t => t.event_id === evt.id)?.tag_type === 'KeyArtifact' ? 'text-yellow-500' :
+                                                    'text-zinc-500'
+                                        } />
+                                    )}
+                                </div>
+                            </td>
+                            <td className="p-3 text-zinc-400 align-top">
+                                <div className="flex justify-between items-start gap-4">
+                                    <span className="break-all leading-relaxed">{evt.details}</span>
+                                    <button
+                                        onClick={(e) => onTag(e, evt.id)}
+                                        className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-brand-500 opacity-20 group-hover:opacity-100 transition-opacity shrink-0"
+                                        title="Tag Event"
+                                    >
+                                        <Fingerprint size={12} />
+                                    </button>
+                                </div>
                             </td>
                         </tr>
                     ))}
