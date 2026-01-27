@@ -128,17 +128,26 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
 
         const menuWidth = 192;
         const menuHeight = 180;
+        const margin = 10; // Minimum margin from viewport edges
 
         let x = e.clientX;
         let y = e.clientY;
 
-        if (x + menuWidth > window.innerWidth) {
-            x = window.innerWidth - menuWidth - 10;
+        // Ensure menu doesn't go off the right edge
+        if (x + menuWidth + margin > window.innerWidth) {
+            x = Math.max(margin, window.innerWidth - menuWidth - margin);
         }
 
-        if (y + menuHeight > window.innerHeight) {
-            y = window.innerHeight - menuHeight - 10;
+        // Ensure menu doesn't go off the bottom edge
+        if (y + menuHeight + margin > window.innerHeight) {
+            y = Math.max(margin, window.innerHeight - menuHeight - margin);
         }
+
+        // Ensure menu doesn't go off the left edge
+        x = Math.max(margin, x);
+
+        // Ensure menu doesn't go off the top edge
+        y = Math.max(margin, y);
 
         setContextMenu({ x, y, eventId });
     };
