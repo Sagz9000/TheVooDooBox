@@ -787,6 +787,8 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, tags, onTag, level }: { 
                         node={child}
                         selectedPid={selectedPid}
                         onSelect={onSelect}
+                        tags={tags}
+                        onTag={onTag}
                         level={level + 1}
                     />
                 ))}
