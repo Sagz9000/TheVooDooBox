@@ -128,40 +128,68 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
 
         const menuWidth = 192;
         const menuHeight = 180;
-        const margin = 10; // Minimum margin from viewport edges
+        const margin = 10;
 
         let x = e.clientX;
         let y = e.clientY;
+
+        console.log('[ContextMenu] Initial click position:', { x, y, eventId });
+        console.log('[ContextMenu] Viewport size:', { width: window.innerWidth, height: window.innerHeight });
 
         // Check if the click came from a button element (Fingerprint icon)
         const target = e.target as HTMLElement;
         const isButtonClick = target.closest('button') !== null;
 
-        // If it's a button click and would go off-screen, position to the left of the button
-        if (isButtonClick && x + menuWidth + margin > window.innerWidth) {
+        console.log('[ContextMenu] Is button click:', isButtonClick);
+
+        // If it's a button click, position relative to the button
+        if (isButtonClick) {
             const button = target.closest('button');
             if (button) {
                 const rect = button.getBoundingClientRect();
-                x = rect.left - menuWidth - margin;
+                console.log('[ContextMenu] Button rect:', rect);
+
+                // Check if there's enough space on the right
+                const spaceOnRight = window.innerWidth - rect.right;
+                console.log('[ContextMenu] Space on right:', spaceOnRight);
+
+                if (spaceOnRight < menuWidth + margin) {
+                    // Position to the left of the button
+                    x = rect.left - menuWidth - margin;
+                    console.log('[ContextMenu] Positioning to left of button, x:', x);
+                } else {
+                    // Position to the right of the button
+                    x = rect.right + margin;
+                    console.log('[ContextMenu] Positioning to right of button, x:', x);
+                }
+
+                // Vertically align with the button
+                y = rect.top;
             }
         }
 
-        // Ensure menu doesn't go off the right edge
+        // Final boundary checks
         if (x + menuWidth + margin > window.innerWidth) {
-            x = Math.max(margin, window.innerWidth - menuWidth - margin);
+            x = window.innerWidth - menuWidth - margin;
+            console.log('[ContextMenu] Adjusted for right edge, x:', x);
         }
 
-        // Ensure menu doesn't go off the bottom edge
+        if (x < margin) {
+            x = margin;
+            console.log('[ContextMenu] Adjusted for left edge, x:', x);
+        }
+
         if (y + menuHeight + margin > window.innerHeight) {
-            y = Math.max(margin, window.innerHeight - menuHeight - margin);
+            y = window.innerHeight - menuHeight - margin;
+            console.log('[ContextMenu] Adjusted for bottom edge, y:', y);
         }
 
-        // Ensure menu doesn't go off the left edge
-        x = Math.max(margin, x);
+        if (y < margin) {
+            y = margin;
+            console.log('[ContextMenu] Adjusted for top edge, y:', y);
+        }
 
-        // Ensure menu doesn't go off the top edge
-        y = Math.max(margin, y);
-
+        console.log('[ContextMenu] Final position:', { x, y });
         setContextMenu({ x, y, eventId });
     };
 
