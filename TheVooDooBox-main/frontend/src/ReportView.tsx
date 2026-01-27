@@ -22,7 +22,8 @@ import {
     ShieldAlert,
     CheckCircle,
     EyeOff,
-    Tag as TagIcon
+    Tag as TagIcon,
+    MoreVertical
 } from 'lucide-react';
 import { AgentEvent, voodooApi, ForensicReport, Tag } from './voodooApi';
 import AIInsightPanel from './AIInsightPanel';
@@ -427,6 +428,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                 node={root}
                                 selectedPid={selectedPid}
                                 onSelect={setSelectedPid}
+                                tags={tags}
+                                onTag={onEventContextMenu}
                                 level={0}
                             />
                         ))}
@@ -637,8 +640,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                                 {e.details}
                                                 {tags.find(t => t.event_id === e.id) && (
                                                     <span className={`ml-2 text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider ${tags.find(t => t.event_id === e.id)?.tag_type === 'Malicious' ? 'bg-red-500 text-white' :
-                                                            tags.find(t => t.event_id === e.id)?.tag_type === 'KeyArtifact' ? 'bg-yellow-500 text-black' :
-                                                                'bg-zinc-700 text-zinc-300'
+                                                        tags.find(t => t.event_id === e.id)?.tag_type === 'KeyArtifact' ? 'bg-yellow-500 text-black' :
+                                                            'bg-zinc-700 text-zinc-300'
                                                         }`}>
                                                         {tags.find(t => t.event_id === e.id)?.tag_type}
                                                     </span>
@@ -714,8 +717,9 @@ const TabButton = ({ active, onClick, icon, label, count }: TabButtonProps) => (
     </button>
 );
 
-const ProcessTreeNode = ({ node, selectedPid, onSelect, level }: { node: ProcessNode, selectedPid: number | null, onSelect: (pid: number) => void, level: number }) => {
+const ProcessTreeNode = ({ node, selectedPid, onSelect, tags, onTag, level }: { node: ProcessNode, selectedPid: number | null, onSelect: (pid: number) => void, tags: Tag[], onTag: (e: React.MouseEvent, eventId?: number) => void, level: number }) => {
     const isSelected = selectedPid === node.pid;
+    const processEventId = node.events.length > 0 ? node.events[0].id : undefined;
 
     return (
         <div className="select-none relative">
@@ -723,9 +727,10 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, level }: { node: Process
                 className={`flex items-center gap-3 py-2 px-3 rounded-lg mb-1 cursor-pointer transition-all border ${isSelected
                     ? 'bg-brand-500/10 border-brand-500/30'
                     : 'border-transparent hover:bg-white/5 hover:border-white/10'
-                    }`}
+                    } ${getTagStyle(tags, processEventId)}`}
                 style={{ marginLeft: `${level * 20}px` }}
                 onClick={() => onSelect(node.pid)}
+                onContextMenu={(e) => onTag(e, processEventId)}
             >
                 <div className="p-1.5 rounded-md bg-zinc-800 border border-white/5 text-zinc-400">
                     <Terminal size={12} />
@@ -736,9 +741,24 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, level }: { node: Process
                         <span className={`text-xs font-bold truncate ${isSelected ? 'text-white' : 'text-zinc-300'}`}>
                             {node.name}
                         </span>
-                        <span className="text-[9px] font-mono text-zinc-600 bg-zinc-900 px-1 rounded border border-white/5">
-                            {node.pid}
-                        </span>
+                        <div className="flex items-center gap-2">
+                            {/* Tag Indicator for Sidebar */}
+                            {tags.find(t => t.event_id === processEventId) && (
+                                <div className={`w-2 h-2 rounded-full ${tags.find(t => t.event_id === processEventId)?.tag_type === 'Malicious' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-yellow-500'}`}></div>
+                            )}
+                            <span className="text-[9px] font-mono text-zinc-600 bg-zinc-900 px-1 rounded border border-white/5">
+                                {node.pid}
+                            </span>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    onTag(e, processEventId);
+                                }}
+                                className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                            >
+                                <MoreVertical size={10} />
+                            </button>
+                        </div>
                     </div>
                     {node.children.length > 0 && (
                         <div className="mt-1 flex items-center gap-1">
@@ -821,37 +841,46 @@ const TimelineView = ({ events, tags, onTag }: { events: AgentEvent[], tags: Tag
                                     </div>
                                 )}
                             </div>
-                            <div className="p-3 rounded bg-[#111] border border-white/5 text-xs text-zinc-400 font-mono break-all group-hover:border-white/10 transition-colors shadow-sm relative">
-                                {e.details}
-                                {e.event_type === 'DOWNLOAD_DETECTED' && (
-                                    <button
-                                        onClick={() => {
-                                            const pathMatch = e.details.match(/File Activity: (.*?) \(SHA256/);
-                                            const path = pathMatch ? pathMatch[1] : null;
-                                            if (path) {
-                                                if (confirm(`Do you want to PIVOT to a deep-dive binary analysis of: ${path}?`)) {
-                                                    voodooApi.pivotBin(path).then(success => {
-                                                        if (success) {
-                                                            alert("Pivot initiated! Check analysis queue for the new mission.");
-                                                        } else {
-                                                            alert("Failed to initiate pivot.");
-                                                        }
-                                                    });
-                                                }
-                                            }
-                                        }}
-                                        className="mt-2 flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded text-[11px] font-black uppercase transition-all shadow-lg shadow-brand-500/20"
-                                    >
-                                        <Binary size={14} />
-                                        Pivot to Binary Analysis
-                                    </button>
-                                )}
-                            </div>
                         </div>
+                        <div className="p-3 rounded bg-[#111] border border-white/5 text-xs text-zinc-400 font-mono break-all group-hover:border-white/10 transition-colors shadow-sm relative flex justify-between gap-4">
+                            <span>{e.details}</span>
+                            <button
+                                onClick={(evt) => onEventContextMenu(evt, e.id)}
+                                className="self-start p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                            >
+                                <MoreVertical size={12} />
+                            </button>
+                        </div>
+                        {e.event_type === 'DOWNLOAD_DETECTED' && (
+                            <button
+                                onClick={() => {
+                                    const pathMatch = e.details.match(/File Activity: (.*?) \(SHA256/);
+                                    const path = pathMatch ? pathMatch[1] : null;
+                                    if (path) {
+                                        if (confirm(`Do you want to PIVOT to a deep-dive binary analysis of: ${path}?`)) {
+                                            voodooApi.pivotBin(path).then(success => {
+                                                if (success) {
+                                                    alert("Pivot initiated! Check analysis queue for the new mission.");
+                                                } else {
+                                                    alert("Failed to initiate pivot.");
+                                                }
+                                            });
+                                        }
+                                    }
+                                }}
+                                className="mt-2 flex items-center gap-2 px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white rounded text-[11px] font-black uppercase transition-all shadow-lg shadow-brand-500/20"
+                            >
+                                <Binary size={14} />
+                                Pivot to Binary Analysis
+                            </button>
+                        )}
                     </div>
-                ))}
-            </div>
+                        </div>
         </div>
+    ))
+}
+            </div >
+        </div >
     );
 };
 
@@ -886,7 +915,15 @@ const EventTable = ({ events, type, tags, onTag }: { events: AgentEvent[], type:
                                     } />
                                 )}
                             </td>
-                            <td className="p-3 break-all text-zinc-400">{evt.details}</td>
+                            <td className="p-3 break-all text-zinc-400 flex justify-between items-start gap-2">
+                                <span>{evt.details}</span>
+                                <button
+                                    onClick={(e) => onTag(e, evt.id)}
+                                    className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                >
+                                    <MoreVertical size={12} />
+                                </button>
+                            </td>
                         </tr>
                     ))}
                 </tbody>
