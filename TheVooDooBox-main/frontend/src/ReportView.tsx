@@ -18,9 +18,13 @@ import {
     Image,
     Search,
     Download,
-    Pencil
+    Pencil,
+    ShieldAlert,
+    CheckCircle,
+    EyeOff,
+    Tag as TagIcon
 } from 'lucide-react';
-import { AgentEvent, voodooApi, ForensicReport } from './voodooApi';
+import { AgentEvent, voodooApi, ForensicReport, Tag } from './voodooApi';
 import AIInsightPanel from './AIInsightPanel';
 import AnalystNotepad from './AnalystNotepad';
 
@@ -77,6 +81,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     const [consoleSearch, setConsoleSearch] = useState("");
     const [consoleSearchInput, setConsoleSearchInput] = useState("");
     const [showCheatsheet, setShowCheatsheet] = useState(false);
+    const [tags, setTags] = useState<Tag[]>([]);
+    const [contextMenu, setContextMenu] = useState<{ x: number, y: number, eventId: number } | null>(null);
 
     useEffect(() => {
         if (taskId) {
@@ -93,6 +99,41 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         }
     }, [taskId, consoleSearch]);
 
+    const fetchTags = () => {
+        if (taskId) {
+            voodooApi.getTags(taskId).then(setTags).catch(err => console.error("Failed to fetch tags", err));
+        }
+    };
+
+    useEffect(() => {
+        fetchTags();
+    }, [taskId]);
+
+    const handleTag = async (tagType: string) => {
+        if (!taskId || !contextMenu) return;
+        try {
+            await voodooApi.addTag(taskId, contextMenu.eventId, tagType);
+            fetchTags();
+        } catch (err) {
+            console.error("Failed to tag event", err);
+        } finally {
+            setContextMenu(null);
+        }
+    };
+
+    const onEventContextMenu = (e: React.MouseEvent, eventId?: number) => {
+        if (!eventId) return;
+        e.preventDefault();
+        setContextMenu({ x: e.pageX, y: e.pageY, eventId });
+    };
+
+    useEffect(() => {
+        const handleClick = () => setContextMenu(null);
+        window.addEventListener('click', handleClick);
+        return () => window.removeEventListener('click', handleClick);
+    }, []);
+
+    // 1. Fetch History and Ghidra Findings
     useEffect(() => {
         if (taskId) {
             voodooApi.fetchGhidraFindings(taskId).then(findings => {
@@ -449,7 +490,11 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                     {/* Tab Content Area */}
                     <div className="flex-1 overflow-hidden relative bg-[#080808]">
                         {activeTab === 'timeline' && (
-                            <TimelineView events={timelineEvents} />
+                            <TimelineView
+                                events={timelineEvents}
+                                tags={tags}
+                                onTag={onEventContextMenu}
+                            />
                         )}
                         {activeTab === 'screenshots' && (
                             <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-4 md:p-6">
@@ -485,13 +530,13 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             </div>
                         )}
                         {activeTab === 'network' && (
-                            <EventTable events={networkEvents} type="network" />
+                            <EventTable events={networkEvents} type="network" tags={tags} onTag={onEventContextMenu} />
                         )}
                         {activeTab === 'files' && (
-                            <EventTable events={fileEvents} type="file" />
+                            <EventTable events={fileEvents} type="file" tags={tags} onTag={onEventContextMenu} />
                         )}
                         {activeTab === 'registry' && (
-                            <EventTable events={registryEvents} type="registry" />
+                            <EventTable events={registryEvents} type="registry" tags={tags} onTag={onEventContextMenu} />
                         )}
                         {activeTab === 'ghidra' && (
                             <GhidraFindingsView findings={ghidraFindings} />
@@ -598,6 +643,33 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                     </div>
                 </div>
             </div>
+
+            {/* Context Menu */}
+            {contextMenu && (
+                <div
+                    className="fixed z-[9999] bg-[#111] border border-white/10 shadow-2xl rounded-lg py-1 w-48 animate-in fade-in zoom-in-95 duration-100"
+                    style={{ top: contextMenu.y, left: contextMenu.x }}
+                >
+                    <div className="px-3 py-1.5 text-[9px] font-black text-zinc-500 uppercase tracking-widest border-b border-white/5 mb-1">
+                        Precision Tagging
+                    </div>
+                    {[
+                        { type: 'Malicious', label: 'Mark as Malicious', icon: <ShieldAlert size={14} className="text-threat-critical" />, color: 'hover:bg-threat-critical/20' },
+                        { type: 'Benign', label: 'Mark as Benign', icon: <CheckCircle size={14} className="text-threat-low" />, color: 'hover:bg-threat-low/20' },
+                        { type: 'KeyArtifact', label: 'Key Artifact', icon: <TagIcon size={14} className="text-brand-500" />, color: 'hover:bg-brand-500/20' },
+                        { type: 'Ignored', label: 'Ignore/Background', icon: <EyeOff size={14} className="text-zinc-500" />, color: 'hover:bg-zinc-500/10' },
+                    ].map((item, idx) => (
+                        <button
+                            key={idx}
+                            onClick={() => handleTag(item.type)}
+                            className={`w-full flex items-center gap-3 px-3 py-2 text-[11px] text-zinc-300 transition-colors ${item.color}`}
+                        >
+                            {item.icon}
+                            {item.label}
+                        </button>
+                    ))}
+                </div>
+            )}
         </div>
     );
 }
@@ -683,14 +755,31 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, level }: { node: Process
     );
 };
 
-const TimelineView = ({ events }: { events: AgentEvent[] }) => {
+const getTagStyle = (tags: Tag[], eventId?: number) => {
+    if (!eventId) return "";
+    const tag = tags.find(t => t.event_id === eventId);
+    if (!tag) return "";
+    switch (tag.tag_type) {
+        case 'Malicious': return "bg-red-500/10 border-l-2 border-l-red-500 ring-1 ring-red-500/20";
+        case 'Benign': return "opacity-40 grayscale blur-[0.2px]";
+        case 'KeyArtifact': return "bg-yellow-500/10 border-l-2 border-l-yellow-500 ring-1 ring-yellow-500/20";
+        case 'Ignored': return "opacity-20";
+        default: return "";
+    }
+};
+
+const TimelineView = ({ events, tags, onTag }: { events: AgentEvent[], tags: Tag[], onTag: (e: React.MouseEvent, eventId?: number) => void }) => {
     if (events.length === 0) return <EmptyState msg="No events recorded for this process" />;
 
     return (
         <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6">
             <div className="relative border-l border-zinc-800 ml-3 space-y-6">
-                {events.map((e, i) => (
-                    <div key={i} className="relative pl-8 group">
+                {events.map((e: AgentEvent, i: number) => (
+                    <div
+                        key={i}
+                        className={`relative pl-8 group transition-all duration-200 select-none ${getTagStyle(tags, e.id)}`}
+                        onContextMenu={(evt: React.MouseEvent) => onTag(evt, e.id)}
+                    >
                         <div className={`absolute -left-1.5 top-1.5 w-3 h-3 rounded-full border-2 border-[#080808] transition-colors ${e.event_type.includes('ERR') ? 'bg-red-500' :
                             e.event_type.includes('NET') || e.event_type === 'GET' || e.event_type === 'POST' ? 'bg-blue-500' :
                                 e.event_type.includes('FILE') ? 'bg-yellow-500' :
@@ -709,6 +798,14 @@ const TimelineView = ({ events }: { events: AgentEvent[] }) => {
                                     }`}>
                                     {e.event_type}
                                 </span>
+                                {tags.find(t => t.event_id === e.id) && (
+                                    <div className={`text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-[0.1em] ${tags.find(t => t.event_id === e.id)?.tag_type === 'Malicious' ? 'bg-red-500 text-white' :
+                                        tags.find(t => t.event_id === e.id)?.tag_type === 'KeyArtifact' ? 'bg-yellow-500 text-black' :
+                                            'bg-zinc-700 text-zinc-300'
+                                        }`}>
+                                        {tags.find(t => t.event_id === e.id)?.tag_type}
+                                    </div>
+                                )}
                             </div>
                             <div className="p-3 rounded bg-[#111] border border-white/5 text-xs text-zinc-400 font-mono break-all group-hover:border-white/10 transition-colors shadow-sm relative">
                                 {e.details}
@@ -744,7 +841,7 @@ const TimelineView = ({ events }: { events: AgentEvent[] }) => {
     );
 };
 
-const EventTable = ({ events, type }: { events: AgentEvent[], type: string }) => {
+const EventTable = ({ events, type, tags, onTag }: { events: AgentEvent[], type: string, tags: Tag[], onTag: (e: React.MouseEvent, eventId?: number) => void }) => {
     if (events.length === 0) return <EmptyState msg={`No ${type} activity detected`} />;
 
     return (
@@ -758,10 +855,23 @@ const EventTable = ({ events, type }: { events: AgentEvent[], type: string }) =>
                     </tr>
                 </thead>
                 <tbody className="text-xs font-mono text-zinc-300 divide-y divide-white/5">
-                    {events.map((evt, i) => (
-                        <tr key={i} className="hover:bg-white/5 transition-colors">
+                    {events.map((evt: AgentEvent, i: number) => (
+                        <tr
+                            key={i}
+                            className={`hover:bg-white/5 transition-colors group cursor-context-menu select-none ${getTagStyle(tags, evt.id)}`}
+                            onContextMenu={(e: React.MouseEvent) => onTag(e, evt.id)}
+                        >
                             <td className="p-3 text-zinc-500 whitespace-nowrap">{new Date(evt.timestamp).toLocaleTimeString()}</td>
-                            <td className="p-3 font-bold text-zinc-400">{evt.event_type}</td>
+                            <td className="p-3 font-bold text-zinc-400 flex items-center gap-2">
+                                {evt.event_type}
+                                {tags.find(t => t.event_id === evt.id) && (
+                                    <TagIcon size={10} className={
+                                        tags.find(t => t.event_id === evt.id)?.tag_type === 'Malicious' ? 'text-red-500' :
+                                            tags.find(t => t.event_id === evt.id)?.tag_type === 'KeyArtifact' ? 'text-yellow-500' :
+                                                'text-zinc-500'
+                                    } />
+                                )}
+                            </td>
                             <td className="p-3 break-all text-zinc-400">{evt.details}</td>
                         </tr>
                     ))}

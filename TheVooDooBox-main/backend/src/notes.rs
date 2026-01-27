@@ -23,7 +23,7 @@ pub struct CreateNoteRequest {
     pub is_hint: bool,
 }
 
-#[post("/notes")]
+#[post("/tasks/notes")]
 pub async fn add_note(
     pool: web::Data<PgPool>,
     req: web::Json<CreateNoteRequest>
@@ -86,7 +86,7 @@ pub struct CreateTagRequest {
     pub comment: Option<String>,
 }
 
-#[post("/tags")]
+#[post("/tasks/tags")]
 pub async fn add_tag(
     pool: web::Data<PgPool>,
     req: web::Json<CreateTagRequest>
