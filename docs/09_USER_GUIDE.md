@@ -12,7 +12,7 @@ Welcome to the VoodooBox Dashboard. This guide explains how to conduct an analys
     *   **Duration**: Set timeout (default 60s).
 5.  Click **"Detonate"**.
 
-![Sample Submission Queue](../TheVooDooBox-main/pictures/queueanalys.png)
+![VoodooBox Dashboard Preview](../TheVooDooBox-main/pictures/preview.png)
 
 ## 2. Live Analysis ("The Arena")
 
