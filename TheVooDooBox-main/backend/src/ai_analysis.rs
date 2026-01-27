@@ -158,14 +158,14 @@ const HIGH_RISK_APIS: &[(&str, &str)] = &[
     ("AdjustTokenPrivileges", "Privilege Escalation"),
 ];
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, sqlx::FromRow)]
 pub struct AnalystNote {
     pub author: String,
     pub content: String,
     pub is_hint: bool,
 }
 
-#[derive(Serialize, Debug, Clone)]
+#[derive(Serialize, Debug, Clone, sqlx::FromRow)]
 pub struct TelemetryTag {
     pub event_id: i32,
     pub tag_type: String,
@@ -307,21 +307,19 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     .await?;
 
     // Fetch Analyst Notes
-    let analyst_notes: Vec<AnalystNote> = sqlx::query_as!(
-        AnalystNote,
-        "SELECT author, content, is_hint FROM analyst_notes WHERE task_id = $1",
-        task_id
+    let analyst_notes: Vec<AnalystNote> = sqlx::query_as::<_, AnalystNote>(
+        "SELECT author, content, is_hint FROM analyst_notes WHERE task_id = $1"
     )
+    .bind(task_id)
     .fetch_all(pool)
     .await
     .unwrap_or_default();
 
     // Fetch Manual Tags
-    let manual_tags: Vec<TelemetryTag> = sqlx::query_as!(
-        TelemetryTag,
-        "SELECT event_id, tag_type, comment FROM telemetry_tags WHERE task_id = $1",
-        task_id
+    let manual_tags: Vec<TelemetryTag> = sqlx::query_as::<_, TelemetryTag>(
+        "SELECT event_id, tag_type, comment FROM telemetry_tags WHERE task_id = $1"
     )
+    .bind(task_id)
     .fetch_all(pool)
     .await
     .unwrap_or_default();

@@ -155,7 +155,8 @@ pub async fn query_similar_behaviors(current_text_representation: String) -> Res
     let body: ChromaQueryResponse = res.json().await?;
     let mut results = Vec::new();
 
-    if let (Some(ids), Some(metadatas), Some(documents)) = (body.ids, body.metadatas, body.documents) {
+    let ids = body.ids;
+    if let (Some(metadatas), Some(documents)) = (body.metadatas, body.documents) {
         if !ids.is_empty() && !ids[0].is_empty() {
              for i in 0..ids[0].len() {
                  let id = &ids[0][i];
