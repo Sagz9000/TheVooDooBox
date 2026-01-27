@@ -4,9 +4,9 @@
 To verify the Ollama server is accessible and working:
 
 ```bash
-# Test Ollama connectivity
+# Test Ollama connectivity (Using DeepSeek-R1)
 curl http://192.168.50.98:11434/api/generate -d '{
-  "model": "qwen2.5-coder:14b",
+  "model": "deepseek-r1:14b",
   "prompt": "Analyze this malware behavior: A process named svchost.exe spawned cmd.exe which then created powershell.exe. Is this suspicious?",
   "stream": false
 }'
@@ -15,9 +15,9 @@ curl http://192.168.50.98:11434/api/generate -d '{
 ## Expected Response
 ```json
 {
-  "model": "qwen2.5-coder:14b",
+  "model": "deepseek-r1:14b",
   "created_at": "2024-01-19T12:45:00Z",
-  "response": "Yes, this is highly suspicious. The behavior chain svchost.exe -> cmd.exe -> powershell.exe is a common indicator of malware activity...",
+  "response": "<think>The user is asking for an analysis of a specific process chain... svchost.exe -> cmd.exe -> powershell.exe is a classic indicator of malware trying to disguise itself...</think> Yes, this is highly suspicious...",
   "done": true
 }
 ```
@@ -43,11 +43,11 @@ curl http://192.168.50.98:11434/api/generate -d '{
   ```
 - [ ] If no models appear, pull the required models:
   ```bash
-  # For Forensic Triage & Chat
-  curl http://192.168.50.98:11434/api/pull -d '{"name": "qwen2.5-coder:14b"}'
-  
-  # For Vector DB Embeddings (RAG)
-  curl http://192.168.50.98:11434/api/pull -d '{"name": "nomic-embed-text"}'
+  # For Forensic Triage & Chat (Recommended)
+curl http://192.168.50.98:11434/api/pull -d '{"name": "deepseek-r1:14b"}'
+
+# For Vector DB Embeddings (RAG)
+curl http://192.168.50.98:11434/api/pull -d '{"name": "nomic-embed-text"}'
   ```
 
 ### Slow Response
@@ -73,8 +73,8 @@ Reasoning models like **DeepSeek-R1** require more time to generate their `<thin
 ## Alternative Models
 You can change the model in `docker-compose.yaml` or `.env`:
 ```yaml
-- OLLAMA_MODEL=qwen2.5-coder:14b  # Recommended Default
-- OLLAMA_MODEL=deepseek-r1:14b    # Reasoning-focused alternative
+- OLLAMA_MODEL=deepseek-r1:14b    # Recommended Default (Reasoning)
+- OLLAMA_MODEL=qwen2.5-coder:14b  # Stable local alternative
 - OLLAMA_MODEL=llama3.1:8b       # General purpose alternative
 - OLLAMA_MODEL=mistral           # Fast alternative
 ```
