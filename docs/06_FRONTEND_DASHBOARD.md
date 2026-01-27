@@ -41,7 +41,9 @@ The final forensic summary for a completed task.
 A persistent AI interface that allows analysts to query the **Intelligence Core** without leaving the live stream. It utilizes a "Terminal" style aesthetic, providing clinical and fast forensic intelligence.
 
 ### AI Insight Panel (`AIInsightPanel.tsx`)
-A side-panel in the Analysis Arena that provides automated, high-level summaries of the current session as events unfold, powered by the real-time "Pulse Check" prompts.
+A side-panel in the Analysis Arena that provides automated, high-level summaries of the current session.
+*   **Threat Visualization**: Integration of VirusTotal data via `VirusTotalCard` for rapid attribution.
+*   **Pulse Checks**: Real-time assessments as events unfold.
 
 ## 📐 Design Philosophy
 

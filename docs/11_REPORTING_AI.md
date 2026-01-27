@@ -9,8 +9,9 @@ The path from execution to report follows these logical stages:
 1.  **Event Capture**: "The Eye" driver captures raw behavioral data.
 2.  **Aggregation**: The backend filters noise and builds a **Process Lineage** (identifying the malware and all its descendants).
 3.  **Context Enrichment**: Ghidra static findings (decompiled functions) are merged with the dynamic behavioral data.
-4.  **AI Synthesis**: An LLM analyzes the hybrid context to produce a structured `ForensicReport`.
-5.  **Artifact Generation**: The system compiles a professional PDF for human review.
+4.  **Threat Corroboration**: VirusTotal intelligence is fetched and injected to validate findings.
+5.  **AI Synthesis**: An LLM analyzes the hybrid context to produce a structured `ForensicReport`.
+6.  **Artifact Generation**: The system compiles a professional PDF for human review.
 
 ## 2. Telemetry Aggregation (`ai_analysis.rs`)
 
@@ -50,6 +51,7 @@ Once the AI report is finalized, the `genpdf` engine generates a forensic docume
 *   **Verdict Panel**: Color-coded risk assessment (Red/Orange/Green).
 *   **Interactive Timeline**: Table view of the attack stages identified by the AI.
 *   **Process Tree**: A visual representation of the execution flow, highlighting suspicious PIDs in red.
+*   **Threat Intelligence**: VirusTotal detection scores, behavior tags, and family labels.
 *   **Artifact List**: Categorized list of Indicators of Compromise (IOCs) for rapid security team response.
 
 ![Forensic Report View](../TheVooDooBox-main/pictures/reportview.png)

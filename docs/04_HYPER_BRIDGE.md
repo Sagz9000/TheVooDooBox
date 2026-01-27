@@ -12,6 +12,7 @@ Hyper-Bridge was designed with three core goals:
 ### Tech Stack
 *   **Core**: Rust (Actix-Web, Tokio) for high-performance concurrency.
 *   **Persistence**: PostgreSQL (SQLx) for forensic event storage.
+*   **Intelligence**: VirusTotal API for external threat corroboration.
 *   **Communication**: WebSocket (real-time telemetry) and REST (orchestration).
 
 ## 🗄️ Storage Strategy: Why PostgreSQL instead of ELK?

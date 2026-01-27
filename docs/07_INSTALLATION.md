@@ -72,6 +72,7 @@ Configure your local LLM or cloud API here.
 | `OLLAMA_MODEL` | Smart model for analysis (e.g., `qwen2.5-coder:14b`) |
 | `EMBEDDING_MODEL` | Fast model for RAG (e.g., `nomic-embed-text`) |
 | `GEMINI_API_KEY` | (Optional) Fallback to Google Gemini Pro |
+| `VIRUSTOTAL_API_KEY` | Required for automated threat intelligence lookups |
 
 ### How it Works
 The `hyper-bridge` backend uses these credentials to authenticate via the `PVEAPIToken` header. When an analysis starts, the backend calls the Proxmox API to:
