@@ -46,6 +46,7 @@ struct VTStats {
 #[derive(Deserialize, Debug)]
 struct VTClassification {
     suggested_threat_label: Option<String>,
+    #[allow(dead_code)]
     popular_threat_category: Vec<VTLabel>,
     popular_threat_name: Vec<VTLabel>,
 }
@@ -53,6 +54,7 @@ struct VTClassification {
 #[derive(Deserialize, Debug)]
 struct VTLabel {
     value: String,
+    #[allow(dead_code)]
     count: i32,
 }
 
