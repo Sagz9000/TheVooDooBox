@@ -7,15 +7,7 @@ import {
     Layers,
     Zap,
     Box,
-    LayoutDashboard,
-    History as HistoryIcon,
-    ShieldCheck,
-    Search,
-    Settings,
-    Server,
-    Radio,
-    MessageSquare,
-    Terminal
+    LayoutDashboard
 } from 'lucide-react';
 import { AgentEvent, ViewModel, voodooApi, BASE_URL } from './voodooApi';
 import LabDashboard from './LabDashboard';
@@ -294,21 +286,86 @@ function MonitorPlaceholder() {
 }
 
 function IntelHub() {
+    const [tasks, setTasks] = useState<any[]>([]);
+    const [loading, setLoading] = useState(true);
+
+    useEffect(() => {
+        const loadTasks = async () => {
+            try {
+                const data = await voodooApi.fetchTasks();
+                setTasks(data);
+            } catch (e) {
+                console.error(e);
+            } finally {
+                setLoading(false);
+            }
+        };
+        loadTasks();
+    }, []);
+
+    const totalDetections = tasks.reduce((acc: number, t: any) => acc + (t.verdict === 'Malicious' ? 1 : 0), 0);
+
     return (
-        <div className="p-8 flex flex-col items-center justify-center h-full text-zinc-500 space-y-6 animate-in zoom-in-95 duration-700">
-            <div className="bg-black border border-brand-500/30 p-8 rounded-full shadow-[0_0_50px_rgba(168,85,247,0.15)] relative group">
-                <div className="absolute inset-0 bg-brand-500/5 rounded-full blur-xl group-hover:bg-brand-500/10 transition-all duration-700"></div>
-                <Brain size={80} className="text-brand-500 animate-pulse relative z-10" strokeWidth={1.5} />
+        <div className="p-8 h-full bg-[#050505] overflow-y-auto custom-scrollbar">
+            <div className="max-w-6xl mx-auto space-y-8">
+                <div className="flex items-center justify-between border-b border-brand-500/20 pb-6">
+                    <div>
+                        <h2 className="text-4xl font-black text-white uppercase tracking-tighter flex items-center gap-4">
+                            <Brain size={40} className="text-brand-500" />
+                            Intelligence <span className="text-brand-500">Core</span>
+                        </h2>
+                        <p className="text-voodoo-toxic-green/50 text-[10px] font-bold uppercase tracking-[0.3em] mt-2">
+                            Neural-Linked Threat Correlation & Global Intelligence Feed
+                        </p>
+                    </div>
+                    <div className="flex gap-4">
+                        <div className="bg-black/40 border border-brand-500/20 p-4 rounded-none min-w-[150px]">
+                            <p className="text-[10px] font-bold text-zinc-500 uppercase">Active Scans</p>
+                            <p className="text-2xl font-black text-white">{tasks.length}</p>
+                        </div>
+                        <div className="bg-black/40 border border-voodoo-toxic-green/20 p-4 rounded-none min-w-[150px]">
+                            <p className="text-[10px] font-bold text-voodoo-toxic-green/50 uppercase">Threats Neutralized</p>
+                            <p className="text-2xl font-black text-voodoo-toxic-green">{totalDetections}</p>
+                        </div>
+                    </div>
+                </div>
+
+                {loading ? (
+                    <div className="py-20 flex flex-col items-center justify-center gap-4 opacity-50">
+                        <Activity className="animate-spin text-brand-500" size={40} />
+                        <p className="text-[10px] uppercase font-bold tracking-widest">Synchronizing Hive Mind...</p>
+                    </div>
+                ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                        {tasks.slice(0, 6).map((task: any) => (
+                            <div key={task.id} className="bg-voodoo-dark-800/30 border border-white/5 p-6 hover:border-brand-500/50 transition-all group">
+                                <div className="flex justify-between items-start mb-4">
+                                    <div className={`text-[10px] px-2 py-1 font-bold uppercase ${task.verdict === 'Malicious' ? 'bg-red-500/20 text-red-500' : 'bg-emerald-500/20 text-emerald-500'}`}>
+                                        {task.verdict || 'Processing'}
+                                    </div>
+                                    <p className="text-[9px] font-mono text-zinc-600">ID: {task.id.slice(0, 8)}</p>
+                                </div>
+                                <h4 className="text-lg font-bold text-white mb-2 line-clamp-1 group-hover:text-brand-400 transition-colors uppercase">
+                                    {task.filename}
+                                </h4>
+                                <div className="space-y-2 mb-6">
+                                    <div className="flex justify-between items-center text-[10px]">
+                                        <span className="text-zinc-500 uppercase font-black">Score</span>
+                                        <span className="text-voodoo-toxic-green">{task.risk_score || 0}% Risk</span>
+                                    </div>
+                                    <div className="w-full bg-zinc-900 h-1 mt-1">
+                                        <div className="bg-brand-500 h-full" style={{ width: `${task.risk_score || 0}%` }}></div>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-4 text-[9px] text-zinc-500 font-bold uppercase tracking-widest">
+                                    <span className="flex items-center gap-1"><Zap size={10} /> {task.status}</span>
+                                    <span className="flex items-center gap-1"><LayoutDashboard size={10} /> Hive Intel</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
-            <div className="text-center max-w-md">
-                <h2 className="text-3xl font-black text-white mb-2 uppercase tracking-tighter text-shadow-neon">Intelligence Core</h2>
-                <p className="text-[10px] font-bold leading-relaxed text-voodoo-toxic-green/70 uppercase tracking-[0.2em]">
-                    Automated correlation engine is on standby. Use the Visual Paradox to profile new samples.
-                </p>
-            </div>
-            <button className="bg-brand-600 hover:bg-brand-500 text-white px-10 py-3 rounded-none font-black uppercase tracking-widest shadow-[4px_4px_0px_rgba(0,0,0,1)] hover:shadow-[2px_2px_0px_rgba(0,0,0,1)] hover:translate-x-[2px] hover:translate-y-[2px] transition-all border border-black">
-                Initialize AI Triage
-            </button>
         </div>
     );
 }

@@ -116,6 +116,12 @@ export const voodooApi = {
         return resp.json();
     },
 
+    fetchTasks: async (): Promise<any[]> => {
+        const resp = await fetch(`${BASE_URL}/tasks`);
+        if (!resp.ok) throw new Error("Failed to fetch tasks");
+        return resp.json();
+    },
+
     controlVm: async (node: string, vmid: number, action: string) => {
         const resp = await fetch(`${BASE_URL}/vms/${node}/${vmid}/status`, {
             method: 'POST',

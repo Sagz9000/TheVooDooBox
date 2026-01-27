@@ -17,10 +17,12 @@ import {
     Sparkles,
     Image,
     Search,
-    Download
+    Download,
+    Pencil
 } from 'lucide-react';
-import { AgentEvent, voodooApi, ForensicReport, BASE_URL } from './voodooApi';
+import { AgentEvent, voodooApi, ForensicReport } from './voodooApi';
 import AIInsightPanel from './AIInsightPanel';
+import AnalystNotepad from './AnalystNotepad';
 
 interface Props {
     taskId: string | null;
@@ -64,7 +66,7 @@ const NOISE_FILTER_PROCESSES = [
 
 export default function ReportView({ taskId, events: globalEvents, onBack }: Props) {
     const [selectedPid, setSelectedPid] = useState<number | null>(null);
-    const [activeTab, setActiveTab] = useState<'timeline' | 'network' | 'files' | 'registry' | 'console' | 'ghidra' | 'intelligence' | 'screenshots'>('timeline');
+    const [activeTab, setActiveTab] = useState<'timeline' | 'network' | 'files' | 'registry' | 'console' | 'ghidra' | 'intelligence' | 'screenshots' | 'notes'>('timeline');
     const [localEvents, setLocalEvents] = useState<AgentEvent[]>([]);
     const [ghidraFindings, setGhidraFindings] = useState<any[]>([]);
     const [screenshots, setScreenshots] = useState<string[]>([]);
@@ -269,15 +271,15 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     const timelineEvents = sourceEvents;
 
     const networkEvents = useMemo(() => {
-        return sourceEvents.filter(e => ['NETWORK_CONNECT', 'LATERAL_MOVEMENT', 'NETWORK_DNS', 'GET', 'POST'].includes(e.event_type));
+        return sourceEvents.filter((e: AgentEvent) => ['NETWORK_CONNECT', 'LATERAL_MOVEMENT', 'NETWORK_DNS', 'GET', 'POST'].includes(e.event_type));
     }, [sourceEvents]);
 
     const fileEvents = useMemo(() => {
-        return sourceEvents.filter(e => e.event_type.startsWith('FILE_'));
+        return sourceEvents.filter((e: AgentEvent) => e.event_type.startsWith('FILE_'));
     }, [sourceEvents]);
 
     const registryEvents = useMemo(() => {
-        return sourceEvents.filter(e => e.event_type.includes('REG_') || e.event_type.includes('REGISTRY'));
+        return sourceEvents.filter((e: AgentEvent) => e.event_type.includes('REG_') || e.event_type.includes('REGISTRY'));
     }, [sourceEvents]);
 
     const getProcessCreateDetail = () => {
@@ -288,8 +290,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         const taskEvents = events.filter((e: AgentEvent) => !taskId || (e as any).task_id === taskId);
         if (taskEvents.length === 0) return { duration: '00:00:00', count: 0 };
 
-        const start = Math.min(...taskEvents.map(e => e.timestamp));
-        const end = Math.max(...taskEvents.map(e => e.timestamp));
+        const start = Math.min(...taskEvents.map((e: AgentEvent) => e.timestamp));
+        const end = Math.max(...taskEvents.map((e: AgentEvent) => e.timestamp));
         const diff = Math.max(0, Math.floor((end - start) / 1000));
 
         const m = Math.floor(diff / 60).toString().padStart(2, '0');
@@ -440,6 +442,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                         <TabButton active={activeTab === 'registry'} onClick={() => setActiveTab('registry')} icon={<Server size={14} />} label="Registry" count={registryEvents.length} />
                         <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Intelligence" count={ghidraFindings.length} />
                         <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} icon={<Sparkles size={14} />} label="AI Insight" />
+                        <TabButton active={activeTab === 'notes'} onClick={() => setActiveTab('notes')} icon={<Pencil size={14} />} label="Notes" />
                         <TabButton active={activeTab === 'console'} onClick={() => setActiveTab('console')} icon={<Terminal size={14} />} label="Raw Feed" count={stats.count} />
                     </div>
 
@@ -504,6 +507,14 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                         setSelectedPid(pid);
                                         setSearchTerm("");
                                     }}
+                                />
+                            </div>
+                        )}
+                        {activeTab === 'notes' && (
+                            <div className="absolute inset-0 bg-security-bg overflow-hidden">
+                                <AnalystNotepad
+                                    taskId={taskId || undefined}
+                                    onNoteAdded={() => setActiveTab('intelligence')}
                                 />
                             </div>
                         )}
