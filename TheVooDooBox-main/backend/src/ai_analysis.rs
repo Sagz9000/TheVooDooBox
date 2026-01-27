@@ -340,9 +340,6 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
     context.analyst_notes = analyst_notes;
     context.manual_tags = manual_tags;
 
-    context.analyst_notes = analyst_notes;
-    context.manual_tags = manual_tags;
-
     // 4. Fetch Static Data (Ghidra)
     let mut static_data = fetch_ghidra_analysis(task_id, pool).await;
     
