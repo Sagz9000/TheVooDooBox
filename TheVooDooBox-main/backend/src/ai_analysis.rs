@@ -399,12 +399,12 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
         format!(
             r#"**DATA SOURCE 3: THREAT INTELLIGENCE (VIRUSTOTAL)**
 - **SHA256:** {}
-- **Detection Score:** {}/{}
+- **Detections:** {}
 - **Threat Label:** {}
 - **Family Labels:** {:?}
 - **Sandox Behavior Tags:** {:?}
 - **INSTRUCTION:** Use these Family Labels for attribution. Cross-reference the Sandbox Behavior Tags with the Dynamic Telemetry below. If VT detects 'debug-environment', look for IsDebuggerPresent in code or logs."#,
-            vt.hash, vt.malicious_votes, vt.total_votes, vt.threat_label, vt.family_labels, vt.behavior_tags
+            vt.hash, vt.malicious_votes, vt.threat_label, vt.family_labels, vt.behavior_tags
         )
     } else {
         "**DATA SOURCE 3: THREAT INTELLIGENCE**\n- No VirusTotal data available.".to_string()

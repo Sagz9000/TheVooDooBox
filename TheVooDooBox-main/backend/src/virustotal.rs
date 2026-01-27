@@ -11,7 +11,6 @@ pub struct VirusTotalData {
     pub hash: String,
     pub scanned_at: DateTime<Utc>,
     pub malicious_votes: i32,
-    pub total_votes: i32,
     pub threat_label: String,
     pub family_labels: Vec<String>,
     pub behavior_tags: Vec<String>,
@@ -85,7 +84,6 @@ pub async fn init_db(pool: &Pool<Postgres>) -> Result<(), sqlx::Error> {
             data JSONB NOT NULL,
             scanned_at TIMESTAMPTZ NOT NULL,
             malicious_votes INT NOT NULL,
-            total_votes INT NOT NULL,
             threat_label TEXT,
             behavior_tags TEXT[] -- Array of strings
         )"
@@ -125,13 +123,12 @@ pub async fn get_cached_or_fetch(pool: &Pool<Postgres>, hash: &String) -> Option
         Ok(vt_data) => {
             // 3. Cache Result
             let _ = sqlx::query(
-                "INSERT INTO virustotal_cache (hash, data, scanned_at, malicious_votes, total_votes, threat_label, behavior_tags)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7)
+                "INSERT INTO virustotal_cache (hash, data, scanned_at, malicious_votes, threat_label, behavior_tags)
+                 VALUES ($1, $2, $3, $4, $5, $6)
                  ON CONFLICT (hash) DO UPDATE SET
                  data = EXCLUDED.data,
                  scanned_at = EXCLUDED.scanned_at,
                  malicious_votes = EXCLUDED.malicious_votes,
-                 total_votes = EXCLUDED.total_votes,
                  threat_label = EXCLUDED.threat_label,
                  behavior_tags = EXCLUDED.behavior_tags"
             )
@@ -139,7 +136,6 @@ pub async fn get_cached_or_fetch(pool: &Pool<Postgres>, hash: &String) -> Option
             .bind(serde_json::to_value(&vt_data).unwrap())
             .bind(vt_data.scanned_at)
             .bind(vt_data.malicious_votes)
-            .bind(vt_data.total_votes)
             .bind(&vt_data.threat_label)
             .bind(&vt_data.behavior_tags)
             .execute(pool)
@@ -171,7 +167,6 @@ async fn fetch_full_report(hash: &str, api_key: &str) -> Result<VirusTotalData, 
     let report_json: VTResponse = resp.json().await?;
     let stats = report_json.data.attributes.last_analysis_stats;
     let malicious = stats.malicious;
-    let total = stats.malicious + stats.undetected + stats.harmless + stats.suspicious + stats.timeout;
     
     let mut threat_label = "Unknown".to_string();
     let mut family_labels = Vec::new();
@@ -221,7 +216,6 @@ async fn fetch_full_report(hash: &str, api_key: &str) -> Result<VirusTotalData, 
         hash: hash.to_string(),
         scanned_at: Utc::now(),
         malicious_votes: malicious,
-        total_votes: total,
         threat_label,
         family_labels,
         behavior_tags,

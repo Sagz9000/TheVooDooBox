@@ -7,7 +7,6 @@ interface Props {
 }
 
 export default function VirusTotalCard({ data }: Props) {
-    const scorePercentage = Math.round((data.malicious_votes / data.total_votes) * 100);
     const isMalicious = data.malicious_votes > 0;
     const scoreColor = isMalicious ? 'text-red-500' : 'text-green-500';
     const borderColor = isMalicious ? 'border-red-500/30' : 'border-green-500/30';
@@ -24,21 +23,12 @@ export default function VirusTotalCard({ data }: Props) {
                 {/* Score Section */}
                 <div className="flex flex-col items-center justify-center gap-2 min-w-[120px]">
                     <div className="relative w-24 h-24 flex items-center justify-center">
-                        <svg className="w-full h-full transform -rotate-90">
-                            <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-black/30" />
-                            <circle cx="48" cy="48" r="40" stroke="currentColor" strokeWidth="8" fill="transparent"
-                                className={`${scoreColor} transition-all duration-1000 ease-out`}
-                                strokeDasharray={251.2}
-                                strokeDashoffset={251.2 - (251.2 * scorePercentage) / 100}
-                                strokeLinecap="round"
-                            />
-                        </svg>
-                        <div className="absolute inset-0 flex flex-col items-center justify-center">
+                        <div className="flex flex-col items-center justify-center border-4 border-black/30 rounded-full w-20 h-20">
                             <span className={`text-2xl font-black ${scoreColor}`}>{data.malicious_votes}</span>
-                            <span className="text-[10px] text-zinc-500 font-bold">/{data.total_votes}</span>
+                            <span className="text-[10px] text-zinc-500 font-bold">DETECTIONS</span>
                         </div>
                     </div>
-                    <span className="text-[10px] font-bold tracking-widest text-zinc-400">DETECTION SCORE</span>
+                    <span className="text-[10px] font-bold tracking-widest text-zinc-400">VIRUSTOTAL SCORE</span>
                 </div>
 
                 {/* Details Section */}

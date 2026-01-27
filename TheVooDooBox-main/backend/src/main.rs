@@ -905,6 +905,13 @@ pub async fn pivot_upload(
             }
             let result = hasher.finalize();
             sha256_hash = format!("{:x}", result);
+
+            // Trigger VirusTotal Lookup (Background)
+            let vt_pool = pool.get_ref().clone();
+            let vt_hash = sha256_hash.clone();
+            actix_web::rt::spawn(async move {
+                let _ = virustotal::get_cached_or_fetch(&vt_pool, &vt_hash).await;
+            });
         }
     }
 
@@ -2358,6 +2365,12 @@ async fn main() -> std::io::Result<()> {
     std::fs::create_dir_all("./screenshots")?;
 
     let pool = init_db().await;
+    
+    // Initialize VirusTotal Cache Table
+    if let Err(e) = virustotal::init_db(&pool).await {
+        println!("[VIRUSTOTAL] Failed to initialize VT cache: {}", e);
+    }
+    
     let pool_data = web::Data::new(pool.clone());
 
     let proxmox_url = env::var("PROXMOX_URL").expect("PROXMOX_URL must be set");

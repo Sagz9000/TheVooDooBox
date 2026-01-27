@@ -146,8 +146,8 @@ pub fn generate_pdf_file(_task_id: &String, report: &ForensicReport, context: &A
         
         let score_color = if vt.malicious_votes > 0 { style::Color::Rgb(220, 38, 38) } else { style::Color::Rgb(22, 163, 74) };
         let _ = vt_table.push_row(vec![
-            Box::new(elements::Paragraph::new("Detection Score").styled(style::Style::new().bold())),
-            Box::new(elements::Paragraph::new(format!("{}/{}", vt.malicious_votes, vt.total_votes)).styled(style::Style::new().bold().with_color(score_color)))
+            Box::new(elements::Paragraph::new("Detections").styled(style::Style::new().bold())),
+            Box::new(elements::Paragraph::new(format!("{}", vt.malicious_votes)).styled(style::Style::new().bold().with_color(score_color)))
         ]);
         let _ = vt_table.push_row(vec![
             Box::new(elements::Paragraph::new("Threat Label").styled(style::Style::new().bold())),
