@@ -11,12 +11,30 @@ mod proxmox;
 mod stream;
 mod spice_relay;
 mod vnc_relay;
+mod ai;
 mod ai_analysis;
 mod reports;
 mod virustotal; // Registered
 mod notes;
 mod memory;
 use ai_analysis::{generate_ai_report, AnalysisRequest, AIReport};
+use ai::manager::{AIManager, ProviderType};
+
+#[derive(serde::Deserialize)]
+struct ChatRequest {
+    prompt: String,
+}
+
+#[derive(serde::Serialize)]
+struct ChatResponse {
+    response: String,
+    provider: String,
+}
+
+#[derive(serde::Deserialize)]
+struct ConfigRequest {
+    provider: ProviderType,
+}
 
 const NOISE_PROCESSES: &[&str] = &[
     "voodoobox-agent-windows.exe",
@@ -2468,6 +2486,11 @@ async fn main() -> std::io::Result<()> {
     let agent_manager = Arc::new(AgentManager::new());
     let agent_manager_data = web::Data::new(agent_manager.clone());
 
+    // AI Manager Initialization
+    let gemini_key = std::env::var("GEMINI_API_KEY").unwrap_or_default();
+    let ollama_url = std::env::var("OLLAMA_URL").unwrap_or("http://localhost:11434".to_string());
+    let ai_manager = web::Data::new(AIManager::new(gemini_key, ollama_url));
+
     tokio::spawn(start_tcp_listener(broadcaster, agent_manager, pool));
 
     println!("Starting Hyper-Bridge server on 0.0.0.0:8080");
@@ -2484,6 +2507,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(broadcaster_data.clone())
             .app_data(agent_manager_data.clone())
             .app_data(pool_data.clone())
+            .app_data(ai_manager.clone()) // AI Manager
             .service(health_check)
             .service(list_all_vms)
             .service(vm_control)
@@ -2524,6 +2548,8 @@ async fn main() -> std::io::Result<()> {
             .service(notes::get_tags)
             .service(actix_files::Files::new("/uploads", "./uploads").show_files_listing())
             .service(actix_files::Files::new("/screenshots", "./screenshots").show_files_listing())
+            .service(ai::handlers::chat_handler)   // AI Route
+            .service(ai::handlers::config_handler) // AI Route
             .route("/ws", web::get().to(stream::ws_route))
     })
     .bind(("0.0.0.0", 8080))?

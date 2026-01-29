@@ -33,4 +33,5 @@ regex = "1.10"
 tokio-tungstenite = { version = "0.28.0", features = ["native-tls"] }
 base64 = "0.21"
 http = "1.1"
+async-trait = "0.1"
 
