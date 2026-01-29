@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
     Monitor,
     Activity,
@@ -41,10 +41,10 @@ export default function AnalysisArena({ target, events, onBack }: Props) {
     const [aiLoading, setAiLoading] = useState(false);
     const [screenshots, setScreenshots] = useState<string[]>([]);
     const [selectedScreenshot, setSelectedScreenshot] = useState<number>(0);
-    const [showSpice, setShowSpice] = useState(false);
+    const [showSpice, setShowSpice] = useState(!!target.mode);
 
     // Get the most recent task ID from events for this session
-    const activeTaskId = React.useMemo(() => {
+    const activeTaskId = useMemo(() => {
         // If there are events, find the most common non-null task_id or just the latest
         const latestWithId = events.slice().reverse().find(e => e.task_id);
         return latestWithId?.task_id;

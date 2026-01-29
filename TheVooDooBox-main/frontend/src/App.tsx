@@ -34,7 +34,8 @@ export default function App() {
     // WebSocket Handling
     useEffect(() => {
         console.log("MALLAB-DEBUG: App mounting, starting WS");
-        const ws = new WebSocket(`ws://${window.location.hostname}:8080/ws`);
+        const hostUrl = BASE_URL.replace(/^https?:\/\//, '');
+        const ws = new WebSocket(`ws://${hostUrl}/ws`);
         ws.onopen = () => {
             console.log("MALLAB-DEBUG: WS Connected");
             setConnected(true);
