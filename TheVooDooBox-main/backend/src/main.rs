@@ -2476,6 +2476,7 @@ async fn main() -> std::io::Result<()> {
         let cors = Cors::permissive();
 
         App::new()
+            .wrap(actix_web::middleware::Logger::default())
             .wrap(cors)
             .app_data(web::Data::new(client.clone()))
             .app_data(broadcaster_data.clone())
