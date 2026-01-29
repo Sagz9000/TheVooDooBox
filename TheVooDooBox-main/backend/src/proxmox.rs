@@ -4,8 +4,8 @@ use std::error::Error;
 
 #[derive(Clone)]
 pub struct ProxmoxClient {
-    base_url: String,
-    auth_header: String,
+    pub base_url: String,
+    pub auth_header: String,
     http: Client,
 }
 

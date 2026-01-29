@@ -45,10 +45,18 @@ impl VncRelay {
             println!("[VNC_RELAY] Attempting TLS handshake with Proxmox...");
 
             // Construct Request with Headers
+            let key = tokio_tungstenite::tungstenite::handshake::client::generate_key();
+            let host = url.split('/').nth(2).unwrap_or("localhost");
+
             let request = Request::builder()
                 .uri(&url)
+                .header("Host", host)
+                .header("PVEAuthCookie", self.password.clone()) // VNC on Proxmox MIGHT accept Header, but Cookie is standard.
                 .header("Cookie", format!("PVEAuthCookie={}", password))
-                .header("Host", url.split('/').nth(2).unwrap_or("localhost")) // Try to extract host
+                .header("Connection", "Upgrade")
+                .header("Upgrade", "websocket")
+                .header("Sec-WebSocket-Version", "13")
+                .header("Sec-WebSocket-Key", key)
                 .body(())
                 .unwrap();
 

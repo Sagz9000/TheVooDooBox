@@ -179,7 +179,12 @@ async fn spice_websocket(
 
     println!("[SPICE_WS] Initiating relay: Proxy={}, Target={}:{}", proxy_addr, target_host, target_port);
 
-    let relay = spice_relay::SpiceRelay::new(proxy_addr, target_host, target_port, password);
+    // Use the API Token (auth_header) for the Proxy Authentication
+    // The "password" variable previously held the Spice Password, which is useless for the Proxy.
+    // We repurpose the 4th argument of SpiceRelay::new to be the PROXY credentials.
+    let proxy_auth = client.auth_header.clone(); 
+
+    let relay = spice_relay::SpiceRelay::new(proxy_addr, target_host, target_port, proxy_auth);
     ws::WsResponseBuilder::new(relay, &req, stream)
         .protocols(&["binary"])
         .start()
