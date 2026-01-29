@@ -2,28 +2,14 @@ use actix::prelude::*;
 use actix_web_actors::ws;
 use futures::{SinkExt, StreamExt};
 use std::time::Duration;
-use tokio::time::interval;
 use tokio_tungstenite::tungstenite::protocol::Message as TungsteniteMessage;
 use tokio_tungstenite::{connect_async_tls_with_config, Connector};
 use native_tls::TlsConnector;
 
 pub struct VncRelay {
-    // We don't hold the connection directly here in a way that blocks; 
-    // instead we use a channel or spawns to handle the bidirectional flow.
-    // For Actix actor, we usually spawn a future that pumps messages.
-    // 
-    // To keep it simple and robust:
-    // 1. On start, connect to upstream Proxmox WSS.
-    // 2. Spawn a read task (Proxmox -> Actor).
-    // 3. Keep a write sink (Actor -> Proxmox).
-    
-    // We need a way to send to the upstream sink from the handle() method.
-    // Since Sink is async and handle() is sync, we use a channel.
     upstream_tx: Option<tokio::sync::mpsc::UnboundedSender<TungsteniteMessage>>,
-    
-    // Connection Params
     target_wss_url: String,
-    password: String, // VNC Password to inject if needed, or handled by ticket in URL
+    password: String,
 }
 
 impl VncRelay {
@@ -42,11 +28,9 @@ impl VncRelay {
         let url = self.target_wss_url.clone();
         let recipient = ctx.address().recipient();
         
-        println!("[VNC_RELAY] Connecting to upstream: {}", url);
+        println!("[VNC_RELAY] Starting proxy to upstream: {}", url);
 
-        // Spawn the connection task
         tokio::spawn(async move {
-            // Configure TLS to skip verification (Proxmox uses self-signed)
             let tls_builder = TlsConnector::builder()
                 .danger_accept_invalid_certs(true)
                 .build()
@@ -56,15 +40,17 @@ impl VncRelay {
             use tokio::net::TcpStream;
             use tokio_tungstenite::{WebSocketStream, MaybeTlsStream};
 
+            println!("[VNC_RELAY] Attempting TLS handshake with Proxmox...");
             match connect_async_tls_with_config(&url, None, false, Some(connector)).await {
-                Ok((ws_stream, _)) => {
-                    println!("[VNC_RELAY] Upstream Connected!");
+                Ok((ws_stream, response)) => {
+                    println!("[VNC_RELAY] Upstream Connected! Response Status: {}", response.status());
                     let ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>> = ws_stream;
                     let (mut write, mut read) = ws_stream.split();
 
-                    // Task: Actor (Client) -> Upstream
+                    // Task: Client -> Upstream
                     let f_write = async move {
                         while let Some(msg) = rx.recv().await {
+                            // println!("[VNC_RELAY] Client -> Upstream: {:?}", msg); // Very verbose
                             if let Err(e) = write.send(msg).await {
                                 println!("[VNC_RELAY] Upstream Write Error: {}", e);
                                 break;
@@ -72,15 +58,16 @@ impl VncRelay {
                         }
                     };
 
-                    // Task: Upstream -> Actor (Client)
+                    // Task: Upstream -> Client
                     let f_read = async move {
                         while let Some(msg) = read.next().await {
                             match msg {
                                 Ok(TungsteniteMessage::Binary(bin)) => {
+                                    // println!("[VNC_RELAY] Upstream -> Client (Binary: {} bytes)", bin.len());
                                     recipient.do_send(BinaryMessage(bin.to_vec()));
                                 }
                                 Ok(TungsteniteMessage::Text(txt)) => {
-                                    // VNC is mostly binary, but just in case
+                                    println!("[VNC_RELAY] Upstream -> Client (Text: {})", txt);
                                     recipient.do_send(BinaryMessage(txt.as_str().as_bytes().to_vec()));
                                 }
                                 Ok(TungsteniteMessage::Close(_)) => {
@@ -91,7 +78,7 @@ impl VncRelay {
                                     println!("[VNC_RELAY] Upstream Read Error: {}", e);
                                     break; 
                                 }
-                                _ => {} // Ping/Pong handled automatically
+                                _ => {} 
                             }
                         }
                     };
@@ -119,12 +106,16 @@ impl Actor for VncRelay {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        println!("[VNC_RELAY] Actor started (Client Connected)");
         self.start_proxy(ctx);
         
-        // Optional: Keep alive heartbeats if needed
         ctx.run_interval(Duration::from_secs(10), |_, ctx| {
             ctx.ping(b"PING");
         });
+    }
+
+    fn stopped(&mut self, _: &mut Self::Context) {
+        println!("[VNC_RELAY] Actor stopped (Client Disconnected)");
     }
 }
 
@@ -143,23 +134,22 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for VncRelay {
         match msg {
             Ok(ws::Message::Binary(bin)) => {
                 if let Some(ref tx) = self.upstream_tx {
-                    // actix::web::Bytes -> tungstenite::Bytes
+                    // println!("[VNC_RELAY] Client -> Upstream (Binary: {} bytes)", bin.len());
                     let _ = tx.send(TungsteniteMessage::Binary(bin));
                 }
             },
             Ok(ws::Message::Text(txt)) => {
                 if let Some(ref tx) = self.upstream_tx {
-                     // String -> tungstenite::Utf8Bytes
+                    println!("[VNC_RELAY] Client -> Upstream (Text: {})", txt);
                     let _ = tx.send(TungsteniteMessage::Text(txt.to_string().into()));
                 }
             },
-            Ok(ws::Message::Ping(bytes)) => {
-                ctx.pong(&bytes);
-            },
             Ok(ws::Message::Close(reason)) => {
+                println!("[VNC_RELAY] Client Closed Connection: {:?}", reason);
                 ctx.close(reason);
                 ctx.stop();
             },
+            Err(e) => println!("[VNC_RELAY] Client Protocol Error: {}", e),
             _ => (),
         }
     }

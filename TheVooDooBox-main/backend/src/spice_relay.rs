@@ -3,9 +3,8 @@ use actix_web_actors::ws;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
-// Removed unused Mutex and Arc if I'm sure. 
-// Actually I'll just remove both since warnings were explicit.
-
+use tokio::io::BufReader;
+use tokio::io::AsyncBufReadExt;
 
 pub struct SpiceRelay {
     // Sink to write bytes to the TCP connection (Proxmox Proxy)
@@ -53,91 +52,88 @@ impl SpiceRelay {
                         return;
                     }
 
-                    // Read Header Response
-                    let mut buffer = [0u8; 4096];
-                    match stream.read(&mut buffer).await {
-                        Ok(n) if n > 0 => {
-                            let response = String::from_utf8_lossy(&buffer[..n]);
-                            if response.contains("200") {
-                                println!("[SPICE_RELAY] Tunnel Established!");
+                    // Read HTTP Response
+                    let mut reader = BufReader::new(&mut stream);
+                    let mut response = String::new();
+                    if let Err(e) = reader.read_line(&mut response).await {
+                         println!("[SPICE_RELAY] Failed to read proxy response: {}", e);
+                         return;
+                    }
+
+                    if !response.contains("200") {
+                        println!("[SPICE_RELAY] Proxy denied connection: {}", response.trim());
+                        return;
+                    }
+                    
+                    // Read headers until empty line
+                    loop {
+                        let mut line = String::new();
+                        match reader.read_line(&mut line).await {
+                             Ok(0) => break, // EOF
+                             Ok(_) => if line.trim().is_empty() { break; },
+                             Err(_) => break,
+                        }
+                    }
+
+                    println!("[SPICE_RELAY] Tunnel Established! Starting TLS...");
+                    
+                    // Handle TLS if port is 61000 (standard Spice TLS)
+                    if target_port == 61000 {
+                        let connector = match native_tls::TlsConnector::builder()
+                            .danger_accept_invalid_certs(true)
+                            .build() {
+                                Ok(c) => c,
+                                Err(e) => {
+                                    println!("[SPICE_RELAY] TLS Config Error: {}", e);
+                                    return;
+                                }
+                            };
+                        let connector = tokio_native_tls::TlsConnector::from(connector);
+                        
+                        // Connect TLS over the established tunnel
+                        match connector.connect("pvespiceproxy", stream).await {
+                            Ok(mut tls_stream) => {
+                                println!("[SPICE_RELAY] TLS Handshake Success!");
                                 
-                                // Handle TLS if port is 61000
-                                if target_port == 61000 {
-                                    println!("[SPICE_RELAY] Performing TLS Handshake...");
-                                    let connector = match native_tls::TlsConnector::builder()
-                                        .danger_accept_invalid_certs(true)
-                                        .build() {
-                                            Ok(c) => c,
-                                            Err(e) => {
-                                                println!("[SPICE_RELAY] TLS Config Error: {}", e);
-                                                return;
-                                            }
-                                        };
-                                    let connector = tokio_native_tls::TlsConnector::from(connector);
-                                    
-                                    // Connect TLS over the established tunnel
-                                    // Domain check is disabled so the string doesn't matter much
-                                    match connector.connect("pvespiceproxy", stream).await {
-                                        Ok(mut tls_stream) => {
-                                            println!("[SPICE_RELAY] TLS Handshake Success!");
-                                            
-                                            // CRITICAL FIX: Wait for initial SPICE handshake from client
-                                            // The SPICE server expects the client to send the first message immediately
-                                            println!("[SPICE_RELAY] Waiting for initial client handshake...");
-                                            
-                                            // Wait for first message from WebSocket client (with timeout)
-                                            let initial_handshake = tokio::time::timeout(
-                                                std::time::Duration::from_secs(5),
-                                                rx.recv()
-                                            ).await;
-                                            
-                                            match initial_handshake {
-                                                Ok(Some(data)) => {
-                                                    println!("[SPICE_RELAY] Received initial handshake ({} bytes), forwarding to server...", data.len());
-                                                    if let Err(e) = tls_stream.write_all(&data).await {
-                                                        println!("[SPICE_RELAY] Failed to send initial handshake: {}", e);
-                                                        return;
-                                                    }
-                                                    if let Err(e) = tls_stream.flush().await {
-                                                        println!("[SPICE_RELAY] Failed to flush initial handshake: {}", e);
-                                                        return;
-                                                    }
-                                                    println!("[SPICE_RELAY] Initial handshake sent successfully, starting relay...");
-                                                    
-                                                    // Now start the bidirectional relay
-                                                    let (mut reader, mut writer) = tokio::io::split(tls_stream);
-                                                    relay_data(&mut reader, &mut writer, &mut rx, recipient).await;
-                                                }
-                                                Ok(None) => {
-                                                    println!("[SPICE_RELAY] WebSocket closed before sending handshake");
-                                                    return;
-                                                }
-                                                Err(_) => {
-                                                    println!("[SPICE_RELAY] Timeout waiting for initial handshake from client");
-                                                    return;
-                                                }
-                                            }
-                                        }
-                                        Err(e) => {
-                                            println!("[SPICE_RELAY] TLS Handshake Failed: {}", e);
+                                println!("[SPICE_RELAY] Waiting for initial client handshake...");
+                                
+                                // Wait for first message from WebSocket client (with timeout)
+                                let initial_handshake = tokio::time::timeout(
+                                    std::time::Duration::from_secs(5),
+                                    rx.recv()
+                                ).await;
+                                
+                                match initial_handshake {
+                                    Ok(Some(data)) => {
+                                        println!("[SPICE_RELAY] Received initial handshake ({} bytes), forwarding to server...", data.len());
+                                        if let Err(e) = tls_stream.write_all(&data).await {
+                                            println!("[SPICE_RELAY] Failed to send initial handshake: {}", e);
                                             return;
                                         }
+                                        if let Err(e) = tls_stream.flush().await {
+                                            println!("[SPICE_RELAY] Failed to flush initial handshake: {}", e);
+                                            return;
+                                        }
+                                        println!("[SPICE_RELAY] Initial handshake sent. Starting bidirectional relay.");
+                                        
+                                        let (mut reader, mut writer) = tokio::io::split(tls_stream);
+                                        relay_data(&mut reader, &mut writer, &mut rx, recipient).await;
                                     }
-                                } else {
-                                    // Plain TCP Relay
-                                    let (mut reader, mut writer) = stream.into_split();
-                                    relay_data(&mut reader, &mut writer, &mut rx, recipient).await;
+                                    Ok(None) => println!("[SPICE_RELAY] WebSocket closed before sending handshake"),
+                                    Err(_) => println!("[SPICE_RELAY] Timeout waiting for initial handshake"),
                                 }
-                            } else {
-                                println!("[SPICE_RELAY] Proxy denied connection: {}", response);
                             }
+                            Err(e) => println!("[SPICE_RELAY] TLS Handshake Failed: {}", e),
                         }
-                        _ => println!("[SPICE_RELAY] Failed to receive proxy response"),
+                    } else {
+                        // Plain TCP Relay (unlikely for Proxmox Spice, but here for completeness)
+                        let (mut reader, mut writer) = stream.into_split();
+                        relay_data(&mut reader, &mut writer, &mut rx, recipient).await;
                     }
                 }
                 Err(e) => println!("[SPICE_RELAY] Failed to connect to proxy {}: {}", proxy_addr, e),
             }
-            println!("[SPICE_RELAY] TCP Bridge Closed");
+            println!("[SPICE_RELAY] connection task finished.");
         });
     }
 }
@@ -154,6 +150,7 @@ async fn relay_data<R, W>(
     // Task: Rx Channel -> TCP Writer
     let write_task = async {
         while let Some(data) = rx.recv().await {
+            // println!("[SPICE_RELAY] Client -> Server: {} bytes", data.len());
             if let Err(e) = writer.write_all(&data).await {
                 println!("[SPICE_RELAY] TCP Write Error: {}", e);
                 break;
@@ -163,7 +160,7 @@ async fn relay_data<R, W>(
                 break;
             }
         }
-        println!("[SPICE_RELAY] Write Task Finished (Channel closed or error)");
+        println!("[SPICE_RELAY] Write Task Finished");
     };
 
     // Task: TCP Reader -> WebSocket
@@ -177,9 +174,7 @@ async fn relay_data<R, W>(
                 }
                 Ok(n) => {
                     let data = read_buf[..n].to_vec();
-                    // Debug: Log first 64 bytes of server response
-                    let preview = if n > 64 { &data[..64] } else { &data[..] };
-                    println!("[SPICE_RELAY] Server -> Client: {} bytes (preview: {:02X?})", n, preview);
+                    // println!("[SPICE_RELAY] Server -> Client: {} bytes", n);
                     recipient.do_send(BinaryMessage(data));
                 }
                 Err(e) => {
@@ -197,7 +192,6 @@ async fn relay_data<R, W>(
     }
 }
 
-// ... BinaryMessage and handlers remain the same ...
 #[derive(Message)]
 #[rtype(result = "()")]
 struct BinaryMessage(Vec<u8>);
@@ -206,7 +200,12 @@ impl Actor for SpiceRelay {
     type Context = ws::WebsocketContext<Self>;
 
     fn started(&mut self, ctx: &mut Self::Context) {
+        println!("[SPICE_RELAY] Actor Started (Client Connected)");
         self.start_tcp_bridge(ctx);
+    }
+    
+    fn stopped(&mut self, _: &mut Self::Context) {
+         println!("[SPICE_RELAY] Actor Stopped (Client Disconnected)");
     }
 }
 
@@ -224,9 +223,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpiceRelay {
         match msg {
             Ok(ws::Message::Binary(bin)) => {
                 if let Some(ref tx) = self.tcp_tx {
-                    // Debug: Log first 64 bytes of client data
-                    let preview = if bin.len() > 64 { &bin[..64] } else { &bin[..] };
-                    println!("[SPICE_RELAY] Client -> Server: {} bytes (preview: {:02X?})", bin.len(), preview);
+                    // println!("[SPICE_RELAY] Forwarding {} bytes to TCP", bin.len());
                     let _ = tx.send(bin.to_vec());
                 }
             },
@@ -235,9 +232,7 @@ impl StreamHandler<Result<ws::Message, ws::ProtocolError>> for SpiceRelay {
                 ctx.close(reason);
                 ctx.stop();
             },
-            Err(e) => {
-                println!("[SPICE_RELAY] WebSocket protocol error: {:?}", e);
-            }
+            Err(e) => println!("[SPICE_RELAY] WS Protocol Error: {:?}", e),
             _ => (),
         }
     }
