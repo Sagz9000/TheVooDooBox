@@ -26,6 +26,7 @@ impl VncRelay {
         self.upstream_tx = Some(tx);
         
         let url = self.target_wss_url.clone();
+        let password = self.password.clone();
         let recipient = ctx.address().recipient();
         
         println!("[VNC_RELAY] Starting proxy to upstream: {}", url);
@@ -46,7 +47,7 @@ impl VncRelay {
             // Construct Request with Headers
             let request = Request::builder()
                 .uri(&url)
-                .header("Cookie", format!("PVEAuthCookie={}", self.password))
+                .header("Cookie", format!("PVEAuthCookie={}", password))
                 .header("Host", url.split('/').nth(2).unwrap_or("localhost")) // Try to extract host
                 .body(())
                 .unwrap();

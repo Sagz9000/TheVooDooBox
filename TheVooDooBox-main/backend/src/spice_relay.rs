@@ -34,6 +34,7 @@ impl SpiceRelay {
         let proxy_addr = self.proxy_addr.clone();
         let target_host = self.target_host.clone();
         let target_port = self.target_port;
+        let password = self.password.clone();
         let recipient = ctx.address().recipient();
 
         println!("[SPICE_RELAY] Starting bridge to Proxy: {}, Target: {}:{}", proxy_addr, target_host, target_port);
@@ -47,7 +48,7 @@ impl SpiceRelay {
                     use base64::{Engine as _, engine::general_purpose};
                     // Construct Proxy-Authorization: Basic <base64(:ticket)>
                     // The username is empty, the password is the ticket.
-                    let auth_str = format!(":{}", self.password);
+                    let auth_str = format!(":{}", password);
                     let auth_b64 = general_purpose::STANDARD.encode(auth_str);
 
                     let connect_req = format!(

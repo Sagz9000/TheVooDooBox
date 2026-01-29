@@ -151,22 +151,7 @@ async fn spice_websocket(
     let (node, vmid) = path.into_inner();
     
     // Determine target host and proxy.
-    // We need the password (ticket) for the proxy authentication
-    let password = match &query.host {
-         Some(_) => "unknown".to_string(), // If host is provided manually, we might lack the ticket unless we force re-fetching or frontend sends it.
-         None => {
-             // We need to fetch the ticket again or use what we have? 
-             // Wait, the client usually calls POST /spice to get ticket, then GET /spice-ws.
-             // We can't easily re-fetch the *same* ticket. 
-             // Ideally we should pass the ticket in the query params like VNC does.
-             // BUT, the current implementation re-fetches it inside `else` block: `client.create_spice_proxy`.
-             // So we have access to it in the `match` block above.
-             // Refactoring slightly to caption the ticket.
-             String::new() 
-         } 
-    };
-    
-    // REFACTORING LOGIC: We need to extract the password from the ticket obtained in the ELSE block.
+    // We need to extract the password from the ticket obtained in the ELSE block.
     // The previous logic was: `let (target_host, proxy_ip) = ...`
     // We need: `let (target_host, proxy_ip, password) = ...`
     
@@ -211,7 +196,7 @@ struct VncWsQuery {
 async fn vnc_websocket(
     req: HttpRequest,
     stream: web::Payload,
-    client: web::Data<proxmox::ProxmoxClient>,
+    _client: web::Data<proxmox::ProxmoxClient>,
     path: web::Path<(String, u64)>,
     query: web::Query<VncWsQuery>,
 ) -> Result<HttpResponse, Error> {
