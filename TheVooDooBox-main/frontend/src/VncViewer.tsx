@@ -38,12 +38,14 @@ export default function VncViewer({ vncTarget }: VncViewerProps) {
 
                 setStatus(`Tunnel Open (Port ${port})`);
 
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const protocol = BASE_URL.startsWith('https') ? 'wss:' : 'ws:';
+                const hostUrl = BASE_URL.replace(/^https?:\/\//, '');
+
                 // Connect to Backend Relay (which proxies to Proxmox)
                 // We pass the ticket as a query param so the backend can accept it (if needed for logging)
                 // but primarily so the BACKEND can construct the upstream URL with it.
                 // The backend relay does NOT inspect the RFB protocol, but passing it here keeps it consistent.
-                const url = `${protocol}//${window.location.host}/vms/${node}/${vmid}/vnc-ws?port=${port}&ticket=${encodeURIComponent(ticket)}&host=${encodeURIComponent(proxmoxHost)}`;
+                const url = `${protocol}//${hostUrl}/vms/${node}/${vmid}/vnc-ws?port=${port}&ticket=${encodeURIComponent(ticket)}&host=${encodeURIComponent(proxmoxHost)}`;
 
                 if (containerRef.current) {
                     const rfb = new RFB(containerRef.current, url, {

@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 // @ts-ignore
 import { SpiceMainConn } from '@spice-project/spice-html5';
 import { Loader2, MonitorOff, ShieldAlert, Monitor, Wifi } from 'lucide-react';
+import { BASE_URL } from './voodooApi';
 
 interface SpiceViewerProps {
     node: string;
@@ -30,7 +31,7 @@ export default function SpiceViewer({ node, vmid, onClose }: SpiceViewerProps) {
             connectionStarted.current = true;
             try {
                 setStatus('Handshaking Protocol...');
-                const response = await fetch(`${window.location.protocol}//${window.location.hostname}:8080/vms/${node}/${vmid}/spice`, {
+                const response = await fetch(`${BASE_URL}/vms/${node}/${vmid}/spice`, {
                     method: 'POST'
                 });
 
@@ -49,8 +50,9 @@ export default function SpiceViewer({ node, vmid, onClose }: SpiceViewerProps) {
             if (!containerRef.current) return null;
 
             try {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${protocol}//${window.location.hostname}:8080/vms/${node}/${vmid}/spice-ws?host=${encodeURIComponent(ticket.host)}`;
+                const protocol = BASE_URL.startsWith('https') ? 'wss:' : 'ws:';
+                const hostUrl = BASE_URL.replace(/^https?:\/\//, '');
+                const wsUrl = `${protocol}//${hostUrl}/vms/${node}/${vmid}/spice-ws?host=${encodeURIComponent(ticket.host)}`;
 
                 console.log('[SPICE] Creating connection to:', wsUrl);
 
