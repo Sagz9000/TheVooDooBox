@@ -197,10 +197,15 @@ export default function SpiceViewer({ node, vmid, onClose }: SpiceViewerProps) {
                         LINK::SECURE
                     </div>
                     <div className="px-2 py-1 bg-black/60 backdrop-blur-md border border-white/5 rounded text-[9px] font-bold text-security-muted shadow-2xl">
-                        {node.toUpperCase()}[{vmid}]
                     </div>
                 </div>
             )}
+
+            {/* DEBUG OVERLAY */}
+            <div className="absolute top-2 right-2 bg-black/50 p-2 text-[10px] text-zinc-500 font-mono z-50 pointer-events-none text-right">
+                <div>Status: {status}</div>
+                <div>Base: {BASE_URL}</div>
+            </div>
         </div>
     );
 }

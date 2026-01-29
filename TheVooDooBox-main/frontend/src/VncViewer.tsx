@@ -107,6 +107,11 @@ export default function VncViewer({ vncTarget }: VncViewerProps) {
                     <p className="text-slate-500 text-xs font-bold uppercase tracking-widest">Target Session Terminated</p>
                 </div>
             )}
+
+            {/* DEBUG OVERLAY */}
+            <div className="absolute top-2 left-2 bg-black/50 p-2 text-[10px] text-zinc-500 font-mono z-50 pointer-events-none">
+                Target: {window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//{BASE_URL.replace(/^https?:\/\//, '')}/vms/{node}/{vmid}/vnc-ws
+            </div>
         </div>
     );
 }
