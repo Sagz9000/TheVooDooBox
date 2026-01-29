@@ -13,15 +13,17 @@ pub struct SpiceRelay {
     proxy_addr: String,
     target_host: String,
     target_port: u16,
+    password: String,
 }
 
 impl SpiceRelay {
-    pub fn new(proxy_addr: String, target_host: String, target_port: u16) -> Self {
+    pub fn new(proxy_addr: String, target_host: String, target_port: u16, password: String) -> Self {
         Self {
             tcp_tx: None,
             proxy_addr,
             target_host,
             target_port,
+            password,
         }
     }
 
@@ -42,9 +44,15 @@ impl SpiceRelay {
                 Ok(mut stream) => {
                     println!("[SPICE_RELAY] Connected to Proxy. Sending HTTP CONNECT...");
                     
+                    use base64::{Engine as _, engine::general_purpose};
+                    // Construct Proxy-Authorization: Basic <base64(:ticket)>
+                    // The username is empty, the password is the ticket.
+                    let auth_str = format!(":{}", self.password);
+                    let auth_b64 = general_purpose::STANDARD.encode(auth_str);
+
                     let connect_req = format!(
-                        "CONNECT {}:{} HTTP/1.1\r\nHost: {}:{}\r\n\r\n",
-                        target_host, target_port, target_host, target_port
+                        "CONNECT {}:{} HTTP/1.1\r\nHost: {}:{}\r\nProxy-Authorization: Basic {}\r\n\r\n",
+                        target_host, target_port, target_host, target_port, auth_b64
                     );
                     
                     if let Err(e) = stream.write_all(connect_req.as_bytes()).await {

@@ -39,9 +39,19 @@ impl VncRelay {
 
             use tokio::net::TcpStream;
             use tokio_tungstenite::{WebSocketStream, MaybeTlsStream};
+            use http::Request;
 
             println!("[VNC_RELAY] Attempting TLS handshake with Proxmox...");
-            match connect_async_tls_with_config(&url, None, false, Some(connector)).await {
+
+            // Construct Request with Headers
+            let request = Request::builder()
+                .uri(&url)
+                .header("Cookie", format!("PVEAuthCookie={}", self.password))
+                .header("Host", url.split('/').nth(2).unwrap_or("localhost")) // Try to extract host
+                .body(())
+                .unwrap();
+
+            match connect_async_tls_with_config(request, None, false, Some(connector)).await {
                 Ok((ws_stream, response)) => {
                     println!("[VNC_RELAY] Upstream Connected! Response Status: {}", response.status());
                     let ws_stream: WebSocketStream<MaybeTlsStream<TcpStream>> = ws_stream;

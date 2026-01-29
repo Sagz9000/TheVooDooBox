@@ -151,40 +151,50 @@ async fn spice_websocket(
     let (node, vmid) = path.into_inner();
     
     // Determine target host and proxy.
-    let (target_host, proxy_ip) = if let Some(h) = &query.host {
-        // If host provided in query, we assume default proxy logic or try to guess.
-        // Ideally the frontend forwards what it got from the ticket.
-        // But for now, let's fallback to ENV or localhost.
-        let proxmox_url = std::env::var("PROXMOX_URL").unwrap_or("https://localhost:8006".to_string());
-        let host_ip = proxmox_url
-            .trim_start_matches("https://")
-            .trim_start_matches("http://")
-            .split(':')
-            .next()
-            .unwrap_or("localhost")
-            .to_string();
-        (h.clone(), host_ip)
+    // We need the password (ticket) for the proxy authentication
+    let password = match &query.host {
+         Some(_) => "unknown".to_string(), // If host is provided manually, we might lack the ticket unless we force re-fetching or frontend sends it.
+         None => {
+             // We need to fetch the ticket again or use what we have? 
+             // Wait, the client usually calls POST /spice to get ticket, then GET /spice-ws.
+             // We can't easily re-fetch the *same* ticket. 
+             // Ideally we should pass the ticket in the query params like VNC does.
+             // BUT, the current implementation re-fetches it inside `else` block: `client.create_spice_proxy`.
+             // So we have access to it in the `match` block above.
+             // Refactoring slightly to caption the ticket.
+             String::new() 
+         } 
+    };
+    
+    // REFACTORING LOGIC: We need to extract the password from the ticket obtained in the ELSE block.
+    // The previous logic was: `let (target_host, proxy_ip) = ...`
+    // We need: `let (target_host, proxy_ip, password) = ...`
+    
+    let (target_host, proxy_ip, password) = if let Some(h) = &query.host {
+         let proxmox_url = std::env::var("PROXMOX_URL").unwrap_or("https://localhost:8006".to_string());
+         let host_ip = proxmox_url.replace("https://", "").replace("http://", "").split(':').next().unwrap_or("localhost").to_string();
+         (h.clone(), host_ip, "nopass".to_string())
     } else {
-        // Get SPICE connection details from Proxmox
         match client.create_spice_proxy(&node, vmid).await {
             Ok(t) => {
                 let h = t.host.unwrap_or("localhost".to_string());
-                let p = t.proxy; // stored in SpiceTicket
-                (h, p)
+                let p = t.proxy;
+                // Use password if available, else ticket
+                let pass = t.password.or(t.ticket).unwrap_or_default();
+                (h, p, pass)
             },
             Err(e) => {
-                println!("[SPICE_WS] Failed to get ticket: {}", e);
-                return Ok(HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })));
+                 return Ok(HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })));
             }
         }
     };
 
     let proxy_addr = format!("{}:3128", proxy_ip);
-    let target_port = 61000; // Always use TLS port for SPICE
+    let target_port = 61000; 
 
     println!("[SPICE_WS] Initiating relay: Proxy={}, Target={}:{}", proxy_addr, target_host, target_port);
 
-    let relay = spice_relay::SpiceRelay::new(proxy_addr, target_host, target_port);
+    let relay = spice_relay::SpiceRelay::new(proxy_addr, target_host, target_port, password);
     ws::WsResponseBuilder::new(relay, &req, stream)
         .protocols(&["binary"])
         .start()
