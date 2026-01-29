@@ -155,7 +155,7 @@ async fn spice_websocket(
     // The previous logic was: `let (target_host, proxy_ip) = ...`
     // We need: `let (target_host, proxy_ip, password) = ...`
     
-    let (target_host, proxy_ip, password) = if let Some(h) = &query.host {
+    let (target_host, proxy_ip, _password) = if let Some(h) = &query.host {
          let proxmox_url = std::env::var("PROXMOX_URL").unwrap_or("https://localhost:8006".to_string());
          let host_ip = proxmox_url.replace("https://", "").replace("http://", "").split(':').next().unwrap_or("localhost").to_string();
          (h.clone(), host_ip, "nopass".to_string())

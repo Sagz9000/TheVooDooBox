@@ -51,7 +51,7 @@ impl VncRelay {
             let request = Request::builder()
                 .uri(&url)
                 .header("Host", host)
-                .header("PVEAuthCookie", self.password.clone()) // VNC on Proxmox MIGHT accept Header, but Cookie is standard.
+                .header("PVEAuthCookie", password.clone()) // VNC on Proxmox MIGHT accept Header, but Cookie is standard.
                 .header("Cookie", format!("PVEAuthCookie={}", password))
                 .header("Connection", "Upgrade")
                 .header("Upgrade", "websocket")
