@@ -9,15 +9,15 @@ use native_tls::TlsConnector;
 pub struct VncRelay {
     upstream_tx: Option<tokio::sync::mpsc::UnboundedSender<TungsteniteMessage>>,
     target_wss_url: String,
-    password: String,
+    auth_header: String,
 }
 
 impl VncRelay {
-    pub fn new(target_wss_url: String, password: String) -> Self {
+    pub fn new(target_wss_url: String, auth_header: String) -> Self {
         Self {
             upstream_tx: None,
             target_wss_url,
-            password,
+            auth_header,
         }
     }
 
@@ -26,7 +26,7 @@ impl VncRelay {
         self.upstream_tx = Some(tx);
         
         let url = self.target_wss_url.clone();
-        let password = self.password.clone();
+        let auth_header = self.auth_header.clone();
         let recipient = ctx.address().recipient();
         
         println!("[VNC_RELAY] Starting proxy to upstream: {}", url);
@@ -51,8 +51,7 @@ impl VncRelay {
             let request = Request::builder()
                 .uri(&url)
                 .header("Host", host)
-                .header("PVEAuthCookie", password.clone()) // VNC on Proxmox MIGHT accept Header, but Cookie is standard.
-                .header("Cookie", format!("PVEAuthCookie={}", password))
+                .header("Authorization", auth_header)
                 .header("Connection", "Upgrade")
                 .header("Upgrade", "websocket")
                 .header("Sec-WebSocket-Version", "13")

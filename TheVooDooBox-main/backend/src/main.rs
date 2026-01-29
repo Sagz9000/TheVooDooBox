@@ -201,7 +201,7 @@ struct VncWsQuery {
 async fn vnc_websocket(
     req: HttpRequest,
     stream: web::Payload,
-    _client: web::Data<proxmox::ProxmoxClient>,
+    client: web::Data<proxmox::ProxmoxClient>,
     path: web::Path<(String, u64)>,
     query: web::Query<VncWsQuery>,
 ) -> Result<HttpResponse, Error> {
@@ -235,8 +235,10 @@ async fn vnc_websocket(
     
     println!("[VNC_WS] Proxying to: wss://{}:8006/... (Port {})", host, port);
     
-    // 3. Start Relay
-    let relay = vnc_relay::VncRelay::new(target_wss, auth_ticket.clone());
+    // 3. Start Relay with API Token for Upstream Auth
+    let api_auth = client.auth_header.clone();
+    let relay = vnc_relay::VncRelay::new(target_wss, api_auth);
+    
     ws::WsResponseBuilder::new(relay, &req, stream)
         .protocols(&["binary"])
         .start()

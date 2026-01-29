@@ -50,8 +50,8 @@ impl SpiceRelay {
                     // we will send it as the `Authorization` header.
                     
                     let connect_req = format!(
-                        "CONNECT {}:{} HTTP/1.1\r\nHost: {}:{}\r\nAuthorization: {}\r\n\r\n",
-                        target_host, target_port, target_host, target_port, password
+                        "CONNECT {}:{} HTTP/1.1\r\nHost: {}:{}\r\nAuthorization: {}\r\nProxy-Authorization: {}\r\n\r\n",
+                        target_host, target_port, target_host, target_port, password, password
                     );
                     
                     if let Err(e) = stream.write_all(connect_req.as_bytes()).await {

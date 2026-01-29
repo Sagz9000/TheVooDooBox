@@ -61,7 +61,7 @@ export default function SpiceViewer({ node, vmid, onClose }: SpiceViewerProps) {
                     screen_id: 'spice-screen',
                     dump_id: 'spice-debug',
                     message_id: 'spice-message',
-                    password: ticket.password,
+                    password: ticket.password || ticket.ticket,
                     onerror: (e: any) => {
                         console.error('[SPICE] Error:', e);
                         setStatus((prev: string) => {
