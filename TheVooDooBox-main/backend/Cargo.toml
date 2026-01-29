@@ -30,4 +30,5 @@ codepage-437 = "0.1"
 image = "0.23"
 urlencoding = "2.1"
 regex = "1.10"
+tokio-tungstenite = { version = "0.28.0", features = ["native-tls"] }
 

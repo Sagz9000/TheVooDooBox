@@ -363,7 +363,7 @@ function VmCrateItem({ vm, onSelect, onLaunchNativeSpice, onOpenSubmission }: {
                         <MonitorPlay size={10} /> VNC
                     </button>
                     <button
-                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); onLaunchNativeSpice(vm.node, vm.vmid); }}
+                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); onSelect(vm.node, vm.vmid, 'spice-html5'); }}
                         className="flex-1 py-1 flex items-center justify-center gap-1 text-[8px] font-black uppercase bg-white/5 text-white/50 hover:bg-white/10 hover:text-white transition-colors"
                     >
                         <ExternalLink size={10} /> SPICE

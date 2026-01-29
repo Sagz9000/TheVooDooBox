@@ -10,6 +10,7 @@ use sha2::{Sha256, Digest};
 mod proxmox;
 mod stream;
 mod spice_relay;
+mod vnc_relay;
 mod ai_analysis;
 mod reports;
 mod virustotal; // Registered
@@ -149,13 +150,28 @@ async fn spice_websocket(
 ) -> Result<HttpResponse, Error> {
     let (node, vmid) = path.into_inner();
     
-    // Determine target host. Use provided one or generate a new ticket.
-    let target_host = if let Some(h) = &query.host {
-        h.clone()
+    // Determine target host and proxy.
+    let (target_host, proxy_ip) = if let Some(h) = &query.host {
+        // If host provided in query, we assume default proxy logic or try to guess.
+        // Ideally the frontend forwards what it got from the ticket.
+        // But for now, let's fallback to ENV or localhost.
+        let proxmox_url = std::env::var("PROXMOX_URL").unwrap_or("https://localhost:8006".to_string());
+        let host_ip = proxmox_url
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .split(':')
+            .next()
+            .unwrap_or("localhost")
+            .to_string();
+        (h.clone(), host_ip)
     } else {
         // Get SPICE connection details from Proxmox
         match client.create_spice_proxy(&node, vmid).await {
-            Ok(t) => t.host.unwrap_or("localhost".to_string()),
+            Ok(t) => {
+                let h = t.host.unwrap_or("localhost".to_string());
+                let p = t.proxy; // stored in SpiceTicket
+                (h, p)
+            },
             Err(e) => {
                 println!("[SPICE_WS] Failed to get ticket: {}", e);
                 return Ok(HttpResponse::InternalServerError().json(serde_json::json!({ "error": e.to_string() })));
@@ -163,21 +179,64 @@ async fn spice_websocket(
         }
     };
 
-    // Calculate Proxy Address
-    let proxmox_url = std::env::var("PROXMOX_URL").unwrap_or("https://localhost:8006".to_string());
-    let host_ip = proxmox_url
-        .trim_start_matches("https://")
-        .trim_start_matches("http://")
-        .split(':')
-        .next()
-        .unwrap_or("localhost");
-    let proxy_addr = format!("{}:3128", host_ip);
-    
+    let proxy_addr = format!("{}:3128", proxy_ip);
     let target_port = 61000; // Always use TLS port for SPICE
 
     println!("[SPICE_WS] Initiating relay: Proxy={}, Target={}:{}", proxy_addr, target_host, target_port);
 
     let relay = spice_relay::SpiceRelay::new(proxy_addr, target_host, target_port);
+    ws::WsResponseBuilder::new(relay, &req, stream)
+        .protocols(&["binary"])
+        .start()
+}
+
+#[derive(serde::Deserialize)]
+struct VncWsQuery {
+    port: String,
+    ticket: String,
+    host: Option<String>,
+}
+
+#[get("/vms/{node}/{vmid}/vnc-ws")]
+async fn vnc_websocket(
+    req: HttpRequest,
+    stream: web::Payload,
+    client: web::Data<proxmox::ProxmoxClient>,
+    path: web::Path<(String, u64)>,
+    query: web::Query<VncWsQuery>,
+) -> Result<HttpResponse, Error> {
+    let (node, vmid) = path.into_inner();
+    
+    // Use the ticket provided by the client (who fetched it via POST /vnc)
+    // This ensures the frontend has the password (ticket) for the RFB client.
+    
+    let port = &query.port;
+    let auth_ticket = &query.ticket;
+    
+    // Resolve Host
+    let host = if let Some(h) = &query.host {
+        h.clone()
+    } else {
+        // Fallback to PROXMOX_URL host
+         let proxmox_url = std::env::var("PROXMOX_URL").unwrap_or("https://localhost:8006".to_string());
+         proxmox_url
+            .trim_start_matches("https://")
+            .trim_start_matches("http://")
+            .split(':')
+            .next()
+            .unwrap_or("localhost")
+            .to_string()
+    };
+    
+    let target_wss = format!(
+        "wss://{}:8006/api2/json/nodes/{}/qemu/{}/vncwebsocket?port={}&vncticket={}", 
+        host, node, vmid, port, urlencoding::encode(auth_ticket)
+    );
+    
+    println!("[VNC_WS] Proxying to: wss://{}:8006/... (Port {})", host, port);
+    
+    // 3. Start Relay
+    let relay = vnc_relay::VncRelay::new(target_wss, auth_ticket.clone());
     ws::WsResponseBuilder::new(relay, &req, stream)
         .protocols(&["binary"])
         .start()
@@ -2427,6 +2486,7 @@ async fn main() -> std::io::Result<()> {
             .service(vm_control)
             .service(vm_revert)
             .service(vnc_proxy)
+            .service(vnc_websocket)
             .service(spice_proxy)
             .service(spice_websocket)
             .service(terminate_process)
