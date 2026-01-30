@@ -2012,35 +2012,52 @@ async fn ghidra_ingest(
     println!("[GHIDRA] Ingesting {} functions for Task {}", batch.functions.len(), task_id);
     let now = Utc::now().timestamp_millis();
 
-    let mut tx = pool.get_ref().begin().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
-
-    for func in batch.functions {
-        let res = sqlx::query(
-            "INSERT INTO ghidra_findings (task_id, binary_name, function_name, entry_point, decompiled_code, assembly, timestamp)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)
-             ON CONFLICT (task_id, function_name) DO UPDATE 
-             SET decompiled_code = EXCLUDED.decompiled_code, 
-                 assembly = EXCLUDED.assembly,
-                 timestamp = EXCLUDED.timestamp"
-        )
-        .bind(&task_id)
-        .bind(&batch.binary_name)
-        .bind(&func.function_name)
-        .bind(&func.entry_point)
-        .bind(&func.decompiled_code)
-        .bind(&func.assembly)
-        .bind(now)
-        .execute(&mut *tx)
-        .await;
-        
-        if let Err(e) = res {
-             println!("[GHIDRA] Insert failed for {}: {}", func.function_name, e);
-        }
+    if batch.functions.is_empty() {
+        return Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "no_data" })));
     }
 
-    tx.commit().await.map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
+    // --- Optimization: Bulk Insert using UNNEST ---
+    // Prepare vectors for columnar binding
+    let mut function_names = Vec::with_capacity(batch.functions.len());
+    let mut entry_points = Vec::with_capacity(batch.functions.len());
+    let mut decompiled_codes = Vec::with_capacity(batch.functions.len());
+    let mut assemblies = Vec::with_capacity(batch.functions.len());
 
-    Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "success" })))
+    for func in batch.functions {
+        function_names.push(func.function_name);
+        entry_points.push(func.entry_point);
+        decompiled_codes.push(func.decompiled_code);
+        assemblies.push(func.assembly);
+    }
+
+    // Execute single query with UNNEST
+    let res = sqlx::query(
+        "INSERT INTO ghidra_findings (task_id, binary_name, function_name, entry_point, decompiled_code, assembly, timestamp)
+         SELECT $1, $2, u.fn_name, u.ep, u.dc, u.asm, $3
+         FROM UNNEST($4::text[], $5::text[], $6::text[], $7::text[]) 
+         AS u(fn_name, ep, dc, asm)
+         ON CONFLICT (task_id, function_name) DO UPDATE 
+         SET decompiled_code = EXCLUDED.decompiled_code, 
+             assembly = EXCLUDED.assembly,
+             timestamp = EXCLUDED.timestamp"
+    )
+    .bind(&task_id)
+    .bind(&batch.binary_name)
+    .bind(now)
+    .bind(&function_names)
+    .bind(&entry_points)
+    .bind(&decompiled_codes)
+    .bind(&assemblies)
+    .execute(pool.get_ref())
+    .await;
+
+    match res {
+        Ok(_) => Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "success" }))),
+        Err(e) => {
+            println!("[GHIDRA] Bulk Insert Failed: {}", e);
+            Err(actix_web::error::ErrorInternalServerError(e))
+        }
+    }
 }
 
 #[derive(serde::Deserialize)]
@@ -2462,16 +2479,26 @@ async fn init_db() -> Pool<Postgres> {
 
     // --- Ghidra Findings Migration ---
     // 1. Clean up duplicates (keep most recent)
-    let _ = sqlx::query(
+    let res_clean = sqlx::query(
         "DELETE FROM ghidra_findings a
          USING ghidra_findings b
          WHERE a.id < b.id AND a.task_id = b.task_id AND a.function_name = b.function_name"
     ).execute(&pool).await;
+    
+    if let Err(e) = res_clean {
+        println!("[DATABASE] Warning: Failed to clean up Ghidra duplicates: {}", e);
+    }
 
     // 2. Add Unique Index for ON CONFLICT support
-    let _ = sqlx::query(
+    let res_index = sqlx::query(
         "CREATE UNIQUE INDEX IF NOT EXISTS idx_ghidra_findings_task_func ON ghidra_findings (task_id, function_name)"
     ).execute(&pool).await;
+
+    if let Err(e) = res_index {
+        println!("[DATABASE] Critical: Failed to create unique index for Ghidra findings: {}", e);
+        // We panic here because without this index, ingestion WILL fail
+        panic!("Database migration failed: Could not create unique index on ghidra_findings");
+    }
 
     println!("[DATABASE] Ghidra Findings migrations complete.");
 
