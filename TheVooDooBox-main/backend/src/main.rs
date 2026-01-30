@@ -17,12 +17,16 @@ mod reports;
 mod virustotal; // Registered
 mod notes;
 mod memory;
-use ai_analysis::{generate_ai_report, AnalysisRequest, AIReport};
+use ai_analysis::{AnalysisRequest, AIReport};
 use ai::manager::{AIManager, ProviderType};
+use ai::provider::{ChatMessage};
 
 #[derive(serde::Deserialize)]
-struct ChatRequest {
-    prompt: String,
+pub struct ChatRequest {
+    pub message: String,
+    pub history: Vec<ChatMessage>,
+    pub task_id: Option<String>,
+    pub page_context: Option<String>,
 }
 
 #[derive(serde::Serialize)]
@@ -31,10 +35,7 @@ struct ChatResponse {
     provider: String,
 }
 
-#[derive(serde::Deserialize)]
-struct ConfigRequest {
-    provider: ProviderType,
-}
+// ConfigRequest moved down to line ~1350 for better grouping with its handlers
 
 const NOISE_PROCESSES: &[&str] = &[
     "voodoobox-agent-windows.exe",
@@ -540,6 +541,7 @@ use std::time::Duration;
 
 #[post("/vms/actions/submit")]
 async fn submit_sample(
+    ai_manager: web::Data<AIManager>,
     manager: web::Data<Arc<AgentManager>>,
     client: web::Data<proxmox::ProxmoxClient>,
     pool: web::Data<Pool<Postgres>>,
@@ -665,11 +667,12 @@ async fn submit_sample(
     let manager = manager.get_ref().clone(); 
     let client = client.get_ref().clone();
     let pool = pool.get_ref().clone();
+    let ai_manager = ai_manager.get_ref().clone();
     let url_clone = download_url.clone();
     let task_id_clone = task_id.clone();
     
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client, manager, pool, task_id_clone, url_clone, original_filename.clone(), analysis_duration_seconds, target_vmid, target_node, false).await;
+        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), analysis_duration_seconds, target_vmid, target_node, false).await;
     });
     
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -685,6 +688,7 @@ async fn orchestrate_sandbox(
     client: proxmox::ProxmoxClient,
     manager: Arc<AgentManager>,
     pool: Pool<Postgres>,
+    ai_manager: AIManager,
     task_id: String,
     target_url: String, // Can be download URL or Detonation URL
     original_filename: String,
@@ -880,7 +884,7 @@ async fn orchestrate_sandbox(
 
     // 8. Generate AI Report (can take up to 10 minutes - VM is already stopped)
     println!("[ORCHESTRATOR] Step 7: Generating AI Analysis Report...");
-    if let Err(e) = generate_ai_report(&task_id, &pool).await {
+    if let Err(e) = ai_analysis::generate_ai_report(&task_id, &pool, &ai_manager).await {
         println!("[ORCHESTRATOR] Failed to generate AI report: {}", e);
     } else {
         println!("[ORCHESTRATOR] AI Analysis Report generated successfully.");
@@ -952,6 +956,7 @@ pub async fn pivot_binary(
 
 #[post("/vms/telemetry/pivot-upload")]
 pub async fn pivot_upload(
+    ai_manager: web::Data<AIManager>,
     manager: web::Data<Arc<AgentManager>>,
     client: web::Data<proxmox::ProxmoxClient>,
     pool: web::Data<Pool<Postgres>>,
@@ -1018,11 +1023,12 @@ pub async fn pivot_upload(
     let manager = manager.get_ref().clone();
     let client = client.get_ref().clone();
     let pool = pool.get_ref().clone();
+    let ai_manager = ai_manager.get_ref().clone();
     let url_clone = download_url.clone();
     let task_id_clone = task_id.clone();
-
+    
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client, manager, pool, task_id_clone, url_clone, original_filename.clone(), 300, None, None, false).await; // Pivot uses default 300s
+        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), 300, None, None, false).await; // Pivot uses default 300s
     });
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "pivoted", "task_id": task_id })))
@@ -1030,6 +1036,7 @@ pub async fn pivot_upload(
 
 #[post("/vms/actions/exec-url")]
 async fn exec_url(
+    ai_manager: web::Data<AIManager>,
     manager: web::Data<Arc<AgentManager>>,
     client: web::Data<proxmox::ProxmoxClient>,
     pool: web::Data<Pool<Postgres>>,
@@ -1067,12 +1074,13 @@ async fn exec_url(
     let manager_clone = manager.get_ref().clone(); 
     let client_clone = client.get_ref().clone();
     let pool_clone = pool.get_ref().clone();
+    let ai_manager = ai_manager.get_ref().clone();
     let url = req.url.clone();
     let task_id_clone = task_id.clone();
     let node = req.node.clone();
     
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client_clone, manager_clone, pool_clone, task_id_clone, url, "URL_Detonation".to_string(), duration, vmid, node, true).await;
+        orchestrate_sandbox(client_clone, manager_clone, pool_clone, ai_manager, task_id_clone, url, "URL_Detonation".to_string(), duration, vmid, node, true).await;
     });
 
     HttpResponse::Ok().json(serde_json::json!({ 
@@ -1297,23 +1305,7 @@ async fn list_screenshots(query: web::Query<TaskQuery>) -> impl Responder {
     HttpResponse::Ok().json(files)
 }
 
-// AI Types moved to ai_analysis.rs
-
-#[derive(Serialize, Deserialize)]
-struct ChatMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Serialize, Deserialize)]
-struct ChatRequest {
-    message: String,
-    history: Vec<ChatMessage>,
-    task_id: Option<String>,
-    page_context: Option<String>,
-}
-
-// ChromaDB Vector Search Helper
+// Vector Search Helper
 async fn query_vector_db(query: &str, n_results: usize) -> Result<Vec<String>, Box<dyn std::error::Error>> {
     let chroma_url = env::var("CHROMADB_URL").unwrap_or_else(|_| "http://chromadb:8000".to_string());
     let client = reqwest::Client::new();
@@ -1352,15 +1344,42 @@ async fn query_vector_db(query: &str, n_results: usize) -> Result<Vec<String>, B
     }
 }
 
+#[derive(Deserialize)]
+struct ConfigRequest {
+    provider: String,
+    gemini_key: Option<String>,
+    ollama_url: Option<String>,
+    ollama_model: Option<String>,
+}
+
+#[post("/vms/ai/config")]
+async fn set_ai_config(
+    req: web::Json<ConfigRequest>,
+    ai_manager: web::Data<AIManager>
+) -> impl Responder {
+    let provider = match req.provider.to_lowercase().as_str() {
+        "gemini" => ProviderType::Gemini,
+        _ => ProviderType::Ollama,
+    };
+
+    ai_manager.switch_provider(provider, req.gemini_key.clone(), req.ollama_url.clone(), req.ollama_model.clone()).await;
+    HttpResponse::Ok().json(serde_json::json!({ "status": "success", "provider": req.provider }))
+}
+
+#[get("/vms/ai/config")]
+async fn get_ai_config(ai_manager: web::Data<AIManager>) -> impl Responder {
+    let provider_name = ai_manager.get_current_provider_name().await;
+    HttpResponse::Ok().json(serde_json::json!({ "provider": provider_name }))
+}
+
 #[post("/vms/ai/chat")]
 async fn chat_handler(
     req: web::Json<ChatRequest>,
+    ai_manager: web::Data<AIManager>,
     manager: web::Data<Arc<AgentManager>>,
     pool: web::Data<Pool<Postgres>>
 ) -> impl Responder {
-    let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://192.168.50.98:11434".to_string());
-    // Specialist Swap: Use 7b model for snappy chat response
-    let ollama_model = "qwen2.5-coder:7b".to_string();
+
 
     // Fetch recent analysis context
     let recent_tasks = sqlx::query_as::<_, Task>(
@@ -1525,11 +1544,12 @@ async fn chat_handler(
     let vector_context = if !req.message.is_empty() {
         let mut vector_results = Vec::new();
         
+        let req_msg = req.message.clone();
         // Query with different perspectives for better coverage
         let queries = vec![
-            req.message.clone(),
-            format!("malware technique: {}", req.message),
-            format!("MITRE ATT&CK: {}", req.message),
+            req_msg.clone(),
+            format!("malware technique: {}", req_msg),
+            format!("MITRE ATT&CK: {}", req_msg),
         ];
         
         for query in queries {
@@ -1566,7 +1586,7 @@ async fn chat_handler(
         context_summary.push_str("\n");
     }
 
-    let client = reqwest::Client::new();
+
     
     // Construct messages with system prompt
     let mut messages = vec![
@@ -1696,43 +1716,133 @@ The following evidence is wrapped in <EVIDENCE> tags. Map these facts to your an
         "content": req.message
     }));
 
-    // Call Ollama
-    let res = client.post(format!("{}/api/chat", ollama_url))
-        .json(&serde_json::json!({
-            "model": ollama_model,
-            "messages": messages,
-            "stream": false,
-            "options": {
-                "temperature": 0.05
-            }
-        }))
-        .send()
-        .await;
+    // Construct history for AIManager
+    let mut history = req.history.clone();
+    // Add the current user message to the history for the provider
+    history.push(ChatMessage {
+        role: "user".to_string(),
+        content: req.message.clone(),
+    });
 
-    match res {
-        Ok(resp) => {
-            if let Ok(json) = resp.json::<serde_json::Value>().await {
-                if let Some(content) = json["message"]["content"].as_str() {
-                    return HttpResponse::Ok().json(serde_json::json!({ "response": content }));
-                }
-            }
-            HttpResponse::InternalServerError().json(serde_json::json!({ "response": "Failed to parse AI response" }))
-        },
+    // SYSTEM PROMPT (Extracted from existing logic)
+    let system_prompt = format!(
+"## VooDooBox Intelligence Core | System Prompt
+
+**Role & Persona:**
+You are an **Elite Threat Hunter & Malware Analyst (VooDooBox Intelligence Core)**. 
+Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
+
+### INSTRUCTIONS & VERDICT LOGIC
+1. **CONTEXTUAL SUSPICION:** Distinguish between capability and intent. Scrutinize Living-off-the-Land binaries (powershell, certutil), but respect legitimate contextual use.
+2. **THE \"INSTALLER EXCEPTION\":** 
+   - **Signs:** setup.exe/installer.exe, writing to 'Program Files', creating shortcuts, downloads from known CDNs.
+   - **Verdict:** BENIGN UNLESS malicious behavior (injection, raw IP comms) is present.
+3. **IOC BLACKLIST (ANTI-HALLUCINATION):**
+   - **NEVER** output placeholder IOCs: \"example.com\", \"yoursite.com\", \"1.2.3.4\", \"localhost\", \"google.com\".
+   - If no specific URL is in telemetry, write \"URL: Unknown\". DO NOT GUESS.
+4. **DATA ACCURACY (STRICT):** You must extract EXACT PIDs and File Paths. NEVER use placeholders like '1234'.
+5. **If a data point is missing in the telemetry, state \"Unknown\". DO NOT INVENT DATA.**
+
+### DATA SOURCE PROTOCOL (CRITICAL)
+1. **Dynamic Events (Sysmon):**
+   - MUST use the exact PID found in the logs (e.g., 4492).
+   - Label these as \"Confirmed Execution\".
+   - **Internet Activity:** Only declare \"Network Activity\" if you see confirmed Remote IP/Port in the logs.
+
+2. **Static Findings (Ghidra):**
+   - Ghidra shows CAPABILITIES (what the code *can* do), not necessarily what it *did*.
+   - Example: \"InternetOpenW\" is a capability. It does NOT mean the binary connected.
+   - If citing a Ghidra finding, you **MUST NOT** assign it a Sysmon PID.
+   - **REQUIRED PID FORMAT:** Set the PID to \"STATIC_ANALYSIS\".
+   - **REQUIRED DISCLAIMER:** You must append: \" *[Disclaimer: Feature identified in static code analysis; execution not observed in telemetry.]*\"
+
+### TIMELINE FORMATTING RULES
+- If a PID is \"1234\", \"0\", or random, REPLACE IT with \"STATIC_ANALYSIS\".
+- Do not mix sources without labeling them.
+
+### SCOPE OF ANALYSIS
+1. **Root Cause Analysis:** Your narrative MUST begin with the execution of the primary suspicious process (Patient Zero).
+2. **Relevancy Filter:** Ignore standard Windows background noise unless it is directly interacted with by the malware (e.g., injection into svchost).
+3. **Verdict Criteria:** If the target process does nothing but exit immediately, the verdict is \"Benign\" or \"Crashed\". Do not blame the OS for the malware's failure.
+
+### EFFICIENCY RULES (SPEED OPTIMIZATION)
+1. **CONCISE THINKING:** Do not over-analyze benign events. Focus ONLY on the suspicious chain.
+2. **Thinking Budget:** Limit your reasoning to the most critical findings. Be fast.
+
+### Presentation Standards (MANDATORY)
+1. **Status Alerts:**
+   - `> [!CAUTION]` for active threats/C2 activity.
+   - `> [!IMPORTANT]` for critical forensic artifacts.
+   - `> [!NOTE]` for contextual observations.
+   - `> [!WARNING]` before any destructive VM action.
+2. **Forensic Tables:** All event sequences MUST be correlated in a Markdown Table:
+   | Time Offset | Event Type | Source | Detail |
+   | :--- | :--- | :--- | :--- |
+3. **Artifact formatting:**
+   - IPs/Domains: `192.168.1.1`
+   - Hashes: `SHA256(...)`
+   - Registry: `HKLM\\\\Software\\\\...`
+4. **Confidence Scoring:** Every verdict must include `[Confidence: High/Med/Low]`.
+
+### Data Ecosystem & Capabilities
+* **QUERY_TELEMETRY:** Access real-time kernel event streams.
+* **QUERY_VECTOR_DB:** Cross-reference Ghidra patterns/signatures.
+* **MCP_ACTION:** Execute VM commands (Snapshots, Process Kill).
+* **Ghidra Static Analysis:**
+    * `MalwareScan`: Identify C2/injection patterns.
+    * `CipherScan`: Detect cryptographic primitives.
+    * `GetFunctionCFG` / `GetCallTree`: Flow analysis.
+    * `RenameFunction`: Annotate binary live.
+
+### Execution Workflow
+1. **Prioritize Timelines:** Correlate Kernel events with Process trees. Highlighting parent-child anomalies is primary.
+2. **Contextualize:** Distinguish clearly between *Dynamic Behavior* (observed) and *Static Capability* (code potential).
+3. **Attribution:** Use RAG to map findings to MITRE ATT&CK TTPs.
+
+### Example Response Format
+> [!CAUTION]
+> **THREAT IDENTIFIED:** Potential Ransomware Activity [Confidence: High]
+> **Binary:** `invoice.exe` | **PID:** 4402
+
+### 📊 Correlated Telemetry
+| Offset | Event | Detail |
+| :--- | :--- | :--- |
+| T+0s | Process | `invoice.exe` spawn `cmd.exe` |
+| T+2s | File | Changes to `*.encrypted` detected |
+
+### 🔍 Ghidra Static Intelligence
+`CipherScan` identified ChaCha20 encryption loop at `0x140001000`.
+
+ANALYSIS DATA CONTEXT:
+The following evidence is wrapped in <EVIDENCE> tags. Map these facts to your analysis.
+
+<EVIDENCE>
+{}
+</EVIDENCE>
+
+### GUIDANCE FOR THINKING (CHAIN OF THOUGHT):
+1. First, list all executed commands and process starts found in the evidence.
+2. Second, map the correct PIDs verbatim to each behavioral event.
+3. Third, ask: \"Why would a legitimate user do this?\" If context is suspicious, flag as a threat.
+",
+        context_summary
+    );
+
+    // Call AIManager
+    match ai_manager.ask(history, system_prompt).await {
+        Ok(text) => HttpResponse::Ok().json(ChatResponse { response: text, provider: ai_manager.get_current_provider_name().await }),
         Err(e) => {
-            println!("Ollama Chat Error: {}", e);
-            HttpResponse::InternalServerError().json(serde_json::json!({ "response": "AI Service Unavailable" }))
+            eprintln!("[AI_ERROR] {}", e);
+            HttpResponse::InternalServerError().json(ChatResponse { response: format!("AI Error: {}", e), provider: ai_manager.get_current_provider_name().await })
         }
     }
 }
 
 #[post("/vms/analysis/ai-insight")]
-async fn ai_insight_handler(req: web::Json<AnalysisRequest>) -> impl Responder {
-    let api_key = env::var("GEMINI_API_KEY").unwrap_or_else(|_| "MOCK_KEY".to_string());
-    let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://192.168.50.98:11434".to_string());
-    let ollama_model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "qwen2.5-coder:14b".to_string());
-    
-    let client = reqwest::Client::new();
-    
+async fn ai_insight_handler(
+    req: web::Json<AnalysisRequest>,
+    ai_manager: web::Data<AIManager>,
+) -> impl Responder {
     let prompt = format!(
         "### VERDICT LOGIC & BEHAVIORAL PROFILES (CONTEXTUAL SUSPICION)
 1. **Capability ≠ Malice:** Legitimate software imports networking and file-system functions. Do NOT alert on them unless combined with malicious intent.
@@ -1800,71 +1910,19 @@ Return ONLY a raw JSON object with this exact structure (no markdown, no backtic
         serde_json::to_string(&req.into_inner()).unwrap_or_default()
     );
 
-
-    // Try Ollama first
-    if let Ok(res) = client.post(format!("{}/api/generate", ollama_url))
-        .json(&serde_json::json!({
-            "model": ollama_model,
-            "prompt": prompt,
-            "stream": false,
-            "options": {
-                "temperature": 0.05
-            }
-        }))
-        .send()
-        .await 
-    {
-        if let Ok(body) = res.json::<serde_json::Value>().await {
-            let ai_text = body["response"].as_str().unwrap_or("{}");
-            if let Ok(report) = serde_json::from_str::<ai_analysis::AIReport>(ai_text) {
-                return HttpResponse::Ok().json(report);
-            }
-        }
-    }
-
-    // Fallback to Gemini or Mock if Ollama fails or is unavailable
-    if api_key == "MOCK_KEY" {
-        return HttpResponse::Ok().json(ai_analysis::AIReport {
-            risk_score: 88,
-            threat_level: "Critical".to_string(),
-            summary: "MOCK ANALYSIS: Highly suspicious process lineage detected. 'malware.exe' is performing potential process hollowing on 'svchost.exe'.".to_string(),
-            suspicious_pids: vec![8888, 1234],
-            mitre_tactics: vec!["T1055".to_string(), "T1071".to_string()],
-            recommendations: vec![
-                "Immediately terminate PID 8888".to_string(),
-                "Dump process memory for forensics".to_string(),
-                "Isolate VM network traffic".to_string()
-            ],
-        });
-    }
-
-    let url = format!(
-        "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key={}",
-        api_key
-    );
-
-    let resp = client.post(&url)
-        .json(&serde_json::json!({
-            "contents": [{ "parts": [{ "text": prompt }] }]
-        }))
-        .send()
-        .await;
-
-    match resp {
-        Ok(res) => {
-            match res.json::<serde_json::Value>().await {
-                Ok(body) => {
-                    let ai_text = body["candidates"][0]["content"]["parts"][0]["text"].as_str().unwrap_or("{}");
-                    let clean_json = ai_text.trim_matches(|c| c == '`' || c == '\n' || c == ' ');
-                    
-                    match serde_json::from_str::<ai_analysis::AIReport>(clean_json) {
-                        Ok(report) => HttpResponse::Ok().json(report),
-                        Err(_) => HttpResponse::InternalServerError().body("Failed to parse Gemini response"),
-                    }
+    match ai_manager.ask(vec![], prompt).await {
+        Ok(ai_text) => {
+            let clean_json = ai_text.trim_matches(|c| c == '`' || c == '\n' || c == ' ');
+            let clean_json = clean_json.strip_prefix("json").unwrap_or(clean_json).trim();
+            
+            match serde_json::from_str::<ai_analysis::AIReport>(clean_json) {
+                Ok(report) => HttpResponse::Ok().json(report),
+                Err(e) => {
+                    eprintln!("[AI_INSIGHT_ERROR] Failed to parse JSON: {}. Text: {}", e, ai_text);
+                    HttpResponse::InternalServerError().body(format!("Failed to parse AI response: {}", e))
                 }
-                Err(_) => HttpResponse::InternalServerError().body("Failed to parse Gemini JSON response"),
             }
-        }
+        },
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
 }
@@ -2118,12 +2176,13 @@ async fn get_ai_report(
 #[post("/tasks/{id}/analyze")]
 async fn trigger_task_analysis(
     path: web::Path<String>,
+    ai_manager: web::Data<AIManager>,
     pool: web::Data<Pool<Postgres>>
 ) -> impl Responder {
     let task_id = path.into_inner();
     println!("[AI] Manual analysis trigger for task: {}", task_id);
     
-    match ai_analysis::generate_ai_report(&task_id, pool.get_ref()).await {
+    match ai_analysis::generate_ai_report(&task_id, pool.get_ref(), &ai_manager).await {
         Ok(_) => {
             // After generation, fetch the full forensic report JSON
             let res = sqlx::query("SELECT forensic_report_json FROM analysis_reports WHERE task_id = $1")
@@ -2548,8 +2607,8 @@ async fn main() -> std::io::Result<()> {
             .service(notes::get_tags)
             .service(actix_files::Files::new("/uploads", "./uploads").show_files_listing())
             .service(actix_files::Files::new("/screenshots", "./screenshots").show_files_listing())
-            .service(ai::handlers::chat_handler)   // AI Route
-            .service(ai::handlers::config_handler) // AI Route
+            .service(set_ai_config)
+            .service(get_ai_config)
             .route("/ws", web::get().to(stream::ws_route))
     })
     .bind(("0.0.0.0", 8080))?

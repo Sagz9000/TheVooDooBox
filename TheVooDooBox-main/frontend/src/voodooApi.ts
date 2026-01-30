@@ -363,5 +363,20 @@ export const voodooApi = {
         const resp = await fetch(`${BASE_URL}/tasks/${taskId}/tags`);
         if (!resp.ok) throw new Error("Failed to get tags");
         return resp.json();
+    },
+    getAIConfig: async (): Promise<{ provider: string }> => {
+        const resp = await fetch(`${BASE_URL}/vms/ai/config`);
+        if (!resp.ok) throw new Error("Failed to fetch AI configuration");
+        return resp.json();
+    },
+
+    setAIConfig: async (config: { provider: string, gemini_key?: string, ollama_url?: string, ollama_model?: string }) => {
+        const resp = await fetch(`${BASE_URL}/vms/ai/config`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(config)
+        });
+        if (!resp.ok) throw new Error("Failed to update AI configuration");
+        return resp.json();
     }
 };

@@ -1,4 +1,4 @@
-use crate::ai::provider::AIProvider;
+use crate::ai::provider::{AIProvider, ChatMessage};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -26,24 +26,39 @@ impl AIProvider for GeminiProvider {
         "Gemini"
     }
 
-    async fn ask(&self, prompt: &str, context: &str) -> Result<String, Box<dyn Error>> {
+    async fn ask(&self, history: Vec<ChatMessage>, system_prompt: String) -> Result<String, Box<dyn Error>> {
         let url = format!(
             "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
             self.model, self.api_key
         );
 
-        // Construct the prompt with context injection
-        let full_prompt = format!(
-            "SYSTEM CONTEXT (Lab State):\n{}\n\nUSER QUESTION:\n{}",
-            context, prompt
-        );
+        let mut contents = Vec::new();
+
+        if !system_prompt.is_empty() {
+             contents.push(json!({
+                "role": "user",
+                "parts": [{
+                    "text": format!("SYSTEM INSTRUCTIONS:\n{}\n\nPlease strictly follow these instructions for the following conversation.", system_prompt)
+                }]
+            }));
+             contents.push(json!({
+                "role": "model",
+                "parts": [{
+                    "text": "Understood. I will act as the VooDooBox Intelligence Core and follow all forensic accuracy and security protocols."
+                }]
+            }));
+        }
+
+        for msg in history {
+            let role = if msg.role == "assistant" || msg.role == "model" { "model" } else { "user" };
+            contents.push(json!({
+                "role": role,
+                "parts": [{ "text": msg.content }]
+            }));
+        }
 
         let payload = json!({
-            "contents": [{
-                "parts": [{
-                    "text": full_prompt
-                }]
-            }]
+            "contents": contents
         });
 
         let resp = self.client.post(&url)
@@ -57,9 +72,6 @@ impl AIProvider for GeminiProvider {
         }
 
         let body: serde_json::Value = resp.json().await?;
-        
-        // Extract text from the response structure
-        // candidates[0].content.parts[0].text
         let text = body["candidates"][0]["content"]["parts"][0]["text"]
             .as_str()
             .ok_or("Failed to parse Gemini response text")?

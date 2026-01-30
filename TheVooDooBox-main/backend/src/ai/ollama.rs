@@ -1,4 +1,4 @@
-use crate::ai::provider::AIProvider;
+use crate::ai::provider::{AIProvider, ChatMessage};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::json;
@@ -29,18 +29,31 @@ impl AIProvider for OllamaProvider {
         "Ollama"
     }
 
-    async fn ask(&self, prompt: &str, context: &str) -> Result<String, Box<dyn Error>> {
-        let url = format!("{}/api/generate", self.base_url);
+    async fn ask(&self, history: Vec<ChatMessage>, system_prompt: String) -> Result<String, Box<dyn Error>> {
+        let url = format!("{}/api/chat", self.base_url);
 
-        let full_prompt = format!(
-            "[CONTEXT]\n{}\n\n[USER]\n{}",
-            context, prompt
-        );
+        let mut messages = Vec::new();
 
-        // Standard Ollama API payload
+        // System Prompt
+        if !system_prompt.is_empty() {
+            messages.push(json!({
+                "role": "system",
+                "content": system_prompt
+            }));
+        }
+
+        // History
+        for msg in history {
+            messages.push(json!({
+                "role": msg.role,
+                "content": msg.content
+            }));
+        }
+
+        // Standard Ollama Chat API payload
         let payload = json!({
             "model": self.model,
-            "prompt": full_prompt,
+            "messages": messages,
             "stream": false
         });
 
@@ -56,7 +69,7 @@ impl AIProvider for OllamaProvider {
 
         let body: serde_json::Value = resp.json().await?;
         
-        let response_text = body["response"]
+        let response_text = body["message"]["content"]
             .as_str()
             .ok_or("Failed to parse Ollama response")?
             .to_string();

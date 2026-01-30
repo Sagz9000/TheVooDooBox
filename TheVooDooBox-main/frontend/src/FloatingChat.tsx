@@ -54,7 +54,7 @@ const FormattedMessage = ({ content }: { content: string }) => {
     return <div className="select-text cursor-text" style={{ userSelect: 'text' }}>{elements}</div>;
 };
 
-export default function FloatingChat({ activeTaskId, pageContext }: { activeTaskId?: string | null, pageContext?: string }) {
+export default function FloatingChat({ activeTaskId, pageContext, activeProvider }: { activeTaskId?: string | null, pageContext?: string, activeProvider?: string | null }) {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<{ role: 'user' | 'assistant', content: string }[]>([
         { role: 'assistant', content: 'VoodooBox AI Online. I can analyze task telemetry, correlate Ghidra findings, and assist with forensic investigation.' }
@@ -208,7 +208,7 @@ export default function FloatingChat({ activeTaskId, pageContext }: { activeTask
                                 <h3 className="text-sm font-bold text-white leading-none">Voodoo Assistant</h3>
                                 <span className="text-[10px] text-brand-400 font-bold uppercase tracking-widest flex items-center gap-1 mt-1">
                                     <span className="w-1.5 h-1.5 rounded-full bg-voodoo-toxic-green animate-pulse"></span>
-                                    AI Insight Active
+                                    AI Insight Active {activeProvider && `[${activeProvider}]`}
                                 </span>
                             </div>
                         </div>

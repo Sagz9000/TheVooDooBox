@@ -7,7 +7,8 @@ import {
     Layers,
     Zap,
     Box,
-    LayoutDashboard
+    LayoutDashboard,
+    Settings
 } from 'lucide-react';
 import { AgentEvent, ViewModel, voodooApi, BASE_URL } from './voodooApi';
 import LabDashboard from './LabDashboard';
@@ -16,6 +17,7 @@ import TaskDashboard from './TaskDashboard';
 import FloatingChat from './FloatingChat';
 import ReportView from './ReportView';
 import SubmissionModal, { SubmissionData } from './SubmissionModal';
+import SettingsModal from './SettingsModal';
 
 export default function App() {
     const [view, setView] = useState<'tasks' | 'lab' | 'arena' | 'history' | 'intel' | 'report'>('lab');
@@ -26,6 +28,10 @@ export default function App() {
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState("");
     const [startTime] = useState(Date.now());
+
+    // AI Settings State
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
+    const [aiProvider, setAiProvider] = useState<string>('Ollama');
 
     // Submission Modal State
     const [showSubmissionModal, setShowSubmissionModal] = useState(false);
@@ -54,6 +60,12 @@ export default function App() {
         };
 
         refreshVms();
+
+        // Fetch AI Config
+        voodooApi.getAIConfig().then(config => {
+            setAiProvider(config.provider);
+        }).catch(err => console.error("Initial AI Config Fetch Failed", err));
+
         return () => ws.close();
     }, []);
 
@@ -172,6 +184,7 @@ export default function App() {
                             disabled={!arenaTarget}
                         />
                         <NavItem icon={<Brain size={22} />} label="Intel" active={view === 'intel'} onClick={() => setView('intel')} />
+                        <NavItem icon={<Settings size={22} />} label="Settings" active={showSettingsModal} onClick={() => setShowSettingsModal(true)} />
                     </nav>
 
                     <div className="mt-auto flex flex-col items-center gap-4">
@@ -226,6 +239,7 @@ export default function App() {
                 {/* Global Floating Components */}
                 <FloatingChat
                     activeTaskId={selectedTaskId}
+                    activeProvider={aiProvider}
                     pageContext={(() => {
                         let ctx = `User is currently viewing the [${view.toUpperCase()}] page.\n`;
 
@@ -252,6 +266,12 @@ export default function App() {
                     onSubmit={handleGlobalSubmission}
                     vms={vms}
                     preSelected={preSelectedVm || undefined}
+                />
+
+                <SettingsModal
+                    isOpen={showSettingsModal}
+                    onClose={() => setShowSettingsModal(false)}
+                    onConfigUpdated={(provider) => setAiProvider(provider)}
                 />
             </div>
         );

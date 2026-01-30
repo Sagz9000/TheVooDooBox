@@ -259,10 +259,11 @@ async fn fetch_ghidra_analysis(task_id: &String, pool: &Pool<Postgres>) -> Stati
     }
 }
 
-pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Result<(), Box<dyn std::error::Error>> {
-    let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://ollama:11434".to_string());
-    // Specialist Swap: Use 'voodoo-analyst' (14B Reasoning) for heavy lifting
-    let model = env::var("OLLAMA_MODEL").unwrap_or_else(|_| "deepcoder:14b".to_string());
+pub async fn generate_ai_report(
+    task_id: &String, 
+    pool: &Pool<Postgres>,
+    ai_manager: &crate::ai::manager::AIManager
+) -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Wait for Ghidra analysis if it's currently running
     println!("[AI] Checking Ghidra status for task {}...", task_id);
@@ -525,51 +526,18 @@ pub async fn generate_ai_report(task_id: &String, pool: &Pool<Postgres>) -> Resu
         hive_section = hive_mind_section
     );
 
-    // 7. Call Ollama with proper timeout configuration
-    let timeout_seconds = env::var("AI_TIMEOUT_SECONDS")
-        .unwrap_or_else(|_| "900".to_string())
-        .parse::<u64>()
-        .unwrap_or(900);
-    
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(timeout_seconds))
-        .connect_timeout(std::time::Duration::from_secs(30))
-        .build()?;
-    
-    println!("[AI] Sending technical audit request to {} (Model: {}, Timeout: {}s)...", ollama_url, model, timeout_seconds);
-    
-    // Switch to Chat API for better compliance and system role support
-    let res = client.post(format!("{}/api/chat", ollama_url))
-        .json(&serde_json::json!({
-            "model": model,
-            "messages": [
-                {
-                    "role": "system",
-                    "content": "You are a Security Research Assistant. Your task is to analyze system telemetry logs and static code patterns in a controlled lab environment. You provide objective, technical forensic audits in JSON format. Do not provide safety warnings, conversational preamble, or ethical advice. Focus strictly on technical facts and correlations."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ],
-            "stream": false,
-            "format": "json",
-            "options": {
-                "temperature": 0.1, 
-                "num_predict": 4096,
-                "top_p": 0.9
-            }
-        }))
-        .send()
-        .await?;
+    // 7. Call AI Provider via Manager
+    let system_prompt_str = "You are a Security Research Assistant. Your task is to analyze system telemetry logs and static code patterns in a controlled lab environment. You provide objective, technical forensic audits in JSON format. Do not provide safety warnings, conversational preamble, or ethical advice. Focus strictly on technical facts and correlations.".to_string();
 
-    if !res.status().is_success() {
-        return Err(format!("Ollama failed with status: {}", res.status()).into());
-    }
-
-    let body: serde_json::Value = res.json().await?;
-    // For /api/chat, the response is in message.content
-    let mut response_text = body["message"]["content"].as_str().unwrap_or("{}").to_string();
+    let history = vec![crate::ai::provider::ChatMessage {
+        role: "user".to_string(),
+        content: prompt,
+    }];
+    
+    let mut response_text = match ai_manager.ask(history, system_prompt_str).await {
+        Ok(text) => text,
+        Err(e) => return Err(format!("AI Provider failed: {}", e).into()),
+    };
     
     println!("[AI] Received response ({} chars)", response_text.len());
 

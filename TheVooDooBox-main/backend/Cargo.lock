@@ -395,6 +395,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-trait"
+version = "0.1.89"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9035ad2d096bed7955a320ee7e2230574d28fd3c3a0f186cbea1ff3c7eed5dbb"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.114",
+]
+
+[[package]]
 name = "atoi"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1419,12 +1430,15 @@ dependencies = [
  "actix-multipart",
  "actix-web",
  "actix-web-actors",
+ "async-trait",
+ "base64 0.21.7",
  "chrono",
  "codepage-437",
  "dotenv",
  "env_logger",
  "futures",
  "genpdf",
+ "http 1.4.0",
  "image",
  "log",
  "native-tls",
