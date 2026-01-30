@@ -671,9 +671,8 @@ async fn submit_sample(
     let url_clone = download_url.clone();
     let task_id_clone = task_id.clone();
     
-    let filename_for_orch = filename.clone();
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, filename_for_orch, original_filename.clone(), analysis_duration_seconds, target_vmid, target_node, false).await;
+        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), analysis_duration_seconds, target_vmid, target_node, false).await;
     });
     
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -692,7 +691,6 @@ async fn orchestrate_sandbox(
     ai_manager: AIManager,
     task_id: String,
     target_url: String, // Can be download URL or Detonation URL
-    storage_filename: String, // Matches file on disk / uploads
     original_filename: String,
     duration_seconds: u64,
     manual_vmid: Option<u64>,
@@ -706,25 +704,7 @@ async fn orchestrate_sandbox(
     let mut vm_name = String::new();
     let snapshot = "clean_sand";
 
-    // 0. Trigger Ghidra Analysis (Parallel/Non-Blocking)
-    if !is_url_task {
-        println!("[ORCHESTRATOR] Step 0: Triggering Parallel Ghidra Analysis for {}...", storage_filename);
-        let ghidra_client = reqwest::Client::new();
-        let ghidra_api = env::var("GHIDRA_API_INTERNAL").unwrap_or_else(|_| "http://ghidra:8000".to_string());
-        let task_id_clone = task_id.clone();
-        let storage_filename_clone = storage_filename.clone();
-        
-        actix_web::rt::spawn(async move {
-            let _ = ghidra_client.post(format!("{}/analyze", ghidra_api))
-                .json(&serde_json::json!({
-                    "task_id": task_id_clone,
-                    "filename": storage_filename_clone
-                }))
-                .send()
-                .await;
-            println!("[ORCHESTRATOR] Ghidra analysis triggered in background for {}", task_id_clone);
-        });
-    }
+
 
     if let (Some(mvmid), Some(mnode)) = (manual_vmid, manual_node) {
         println!("[ORCHESTRATOR] Using MANUALLY selected VM: {} on node {}", mvmid, mnode);
@@ -1052,10 +1032,8 @@ pub async fn pivot_upload(
     let url_clone = download_url.clone();
     let task_id_clone = task_id.clone();
     
-    let filename_clone = filename.clone();
-    
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, filename_clone, original_filename.clone(), 300, None, None, false).await; // Pivot uses default 300s
+        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), 300, None, None, false).await; // Pivot uses default 300s
     });
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "pivoted", "task_id": task_id })))
@@ -1107,7 +1085,7 @@ async fn exec_url(
     let node = req.node.clone();
     
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client_clone, manager_clone, pool_clone, ai_manager, task_id_clone, url, "None".to_string(), "URL_Detonation".to_string(), duration, vmid, node, true).await;
+        orchestrate_sandbox(client_clone, manager_clone, pool_clone, ai_manager, task_id_clone, url, "URL_Detonation".to_string(), duration, vmid, node, true).await;
     });
 
     HttpResponse::Ok().json(serde_json::json!({ 
