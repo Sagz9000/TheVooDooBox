@@ -2460,6 +2460,21 @@ async fn init_db() -> Pool<Postgres> {
 
     println!("[DATABASE] Analysis Reports migrations complete.");
 
+    // --- Ghidra Findings Migration ---
+    // 1. Clean up duplicates (keep most recent)
+    let _ = sqlx::query(
+        "DELETE FROM ghidra_findings a
+         USING ghidra_findings b
+         WHERE a.id < b.id AND a.task_id = b.task_id AND a.function_name = b.function_name"
+    ).execute(&pool).await;
+
+    // 2. Add Unique Index for ON CONFLICT support
+    let _ = sqlx::query(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ghidra_findings_task_func ON ghidra_findings (task_id, function_name)"
+    ).execute(&pool).await;
+
+    println!("[DATABASE] Ghidra Findings migrations complete.");
+
     pool
 }
 

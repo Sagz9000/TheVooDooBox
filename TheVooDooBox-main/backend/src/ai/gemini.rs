@@ -14,7 +14,7 @@ impl GeminiProvider {
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
-            model: "gemini-1.5-flash".to_string(),
+            model: "gemini-3-flash-preview".to_string(), // User requested specific preview model
             client: Client::new(),
         }
     }
