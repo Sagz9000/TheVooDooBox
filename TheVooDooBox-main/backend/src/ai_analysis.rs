@@ -572,28 +572,58 @@ pub async fn generate_ai_report(
                                 .replace("INTERNAL_LOGIC_REVIEW", "STATIC_ANALYSIS");
 
     
-    // 7. Parse JSON
-    let mut report: ForensicReport = serde_json::from_str(&response_text).unwrap_or_else(|e| {
-        println!("[AI] JSON Parse Error: {}", e);
-        println!("[AI] Full response for debugging:\n{}", response_text);
-        // Fallback struct
-        ForensicReport {
-            verdict: Verdict::Suspicious,
-            malware_family: None,
-            threat_score: 0,
-            executive_summary: format!("Technical evaluation failed to parse. Error: {}. Diagnostic preview: {}", e, response_text.chars().take(200).collect::<String>()),
-            behavioral_timeline: vec![],
-            artifacts: Artifacts {
-                dropped_files: vec![],
-                c2_ips: vec![],
-                c2_domains: vec![],
-                mutual_exclusions: vec![],
-                command_lines: vec![]
-            },
-            virustotal: None,
-            related_samples: vec![],
+    // 7. Parse JSON with Regex Fallback
+    let mut report: ForensicReport = match serde_json::from_str(&response_text) {
+        Ok(r) => r,
+        Err(e) => {
+            println!("[AI] JSON Parse Error: {}. Attempting Regex Fallback...", e);
+            
+            // Regex Extraction Patterns
+            let re_verdict = Regex::new(r"(?i)\*\*Verdict:\*\*\s*(Custom|Benign|Suspicious|Malicious)").unwrap();
+            let re_score = Regex::new(r"(?i)\*\*Threat Score:\*\*\s*(\d+)").unwrap();
+            let re_summary = Regex::new(r"(?i)\*\*Executive Summary:\*\*\s*(.*?)(\n\n|\n\*\*|$)").unwrap();
+
+            let verdict_str = re_verdict.captures(&response_text)
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str())
+                .unwrap_or("Suspicious"); // Default to Suspicious on parse failure
+
+            let score = re_score.captures(&response_text)
+                .and_then(|c| c.get(1))
+                .and_then(|m| m.as_str().parse::<i32>().ok())
+                .unwrap_or(50);
+
+            let summary = re_summary.captures(&response_text)
+                .and_then(|c| c.get(1))
+                .map(|m| m.as_str().trim())
+                .unwrap_or(&response_text); // Fallback to full text if summary not found
+
+            let verdict_enum = match verdict_str.to_lowercase().as_str() {
+                "benign" => Verdict::Benign,
+                "malicious" => Verdict::Malicious,
+                _ => Verdict::Suspicious,
+            };
+
+            println!("[AI] Regex Fallback Successful. Verdict: {:?}, Score: {}", verdict_enum, score);
+
+            ForensicReport {
+                verdict: verdict_enum,
+                malware_family: None,
+                threat_score: score,
+                executive_summary: summary.to_string(),
+                behavioral_timeline: vec![],
+                artifacts: Artifacts {
+                    dropped_files: vec![],
+                    c2_ips: vec![],
+                    c2_domains: vec![],
+                    mutual_exclusions: vec![],
+                    command_lines: vec![]
+                },
+                virustotal: None,
+                related_samples: vec![],
+            }
         }
-    });
+    };
 
     // 7. DB Mapping (Best Effort)
     let mut suspicious_pids: Vec<i32> = report.behavioral_timeline.iter()

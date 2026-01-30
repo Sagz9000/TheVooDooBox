@@ -75,27 +75,50 @@ pub async fn ensure_collection() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 pub async fn get_collection_id(client: &reqwest::Client, chroma_url: &str, name: &str) -> Result<String, Box<dyn std::error::Error>> {
-    let res = client.get(format!("{}/api/v2/collections", chroma_url))
-        .send()
-        .await?;
+    // Try v2 API first (Modern)
+    let url_v2 = format!("{}/api/v2/collections", chroma_url);
+    println!("[HiveMind] Listing collections via v2 API: {}", url_v2);
+    let res_v2 = client.get(&url_v2).send().await?;
 
-    if !res.status().is_success() {
-        return Err(format!("Failed to list collections: {}", res.status()).into());
-    }
-
-    let collections: Vec<serde_json::Value> = res.json().await?;
-    
-    for col in collections {
-        if let Some(n) = col["name"].as_str() {
-            if n == name {
-                return col["id"].as_str()
-                    .map(|s| s.to_string())
-                    .ok_or_else(|| "Collection found but has no ID".into());
+    if res_v2.status().is_success() {
+        let collections: Vec<serde_json::Value> = res_v2.json().await?;
+        for col in collections {
+            if let Some(n) = col["name"].as_str() {
+                if n == name {
+                    return col["id"].as_str()
+                        .map(|s| s.to_string())
+                        .ok_or_else(|| "Collection found but has no ID".into());
+                }
             }
         }
+    } else if res_v2.status().as_u16() == 404 {
+        // Fallback to v1 API (Legacy)
+        println!("[HiveMind] v2 API not found (404). Falling back to v1 API...");
+        let url_v1 = format!("{}/api/v1/collections", chroma_url);
+        let res_v1 = client.get(&url_v1).send().await?;
+        
+        if res_v1.status().is_success() {
+            let collections: Vec<serde_json::Value> = res_v1.json().await?;
+            for col in collections {
+                if let Some(n) = col["name"].as_str() {
+                    if n == name {
+                        return col["id"].as_str()
+                            .map(|s| s.to_string())
+                            .ok_or_else(|| "Collection found in v1 but has no ID".into());
+                    }
+                }
+            }
+        } else {
+             return Err(format!("Failed to list collections via v1 (Fallback): {}", res_v1.status()).into());
+        }
+    } else {
+        return Err(format!("Failed to list collections via v2: {}", res_v2.status()).into());
     }
     
-    Err(format!("Collection '{}' not found in listing", name).into())
+    // If we get here, listing worked but collection wasn't found.
+    // Last ditch: Try to GET the specific collection by name creating a dummy "get or create" behavior?
+    // Actually, ensure_collection should have created it. If strictly not found in list:
+    Err(format!("Collection '{}' not found in listing (v2 or v1)", name).into())
 }
 
 pub async fn store_fingerprint(fingerprint: BehavioralFingerprint, text_representation: String) -> Result<(), Box<dyn std::error::Error>> {
