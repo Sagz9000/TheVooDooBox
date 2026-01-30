@@ -74,37 +74,46 @@ pub async fn ensure_collection() -> Result<(), Box<dyn std::error::Error>> {
     Ok(())
 }
 
+pub async fn get_collection_id(client: &reqwest::Client, chroma_url: &str, name: &str) -> Result<String, Box<dyn std::error::Error>> {
+    let res = client.get(format!("{}/api/v2/collections", chroma_url))
+        .send()
+        .await?;
+
+    if !res.status().is_success() {
+        return Err(format!("Failed to list collections: {}", res.status()).into());
+    }
+
+    let collections: Vec<serde_json::Value> = res.json().await?;
+    
+    for col in collections {
+        if let Some(n) = col["name"].as_str() {
+            if n == name {
+                return col["id"].as_str()
+                    .map(|s| s.to_string())
+                    .ok_or_else(|| "Collection found but has no ID".into());
+            }
+        }
+    }
+    
+    Err(format!("Collection '{}' not found in listing", name).into())
+}
+
 pub async fn store_fingerprint(fingerprint: BehavioralFingerprint, text_representation: String) -> Result<(), Box<dyn std::error::Error>> {
     ensure_collection().await?; // Ensure it exists
     
     let chroma_url = env::var("CHROMADB_URL").unwrap_or_else(|_| "http://chromadb:8000".to_string());
-    let collection_id = "hive_mind"; 
+    let collection_name = "hive_mind"; 
     
     let client = reqwest::Client::new();
     
-    // Get Collection ID
-    let col_res = client.get(format!("{}/api/v2/collections/{}", chroma_url, collection_id))
-        .send()
-        .await;
-
-    let col_obj: serde_json::Value = match col_res {
-         Ok(r) => {
-             let status = r.status();
-             if status.is_success() {
-                 r.json().await?
-             } else {
-                 let err_body = r.text().await.unwrap_or_else(|_| "No body".to_string());
-                 println!("[HiveMind] Error fetching collection '{}'. Status: {}, Body: {}", collection_id, status, err_body);
-                 return Err(format!("Failed to get Chroma collection. Status: {}", status).into());
-             }
-         },
-         Err(e) => {
-             println!("[HiveMind] Chroma connection failed: {}", e);
-             return Err("Chroma unavailable".into());
-         }
+    // Get Collection ID via listing (Name-to-UUID)
+    let col_uuid = match get_collection_id(&client, &chroma_url, collection_name).await {
+        Ok(id) => id,
+        Err(e) => {
+            println!("[HiveMind] Failed to resolve collection ID for '{}': {}", collection_name, e);
+            return Err(e);
+        }
     };
-    
-    let col_uuid = col_obj["id"].as_str().ok_or("Collection response missing 'id' field")?;
 
     // Generate Embedding
     let embedding = get_embedding(&text_representation).await?;
@@ -135,30 +144,16 @@ pub async fn query_similar_behaviors(current_text_representation: String) -> Res
     
     let chroma_url = env::var("CHROMADB_URL").unwrap_or_else(|_| "http://chromadb:8000".to_string());
     let client = reqwest::Client::new();
+    let collection_name = "hive_mind";
     
-    // Get Collection ID (Cached ideally, but fetching for simplicity)
-    let col_res = client.get(format!("{}/api/v2/collections/hive_mind", chroma_url))
-        .send()
-        .await;
-        
-    let col_obj: serde_json::Value = match col_res {
-        Ok(r) => {
-            let status = r.status();
-            if status.is_success() {
-                r.json().await?
-            } else {
-                let err_body = r.text().await.unwrap_or_else(|_| "No body".to_string());
-                println!("[HiveMind] Query failed: Collection 'hive_mind' fetch error ({}): {}", status, err_body);
-                return Ok(vec![]); // Silent fail for memory lookup
-            }
-        },
+    // Get Collection ID via listing
+    let col_uuid = match get_collection_id(&client, &chroma_url, collection_name).await {
+        Ok(id) => id,
         Err(e) => {
-             println!("[HiveMind] Chroma query failed: {}", e);
-             return Ok(vec![]);
+            println!("[HiveMind] Query skipped: {}", e);
+            return Ok(vec![]);
         }
     };
-
-    let col_uuid = col_obj["id"].as_str().ok_or("Collection response missing 'id' field")?;
 
     let embedding = get_embedding(&current_text_representation).await?;
 

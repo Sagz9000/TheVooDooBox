@@ -1310,9 +1310,15 @@ async fn query_vector_db(query: &str, n_results: usize) -> Result<Vec<String>, B
     let chroma_url = env::var("CHROMADB_URL").unwrap_or_else(|_| "http://chromadb:8000".to_string());
     let client = reqwest::Client::new();
     
-    // Try to query the collection, if it doesn't exist, return empty
+    // Resolve Collection UUID via Name
+    let col_uuid = match memory::get_collection_id(&client, &chroma_url, "malware_knowledge").await {
+        Ok(id) => id,
+        Err(_) => return Ok(vec![]), // Collection doesn't exist or isn't reachable
+    };
+
+    // Query using UUID
     let response = client
-        .post(format!("{}/api/v2/collections/malware_knowledge/query", chroma_url))
+        .post(format!("{}/api/v2/collections/{}/query", chroma_url, col_uuid))
         .json(&serde_json::json!({
             "query_texts": [query],
             "n_results": n_results,
@@ -1337,10 +1343,10 @@ async fn query_vector_db(query: &str, n_results: usize) -> Result<Vec<String>, B
                     Err(_) => Ok(vec![]),
                 }
             } else {
-                Ok(vec![])  // Collection doesn't exist yet, return empty
+                Ok(vec![])
             }
         }
-        Err(_) => Ok(vec![]),  // ChromaDB not available, continue without it
+        Err(_) => Ok(vec![]),
     }
 }
 
