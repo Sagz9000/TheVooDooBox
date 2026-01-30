@@ -1312,7 +1312,7 @@ async fn query_vector_db(query: &str, n_results: usize) -> Result<Vec<String>, B
     
     // Try to query the collection, if it doesn't exist, return empty
     let response = client
-        .post(format!("{}/api/v1/collections/malware_knowledge/query", chroma_url))
+        .post(format!("{}/api/v2/collections/malware_knowledge/query", chroma_url))
         .json(&serde_json::json!({
             "query_texts": [query],
             "n_results": n_results,

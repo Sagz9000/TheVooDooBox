@@ -51,7 +51,7 @@ pub async fn ensure_collection() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("[HiveMind] Ensuring collection 'hive_mind' exists at {}...", chroma_url);
 
-    let resp = client.post(format!("{}/api/v1/collections", chroma_url))
+    let resp = client.post(format!("{}/api/v2/collections", chroma_url))
         .json(&json!({
             "name": "hive_mind",
             "metadata": { "hnsw:space": "cosine" }
@@ -83,7 +83,7 @@ pub async fn store_fingerprint(fingerprint: BehavioralFingerprint, text_represen
     let client = reqwest::Client::new();
     
     // Get Collection ID
-    let col_res = client.get(format!("{}/api/v1/collections/{}", chroma_url, collection_id))
+    let col_res = client.get(format!("{}/api/v2/collections/{}", chroma_url, collection_id))
         .send()
         .await;
 
@@ -121,7 +121,7 @@ pub async fn store_fingerprint(fingerprint: BehavioralFingerprint, text_represen
         "documents": [fingerprint.summary] // We store the summary as the document
     });
 
-    client.post(format!("{}/api/v1/collections/{}/add", chroma_url, col_uuid))
+    client.post(format!("{}/api/v2/collections/{}/add", chroma_url, col_uuid))
         .json(&payload)
         .send()
         .await?;
@@ -137,7 +137,7 @@ pub async fn query_similar_behaviors(current_text_representation: String) -> Res
     let client = reqwest::Client::new();
     
     // Get Collection ID (Cached ideally, but fetching for simplicity)
-    let col_res = client.get(format!("{}/api/v1/collections/hive_mind", chroma_url))
+    let col_res = client.get(format!("{}/api/v2/collections/hive_mind", chroma_url))
         .send()
         .await;
         
@@ -168,7 +168,7 @@ pub async fn query_similar_behaviors(current_text_representation: String) -> Res
         "include": ["metadatas", "documents", "distances"]
     });
 
-    let res = client.post(format!("{}/api/v1/collections/{}/query", chroma_url, col_uuid))
+    let res = client.post(format!("{}/api/v2/collections/{}/query", chroma_url, col_uuid))
         .json(&payload)
         .send()
         .await?;
