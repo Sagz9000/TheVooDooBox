@@ -2017,7 +2017,11 @@ async fn ghidra_ingest(
     for func in batch.functions {
         let res = sqlx::query(
             "INSERT INTO ghidra_findings (task_id, binary_name, function_name, entry_point, decompiled_code, assembly, timestamp)
-             VALUES ($1, $2, $3, $4, $5, $6, $7)"
+             VALUES ($1, $2, $3, $4, $5, $6, $7)
+             ON CONFLICT (task_id, function_name) DO UPDATE 
+             SET decompiled_code = EXCLUDED.decompiled_code, 
+                 assembly = EXCLUDED.assembly,
+                 timestamp = EXCLUDED.timestamp"
         )
         .bind(&task_id)
         .bind(&batch.binary_name)
