@@ -706,6 +706,26 @@ async fn orchestrate_sandbox(
     let mut vm_name = String::new();
     let snapshot = "clean_sand";
 
+    // 0. Trigger Ghidra Analysis (Parallel/Non-Blocking)
+    if !is_url_task {
+        println!("[ORCHESTRATOR] Step 0: Triggering Parallel Ghidra Analysis for {}...", storage_filename);
+        let ghidra_client = reqwest::Client::new();
+        let ghidra_api = env::var("GHIDRA_API_INTERNAL").unwrap_or_else(|_| "http://ghidra:8000".to_string());
+        let task_id_clone = task_id.clone();
+        let storage_filename_clone = storage_filename.clone();
+        
+        actix_web::rt::spawn(async move {
+            let _ = ghidra_client.post(format!("{}/analyze", ghidra_api))
+                .json(&serde_json::json!({
+                    "task_id": task_id_clone,
+                    "filename": storage_filename_clone
+                }))
+                .send()
+                .await;
+            println!("[ORCHESTRATOR] Ghidra analysis triggered in background for {}", task_id_clone);
+        });
+    }
+
     if let (Some(mvmid), Some(mnode)) = (manual_vmid, manual_node) {
         println!("[ORCHESTRATOR] Using MANUALLY selected VM: {} on node {}", mvmid, mnode);
         vmid = mvmid;
@@ -885,47 +905,7 @@ async fn orchestrate_sandbox(
         println!("[ORCHESTRATOR] SUCCESS: VM {} ({}) reverted to {} state.", vmid, vm_name, snapshot);
     }
 
-    // 7.5. Trigger Ghidra Analysis (Auto-Pilot)
-    if !is_url_task {
-        println!("[ORCHESTRATOR] Step 6.5: Triggering Auto-Ghidra Analysis for {}...", storage_filename);
-        let ghidra_client = reqwest::Client::new();
-        let ghidra_api = env::var("GHIDRA_API_INTERNAL").unwrap_or_else(|_| "http://ghidra:8000".to_string());
-        
-        let _ = ghidra_client.post(format!("{}/analyze", ghidra_api))
-            .json(&serde_json::json!({
-                "task_id": task_id,
-                "filename": storage_filename
-            }))
-            .send()
-            .await;
 
-        // Poll for Ghidra Completion (Max 5 minutes)
-        let ghidra_wait_start = std::time::Instant::now();
-        let mut ghidra_ready = false;
-        
-        while ghidra_wait_start.elapsed().as_secs() < 300 {
-            let status: Option<String> = sqlx::query_scalar("SELECT ghidra_status FROM tasks WHERE id = $1")
-                .bind(&task_id)
-                .fetch_optional(&pool)
-                .await
-                .unwrap_or(None);
-                
-            if let Some(s) = status {
-                if s == "Analysis Complete" {
-                    println!("[ORCHESTRATOR] Ghidra Analysis finalized. Proceeding to AI.");
-                    ghidra_ready = true;
-                    break;
-                }
-            }
-            tokio::time::sleep(Duration::from_secs(5)).await;
-        }
-
-        if !ghidra_ready {
-            println!("[ORCHESTRATOR] Warning: Ghidra analysis timed out or failed. AI Report will lack static context.");
-        }
-    } else {
-        println!("[ORCHESTRATOR] Step 6.5: Skipping Ghidra Analysis (URL Task)");
-    }
 
     // 8. Generate AI Report (can take up to 10 minutes - VM is already stopped)
     println!("[ORCHESTRATOR] Step 7: Generating AI Analysis Report...");
