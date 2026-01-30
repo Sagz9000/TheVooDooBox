@@ -49,15 +49,27 @@ pub async fn ensure_collection() -> Result<(), Box<dyn std::error::Error>> {
     let chroma_url = env::var("CHROMADB_URL").unwrap_or_else(|_| "http://chromadb:8000".to_string());
     let client = reqwest::Client::new();
 
-    // Check availability (optional, or just try to create/get)
-    // Create collection "hive_mind" if not exists
-    let _ = client.post(format!("{}/api/v1/collections", chroma_url))
+    println!("[HiveMind] Ensuring collection 'hive_mind' exists at {}...", chroma_url);
+
+    let resp = client.post(format!("{}/api/v1/collections", chroma_url))
         .json(&json!({
             "name": "hive_mind",
             "metadata": { "hnsw:space": "cosine" }
         }))
         .send()
         .await?;
+        
+    let status = resp.status();
+    if status.is_success() {
+        println!("[HiveMind] Collection created successfully.");
+    } else if status.as_u16() == 409 {
+        // 409 Conflict simply means it already exists
+        println!("[HiveMind] Collection 'hive_mind' already exists.");
+    } else {
+        let err_body = resp.text().await.unwrap_or_else(|_| "No body".to_string());
+        println!("[HiveMind] Warning: Collection creation returned status {}: {}", status, err_body);
+        // We don't necessarily error here as the next GET might work if it exists.
+    }
         
     Ok(())
 }
@@ -66,8 +78,7 @@ pub async fn store_fingerprint(fingerprint: BehavioralFingerprint, text_represen
     ensure_collection().await?; // Ensure it exists
     
     let chroma_url = env::var("CHROMADB_URL").unwrap_or_else(|_| "http://chromadb:8000".to_string());
-    let collection_id = "hive_mind"; // Using name directly requires slightly different API or fetching ID first.
-    // Chroma V1 API often uses ID. Let's get the ID for "hive_mind".
+    let collection_id = "hive_mind"; 
     
     let client = reqwest::Client::new();
     
@@ -76,22 +87,24 @@ pub async fn store_fingerprint(fingerprint: BehavioralFingerprint, text_represen
         .send()
         .await;
 
-    // If get fails or 404, we assume ensure_collection handled it, but let's be robust.
-    // Actually, simple V1 API allows adding by name in some clients, but raw API usually needs ID.
-    // Let's stick to the simplest path: Get collection object to find ID.
-    
     let col_obj: serde_json::Value = match col_res {
          Ok(r) => {
-             if r.status().is_success() {
+             let status = r.status();
+             if status.is_success() {
                  r.json().await?
              } else {
-                 return Err("Failed to get Chroma collection".into());
+                 let err_body = r.text().await.unwrap_or_else(|_| "No body".to_string());
+                 println!("[HiveMind] Error fetching collection '{}'. Status: {}, Body: {}", collection_id, status, err_body);
+                 return Err(format!("Failed to get Chroma collection. Status: {}", status).into());
              }
          },
-         Err(_) => return Err("Chroma unavailable".into())
+         Err(e) => {
+             println!("[HiveMind] Chroma connection failed: {}", e);
+             return Err("Chroma unavailable".into());
+         }
     };
     
-    let col_uuid = col_obj["id"].as_str().unwrap();
+    let col_uuid = col_obj["id"].as_str().ok_or("Collection response missing 'id' field")?;
 
     // Generate Embedding
     let embedding = get_embedding(&text_representation).await?;
@@ -126,14 +139,26 @@ pub async fn query_similar_behaviors(current_text_representation: String) -> Res
     // Get Collection ID (Cached ideally, but fetching for simplicity)
     let col_res = client.get(format!("{}/api/v1/collections/hive_mind", chroma_url))
         .send()
-        .await?;
+        .await;
         
-    if !col_res.status().is_success() {
-        return Ok(vec![]); // No memory yet
-    }
-    
-    let col_obj: serde_json::Value = col_res.json().await?;
-    let col_uuid = col_obj["id"].as_str().unwrap();
+    let col_obj: serde_json::Value = match col_res {
+        Ok(r) => {
+            let status = r.status();
+            if status.is_success() {
+                r.json().await?
+            } else {
+                let err_body = r.text().await.unwrap_or_else(|_| "No body".to_string());
+                println!("[HiveMind] Query failed: Collection 'hive_mind' fetch error ({}): {}", status, err_body);
+                return Ok(vec![]); // Silent fail for memory lookup
+            }
+        },
+        Err(e) => {
+             println!("[HiveMind] Chroma query failed: {}", e);
+             return Ok(vec![]);
+        }
+    };
+
+    let col_uuid = col_obj["id"].as_str().ok_or("Collection response missing 'id' field")?;
 
     let embedding = get_embedding(&current_text_representation).await?;
 
