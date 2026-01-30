@@ -547,6 +547,16 @@ pub async fn generate_ai_report(
     let cleaned_response = re.replace_all(&response_text, "");
     response_text = cleaned_response.trim().to_string();
 
+    // Remove Markdown JSON blocks (Fix for "expected value at line 1 column 1")
+    if response_text.starts_with("```") {
+        let re_md = Regex::new(r"(?s)^```(?:json)?\s*(.*?)\s*```$").unwrap();
+        if let Some(caps) = re_md.captures(&response_text) {
+             if let Some(inner) = caps.get(1) {
+                 response_text = inner.as_str().trim().to_string();
+             }
+        }
+    }
+
     // 7. Neutral To Forensic Mapping (Internal Logic)
     // Map Diagnostic Alpha -> Benign, Diagnostic Beta -> Suspicious, Diagnostic Gamma -> Malicious
     response_text = response_text.replace("[Diagnostic Alpha]", "Benign")

@@ -671,8 +671,9 @@ async fn submit_sample(
     let url_clone = download_url.clone();
     let task_id_clone = task_id.clone();
     
+    let filename_for_orch = filename.clone();
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), analysis_duration_seconds, target_vmid, target_node, false).await;
+        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, filename_for_orch, original_filename.clone(), analysis_duration_seconds, target_vmid, target_node, false).await;
     });
     
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -691,12 +692,14 @@ async fn orchestrate_sandbox(
     ai_manager: AIManager,
     task_id: String,
     target_url: String, // Can be download URL or Detonation URL
+    storage_filename: String, // Matches file on disk / uploads
     original_filename: String,
     duration_seconds: u64,
     manual_vmid: Option<u64>,
     manual_node: Option<String>,
     is_url_task: bool
 ) {
+
     // 1. Identify Sandbox VM
     let mut node_name = String::new();
     let mut vmid = 0;
@@ -882,6 +885,48 @@ async fn orchestrate_sandbox(
         println!("[ORCHESTRATOR] SUCCESS: VM {} ({}) reverted to {} state.", vmid, vm_name, snapshot);
     }
 
+    // 7.5. Trigger Ghidra Analysis (Auto-Pilot)
+    if !is_url_task {
+        println!("[ORCHESTRATOR] Step 6.5: Triggering Auto-Ghidra Analysis for {}...", storage_filename);
+        let ghidra_client = reqwest::Client::new();
+        let ghidra_api = env::var("GHIDRA_API_INTERNAL").unwrap_or_else(|_| "http://ghidra:8000".to_string());
+        
+        let _ = ghidra_client.post(format!("{}/analyze", ghidra_api))
+            .json(&serde_json::json!({
+                "task_id": task_id,
+                "filename": storage_filename
+            }))
+            .send()
+            .await;
+
+        // Poll for Ghidra Completion (Max 5 minutes)
+        let ghidra_wait_start = std::time::Instant::now();
+        let mut ghidra_ready = false;
+        
+        while ghidra_wait_start.elapsed().as_secs() < 300 {
+            let status: Option<String> = sqlx::query_scalar("SELECT ghidra_status FROM tasks WHERE id = $1")
+                .bind(&task_id)
+                .fetch_optional(&pool)
+                .await
+                .unwrap_or(None);
+                
+            if let Some(s) = status {
+                if s == "Analysis Complete" {
+                    println!("[ORCHESTRATOR] Ghidra Analysis finalized. Proceeding to AI.");
+                    ghidra_ready = true;
+                    break;
+                }
+            }
+            tokio::time::sleep(Duration::from_secs(5)).await;
+        }
+
+        if !ghidra_ready {
+            println!("[ORCHESTRATOR] Warning: Ghidra analysis timed out or failed. AI Report will lack static context.");
+        }
+    } else {
+        println!("[ORCHESTRATOR] Step 6.5: Skipping Ghidra Analysis (URL Task)");
+    }
+
     // 8. Generate AI Report (can take up to 10 minutes - VM is already stopped)
     println!("[ORCHESTRATOR] Step 7: Generating AI Analysis Report...");
     if let Err(e) = ai_analysis::generate_ai_report(&task_id, &pool, &ai_manager).await {
@@ -1027,8 +1072,10 @@ pub async fn pivot_upload(
     let url_clone = download_url.clone();
     let task_id_clone = task_id.clone();
     
+    let filename_clone = filename.clone();
+    
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), 300, None, None, false).await; // Pivot uses default 300s
+        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, filename_clone, original_filename.clone(), 300, None, None, false).await; // Pivot uses default 300s
     });
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "pivoted", "task_id": task_id })))
@@ -1080,7 +1127,7 @@ async fn exec_url(
     let node = req.node.clone();
     
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client_clone, manager_clone, pool_clone, ai_manager, task_id_clone, url, "URL_Detonation".to_string(), duration, vmid, node, true).await;
+        orchestrate_sandbox(client_clone, manager_clone, pool_clone, ai_manager, task_id_clone, url, "None".to_string(), "URL_Detonation".to_string(), duration, vmid, node, true).await;
     });
 
     HttpResponse::Ok().json(serde_json::json!({ 
