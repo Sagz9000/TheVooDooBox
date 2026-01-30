@@ -2031,9 +2031,11 @@ async fn ghidra_ingest(
     }
 
     // Execute single query with UNNEST
+    // We use DISTINCT ON (u.fn_name) to ensure that if the input batch contains duplicates,
+    // we only attempt to insert one of them, allowing ON CONFLICT to work without crashing.
     let res = sqlx::query(
         "INSERT INTO ghidra_findings (task_id, binary_name, function_name, entry_point, decompiled_code, assembly, timestamp)
-         SELECT $1, $2, u.fn_name, u.ep, u.dc, u.asm, $3
+         SELECT DISTINCT ON (u.fn_name) $1, $2, u.fn_name, u.ep, u.dc, u.asm, $3
          FROM UNNEST($4::text[], $5::text[], $6::text[], $7::text[]) 
          AS u(fn_name, ep, dc, asm)
          ON CONFLICT (task_id, function_name) DO UPDATE 
