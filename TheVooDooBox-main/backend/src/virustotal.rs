@@ -36,9 +36,13 @@ struct VTAttributes {
 #[derive(Deserialize, Debug)]
 struct VTStats {
     malicious: i32,
+    #[allow(dead_code)]
     undetected: i32,
+    #[allow(dead_code)]
     harmless: i32,
+    #[allow(dead_code)]
     suspicious: i32,
+    #[allow(dead_code)]
     timeout: i32,
 }
 
