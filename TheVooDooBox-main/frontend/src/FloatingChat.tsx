@@ -61,6 +61,7 @@ export default function FloatingChat({ activeTaskId, pageContext, activeProvider
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [thinkingText, setThinkingText] = useState<string | null>(null);
     const messagesEndRef = useRef<HTMLDivElement>(null);
 
     // Draggable state
@@ -161,13 +162,15 @@ export default function FloatingChat({ activeTaskId, pageContext, activeProvider
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setIsLoading(true);
+        setThinkingText("Initializing Neural Core...");
 
         try {
             const data = await voodooApi.chat(
                 userMsg.content,
                 messages.map(m => ({ role: m.role, content: m.content })),
                 activeTaskId || undefined,
-                pageContext
+                pageContext,
+                (thought) => setThinkingText(thought)
             );
 
             setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
@@ -176,6 +179,7 @@ export default function FloatingChat({ activeTaskId, pageContext, activeProvider
             setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ Neural Sync Error: ${errorMsg}` }]);
         } finally {
             setIsLoading(false);
+            setThinkingText(null);
         }
     };
 
@@ -230,11 +234,16 @@ export default function FloatingChat({ activeTaskId, pageContext, activeProvider
                             </div>
                         ))}
                         {isLoading && (
-                            <div className="flex justify-start">
-                                <div className="bg-security-surface border border-security-border px-4 py-3 rounded-xl rounded-bl-none flex items-center gap-2">
-                                    <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce"></div>
-                                    <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-75"></div>
-                                    <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-150"></div>
+                            <div className="flex justify-start animate-pulse">
+                                <div className="bg-security-surface border border-security-border px-4 py-3 rounded-xl rounded-bl-none flex items-center gap-3">
+                                    <div className="flex gap-1">
+                                        <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce"></div>
+                                        <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-75"></div>
+                                        <div className="w-2 h-2 bg-brand-500 rounded-full animate-bounce delay-150"></div>
+                                    </div>
+                                    <span className="text-xs text-brand-400 font-mono tracking-wide">
+                                        {thinkingText || "Processing..."}
+                                    </span>
                                 </div>
                             </div>
                         )}

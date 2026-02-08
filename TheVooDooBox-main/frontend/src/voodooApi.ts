@@ -262,12 +262,19 @@ export const voodooApi = {
         return resp.ok;
     },
 
-    chat: async (message: string, history: Array<{ role: string; content: string }>, taskId?: string, pageContext?: string) => {
+    chat: async (
+        message: string,
+        history: Array<{ role: string; content: string }>,
+        taskId?: string,
+        pageContext?: string,
+        onPartial?: (thought: string) => void
+    ) => {
         const resp = await fetch(`${BASE_URL}/vms/ai/chat`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message, history, task_id: taskId, page_context: pageContext })
         });
+
         if (!resp.ok) {
             try {
                 const errData = await resp.json();
@@ -278,7 +285,45 @@ export const voodooApi = {
                 throw new Error(`Chat failed: ${resp.status} ${resp.statusText}`);
             }
         }
-        return resp.json();
+
+        const reader = resp.body?.getReader();
+        if (!reader) throw new Error("Failed to initialize stream reader");
+
+        const decoder = new TextDecoder();
+        let finalResponse = "";
+        let buffer = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n\n');
+            buffer = lines.pop() || "";
+
+            for (const line of lines) {
+                const trimmed = line.trim();
+                if (trimmed.startsWith('data: ')) {
+                    const jsonStr = trimmed.substring(6).trim();
+                    if (!jsonStr) continue;
+
+                    try {
+                        const event = JSON.parse(jsonStr);
+                        if (event.Thought) {
+                            if (onPartial) onPartial(event.Thought);
+                        } else if (event.Final) {
+                            finalResponse = event.Final;
+                        } else if (event.type === 'error') {
+                            throw new Error(event.content);
+                        }
+                    } catch (e) {
+                        console.warn("Failed to parse SSE line:", line, e);
+                    }
+                }
+            }
+        }
+
+        return { response: finalResponse, provider: "System" };
     },
 
     fetchGhidraScripts: async () => {
