@@ -12,7 +12,12 @@ pub struct BehavioralFingerprint {
 }
 
 #[derive(Serialize, Deserialize, Debug)]
-struct OllamaEmbeddingResponse {
+struct OpenAIEmbeddingResponse {
+    data: Vec<EmbeddingData>,
+}
+
+#[derive(Serialize, Deserialize, Debug)]
+struct EmbeddingData {
     embedding: Vec<f32>,
 }
 
@@ -26,23 +31,29 @@ struct ChromaQueryResponse {
 
 pub async fn get_embedding(text: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
     let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://ollama:11434".to_string());
-    let embedding_model = env::var("EMBEDDING_MODEL").unwrap_or_else(|_| "nomic-embed-text".to_string());
+    let embedding_model = env::var("EMBEDDING_MODEL").unwrap_or_else(|_| "llama-server".to_string());
 
     let client = reqwest::Client::new();
-    let res = client.post(format!("{}/api/embeddings", ollama_url))
+    let res = client.post(format!("{}/v1/embeddings", ollama_url))
         .json(&json!({
             "model": embedding_model,
-            "prompt": text
+            "input": text
         }))
         .send()
         .await?;
 
     if !res.status().is_success() {
-        return Err(format!("Ollama embedding failed: {}", res.status()).into());
+        let status = res.status();
+        let error_body = res.text().await.unwrap_or_default();
+        return Err(format!("Llama Server embedding failed ({}): {}", status, error_body).into());
     }
 
-    let body: OllamaEmbeddingResponse = res.json().await?;
-    Ok(body.embedding)
+    let body: OpenAIEmbeddingResponse = res.json().await?;
+    let embedding = body.data.first()
+        .map(|d| d.embedding.clone())
+        .ok_or("No embedding data in response")?;
+        
+    Ok(embedding)
 }
 
 pub async fn ensure_collection() -> Result<(), Box<dyn std::error::Error>> {

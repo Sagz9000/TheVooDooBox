@@ -25,7 +25,7 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
 
             // Initial defaults from env-like behavior
             setOllamaUrl('http://192.168.50.98:11434');
-            setOllamaModel('qwen2.5-coder:14b');
+            setOllamaModel('llama-server');
         }
     }, [isOpen]);
 
@@ -102,7 +102,7 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
                                     }`}
                             >
                                 <Cpu size={28} />
-                                <div className="text-xs font-black uppercase tracking-widest">Local Ollama</div>
+                                <div className="text-xs font-black uppercase tracking-widest">Local Llama.cpp</div>
                                 <div className="text-[9px] opacity-60 font-medium">Private AI Infrastructure</div>
                             </button>
                         </div>
@@ -172,8 +172,8 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
 
                     {status && (
                         <div className={`p-4 rounded-lg border animate-in fade-in zoom-in-95 duration-200 flex items-center gap-3 ${status.type === 'success'
-                                ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400'
-                                : 'bg-red-500/10 border-red-500/50 text-red-400'
+                            ? 'bg-emerald-500/10 border-emerald-500/50 text-emerald-400'
+                            : 'bg-red-500/10 border-red-500/50 text-red-400'
                             }`}>
                             {status.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
                             <span className="text-xs font-bold uppercase tracking-tight">{status.message}</span>

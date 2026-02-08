@@ -30,7 +30,7 @@ impl AIProvider for OllamaProvider {
     }
 
     async fn ask(&self, history: Vec<ChatMessage>, system_prompt: String) -> Result<String, Box<dyn Error>> {
-        let url = format!("{}/api/chat", self.base_url);
+        let url = format!("{}/v1/chat/completions", self.base_url);
 
         let mut messages = Vec::new();
 
@@ -50,7 +50,7 @@ impl AIProvider for OllamaProvider {
             }));
         }
 
-        // Standard Ollama Chat API payload
+        // OpenAI-compatible Chat API payload (used by llama-server)
         let payload = json!({
             "model": self.model,
             "messages": messages,
@@ -64,14 +64,14 @@ impl AIProvider for OllamaProvider {
 
         if !resp.status().is_success() {
             let error_text = resp.text().await?;
-            return Err(format!("Ollama API Error: {}", error_text).into());
+            return Err(format!("Llama Server API Error: {}", error_text).into());
         }
 
         let body: serde_json::Value = resp.json().await?;
         
-        let response_text = body["message"]["content"]
+        let response_text = body["choices"][0]["message"]["content"]
             .as_str()
-            .ok_or("Failed to parse Ollama response")?
+            .ok_or("Failed to parse Llama Server response")?
             .to_string();
 
         Ok(response_text)

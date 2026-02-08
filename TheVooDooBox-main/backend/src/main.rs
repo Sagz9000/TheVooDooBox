@@ -632,7 +632,7 @@ async fn submit_sample(
         return Ok(HttpResponse::BadRequest().body("No file uploaded"));
     }
     
-    let host_ip = std::env::var("HOST_IP").unwrap_or_else(|_| "192.168.50.196".to_string()); // Default to user's IP
+    let host_ip = std::env::var("HOST_IP").unwrap_or_else(|_| "192.168.50.11".to_string()); // Default to local host
     let download_url = format!("http://{}:8080/uploads/{}", host_ip, filename);
     
     // Create Task Record
@@ -1604,12 +1604,19 @@ async fn chat_handler(
         serde_json::json!({
             "role": "system",
             "content": format!(
-                "## VooDooBox Intelligence Core | System Prompt
-
-**Role & Persona:**
-You are an **Elite Threat Hunter & Malware Analyst (VooDooBox Intelligence Core)**. 
-Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.
-
+                "## VooDooBox Intelligence Core | System Prompt\n\
+\n\
+**Persona:** Elite Forensic Analyst.\n\
+**Objective:** Correlate kernel events with static code patterns.\n\
+**Logic:**\n\
+1. IDENTIFY: Process lineage and anomalous spawns.\n\
+2. CORRELATE: Map Sysmon PIDs to Ghidra findings where possible.\n\
+3. VERDICT: High-fidelity detection with confidence scores.\n\n\
+**Constraints:**\n\
+- Citations REQUIRED: Every claim must cite a PID or Function name.\n\
+- No hallucinations: If data is missing, state 'Unknown'.\n\
+- Format: Use [!CAUTION], [!IMPORTANT], and tables for clarity.\n\
+\n\
 ### INSTRUCTIONS & VERDICT LOGIC
 1. **CONTEXTUAL SUSPICION:** Distinguish between capability and intent. Scrutinize Living-off-the-Land binaries (powershell, certutil), but respect legitimate contextual use.
 2. **THE \"INSTALLER EXCEPTION\":** 
@@ -1855,69 +1862,17 @@ async fn ai_insight_handler(
     ai_manager: web::Data<AIManager>,
 ) -> impl Responder {
     let prompt = format!(
-        "### VERDICT LOGIC & BEHAVIORAL PROFILES (CONTEXTUAL SUSPICION)
-1. **Capability ≠ Malice:** Legitimate software imports networking and file-system functions. Do NOT alert on them unless combined with malicious intent.
-2. **THE \"INSTALLER EXCEPTION\":**
-   - **Signs:** setup.exe/installer.exe, writing to 'Program Files', creating shortcuts, downloads from known CDNs.
-   - **Verdict:** BENIGN UNLESS malicious behavior (injection, raw IP comms) is present.
-3. **IOC BLACKLIST (ANTI-HALLUCINATION):**
-   - **NEVER** output placeholder IOCs: \"example.com\", \"yoursite.com\", \"1.2.3.4\", \"localhost\", \"google.com\".
-   - If no specific URL is in telemetry, write \"URL: Unknown\". DO NOT GUESS.
-4. **DATA ACCURACY (STRICT):** You must extract EXACT PIDs and File Paths.
-
-### DATA SOURCE PROTOCOL (CRITICAL)
-1. **Dynamic Events (Sysmon):**
-   - MUST use the exact PID found in the logs (e.g., 4492).
-   - Label these as \"Confirmed Execution\".
-   - **Internet Activity:** Only declare \"Network Activity\" if you see confirmed Remote IP/Port in the logs.
-
-2. **Static Findings (Ghidra):**
-   - Ghidra shows CAPABILITIES (what the code *can* do), not necessarily what it *did*.
-   - Example: \"InternetOpenW\" is a capability. It does NOT mean the binary connected.
-   - If citing a Ghidra finding, you **MUST NOT** assign it a Sysmon PID.
-   - **REQUIRED PID FORMAT:** Set the PID to \"STATIC_ANALYSIS\".
-   - **REQUIRED DISCLAIMER:** You must append: \" *[Disclaimer: Feature identified in static code analysis; execution not observed in telemetry.]*\"
-
-### SCOPE OF ANALYSIS
-1. **Root Cause Analysis:** Your narrative MUST begin with the execution of the primary suspicious process (Patient Zero).
-2. **Relevancy Filter:** Ignore standard Windows background noise unless it is directly interacted with by the target process.
-3. **Verdict Criteria:** If the target process does nothing but exit immediately, the verdict is \"Benign\" or \"Crashed\".
-
-<EVIDENCE>
-{}
-</EVIDENCE>
-
-### EFFICIENCY RULES (SPEED OPTIMIZATION)
-1. **CONCISE THINKING:** Do not over-analyze. Focus ONLY on the suspicious chain.
-2. **Thinking Budget:** Limit your reasoning to the top findings. Be fast.
-
-### 1. Identification Phase (Forensic Analysis)
-Analyze the telemetry for:
-- **Anomalous Lineage:** Parent-child PID relationships (e.g., Process A spawning Process B with mismatched privileges).
-- **Persistence Mechanisms:** Registry Run keys, Scheduled Tasks, or Service creation.
-- **LOLBins:** Misuse of standard Windows binaries (certutil, bitsadmin, wscript).
-- **Injection:** Memory anomalies indicative of Process Hollowing or DLL Injection.
-- **MITRE ATT&CK Mapping:** You MUST map observed behaviors to MITRE Technique IDs (e.g., T1055).
-
-### 2. Containment & Eradication Strategy
-Provide actionable steps prioritized by specific constraints:
-- **Immediate:** Process termination and network isolation.
-- **Forensic:** Memory dumping instructions for volatile evidence preservation.
-
-### Output Format
-Return ONLY a raw JSON object with this exact structure (no markdown, no backticks):
-{{
-  \"risk_score\": (0-100 integer based on DREAD model),
-  \"threat_level\": (\"Low\", \"Medium\", \"High\", \"Critical\"),
-  \"summary\": \"GCFA-style executive summary focusing on the Root Cause Analysis (RCA).\",
-  \"suspicious_pids\": [list of integers],
-  \"mitre_tactics\": [\"List relevant MITRE ATT&CK Tactic IDs (e.g., T1055, T1053)\"],
-  \"recommendations\": [
-    \"SANS-STEP-3 (Containment): [Action]\",
-    \"SANS-STEP-4 (Eradication): [Action]\",
-    \"FORENSIC: [Evidence Collection Step]\"
-  ]
-}}",
+        "## Forensic Insight Protocol\n\
+\n\
+Analyze the evidence according to the following rules:\n\
+1. FOCUS: Anomalous parent-child relations, LOLBins (certutil, etc), and registry persistence.\n\
+2. ACCURACY: Extract EXACT PIDs. Citations required.\n\
+3. VERDICT: Use Risk Score (0-100) and MITRE TTP IDs (e.g., T1055).\n\n\
+<EVIDENCE>\n\
+{}\n\
+</EVIDENCE>\n\
+\n\
+Return ONLY RAW JSON.",
         serde_json::to_string(&req.into_inner()).unwrap_or_default()
     );
 

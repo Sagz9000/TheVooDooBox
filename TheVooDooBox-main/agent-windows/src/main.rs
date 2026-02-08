@@ -450,11 +450,11 @@ async fn upload_pivot_file(backend_url: &str, path: &str) -> Result<(), Box<dyn 
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Mallab Windows Agent (Active Eye) - v3.0.0");
     
-    let addr = std::env::var("AGENT_SERVER_ADDR").unwrap_or_else(|_| "192.168.50.196:9001".to_string());
+    let addr = std::env::var("AGENT_SERVER_ADDR").unwrap_or_else(|_| "192.168.50.11:9001".to_string());
     let mut stream = TcpStream::connect(&addr).await?;
     println!("Connected to Hyper-Bridge @ {}", addr);
 
-    let host_ip = addr.split(':').next().unwrap_or("192.168.50.196");
+    let host_ip = addr.split(':').next().unwrap_or("192.168.50.11");
     let backend_url = format!("http://{}:8080", host_ip);
 
     // Try to open Kernel Bridge

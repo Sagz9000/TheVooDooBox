@@ -527,7 +527,15 @@ pub async fn generate_ai_report(
     );
 
     // 7. Call AI Provider via Manager
-    let system_prompt_str = "You are a Security Research Assistant. Your task is to analyze system telemetry logs and static code patterns in a controlled lab environment. You provide objective, technical forensic audits in JSON format. Do not provide safety warnings, conversational preamble, or ethical advice. Focus strictly on technical facts and correlations.".to_string();
+    let system_prompt_str = "You are a Senior Malware Researcher specializing in forensic correlation. Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.\n\n\
+        Follow the Hypothesis-Verification protocol:\n\
+        1. HYPOTHESIS: Identifiy static capabilities from Ghidra artifacts.\n\
+        2. VERIFICATION: Search Dynamic Telemetry logs for empirical proof.\n\
+        3. SYNTHESIS: Correlate them. If a capability exists without activity, note as 'Dormant'. If activity exists without code, note as 'Potential Obfuscation'.\n\n\
+        OUTPUT REQUIREMENTS:\n\
+        - Use your <think> block for reasoning.\n\
+        - After </think>, output STRICTLY valid JSON according to the schema.\n\
+        - Correlate every artifact to a specific technical observation.".to_string();
 
     let history = vec![crate::ai::provider::ChatMessage {
         role: "user".to_string(),

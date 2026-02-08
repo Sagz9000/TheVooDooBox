@@ -23,7 +23,7 @@ impl AIManager {
         let provider: Box<dyn AIProvider> = if !gemini_key.is_empty() {
             Box::new(GeminiProvider::new(gemini_key.clone()))
         } else {
-            Box::new(OllamaProvider::new(ollama_url.clone(), "llama3".to_string()))
+            Box::new(OllamaProvider::new(ollama_url.clone(), "llama-server".to_string()))
         };
 
         Self {
@@ -59,7 +59,7 @@ impl AIManager {
             }
             ProviderType::Ollama => {
                 let o_url = self.ollama_url.read().await;
-                let model = ollama_model.unwrap_or_else(|| "llama3".to_string());
+                let model = ollama_model.unwrap_or_else(|| "llama-server".to_string());
                 *provider_lock = Box::new(OllamaProvider::new(o_url.clone(), model));
             }
         }
