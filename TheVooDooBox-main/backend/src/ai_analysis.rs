@@ -695,7 +695,19 @@ pub async fn generate_ai_report(
         }
     }
 
+
+    // CRITICAL FIX: Detect if the response is a JSON string containing escaped JSON
+    // This happens when the model wraps the entire response in quotes
+    if response_text.starts_with('"') && response_text.ends_with('"') {
+        // Try to parse as a JSON string first
+        if let Ok(unescaped) = serde_json::from_str::<String>(&response_text) {
+            println!("[AI] Detected double-encoded JSON string, unescaping...");
+            response_text = unescaped;
+        }
+    }
+
     let report_result: Option<ForensicReport> = serde_json::from_str(&response_text).ok();
+
     
     let mut report = match report_result {
         Some(mut r) => {
