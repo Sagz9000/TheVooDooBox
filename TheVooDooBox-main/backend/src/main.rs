@@ -663,6 +663,13 @@ async fn submit_sample(
 
     println!("Sample uploaded: {}. Initiating Sandbox Orchestration (Task: {})...", filename, task_id);
     
+    // Trigger Ghidra Static Analysis (Parallel Background)
+    let ghidra_filename = filename.clone();
+    let ghidra_task_id = task_id.clone();
+    actix_web::rt::spawn(async move {
+        trigger_ghidra_background(ghidra_filename, ghidra_task_id).await;
+    });
+
     // Spawn Analysis Job
     let manager = manager.get_ref().clone(); 
     let client = client.get_ref().clone();
@@ -1891,6 +1898,26 @@ Return ONLY RAW JSON.",
         },
         Err(e) => HttpResponse::InternalServerError().body(e.to_string()),
     }
+}
+
+async fn trigger_ghidra_background(filename: String, task_id: String) {
+    let ghidra_api = env::var("GHIDRA_API_INTERNAL").unwrap_or_else(|_| "http://ghidra:8000".to_string());
+    let client = reqwest::Client::new();
+    
+    let payload = serde_json::json!({
+        "binary_name": filename,
+        "task_id": task_id
+    });
+
+    println!("[GHIDRA] Triggering background analysis for {} (Task: {})", filename, task_id);
+    
+    match client.post(format!("{}/analyze", ghidra_api))
+        .json(&payload)
+        .send()
+        .await {
+            Ok(_) => println!("[GHIDRA] Background analysis queued successfully."),
+            Err(e) => println!("[GHIDRA] Failed to queue background analysis: {}", e),
+        }
 }
 
 #[post("/ghidra/analyze")]
