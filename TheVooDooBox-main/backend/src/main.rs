@@ -1435,7 +1435,7 @@ async fn chat_handler(
             "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
              FROM events 
              WHERE task_id = $1 
-             ORDER BY timestamp ASC LIMIT 500"
+             ORDER BY timestamp ASC LIMIT 300"
         )
         .bind(tid)
         .fetch_all(pool.get_ref())
@@ -1533,9 +1533,9 @@ async fn chat_handler(
             std::cmp::Reverse(score) // Highest score first
         });
 
-        // Limit to top 20 functions to preserve context window
-        if prioritized_ghidra.len() > 20 {
-            prioritized_ghidra.truncate(20);
+        // Limit to top 12 functions to preserve context window
+        if prioritized_ghidra.len() > 12 {
+            prioritized_ghidra.truncate(12);
         }
     }
 
@@ -1574,7 +1574,7 @@ async fn chat_handler(
         context_summary.push_str("Benign Windows processes have been filtered out. Analyze this data to understand malicious behavior:\n\n");
         
         // Safety: Limit telemetry in context if too large
-        let telemetry_limit = if prioritized_ghidra.is_empty() { 300 } else { 150 };
+        let telemetry_limit = if prioritized_ghidra.is_empty() { 200 } else { 100 };
         for (idx, evt) in filtered_events.iter().take(telemetry_limit).enumerate() {
             context_summary.push_str(&format!(
                 "{}. [{}] PID:{} PPID:{} Process:'{}' - {}\n",
@@ -1637,10 +1637,9 @@ async fn chat_handler(
     }
 
     // Safety Cap: Hard limit on total context characters to prevent token overflow
-    // 100k chars is approx 25k tokens (safe buffer for 8k-16k models while allowing for compression)
-    // We'll be more aggressive: 40k chars (~10k tokens) to stay within the user's 8k-16k GPU sweet spot.
-    if context_summary.len() > 40000 {
-        context_summary.truncate(40000);
+    // 25k chars is approx 6.2k tokens (safe buffer for 8k models)
+    if context_summary.len() > 25000 {
+        context_summary.truncate(25000);
         context_summary.push_str("\n... [CONTEXT TRUNCATED FOR PERFORMANCE] ...");
     }
 
