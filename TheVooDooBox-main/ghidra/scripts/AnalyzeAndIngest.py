@@ -77,10 +77,17 @@ def analyze_and_ingest():
     monitor = ConsoleTaskMonitor()
     functions = currentProgram.getFunctionManager().getFunctions(True)
     
+    # Iterate to count (getFunctions returns iterator in Jython)
+    func_list = []
+    for f in functions:
+        func_list.append(f)
+    
+    DEBUG_LOG("Found " + str(len(func_list)) + " functions to analyze.")
+    
     batch = []
     batch_size = 10
     
-    for func in functions:
+    for func in func_list:
         if monitor.isCancelled():
             break
             
