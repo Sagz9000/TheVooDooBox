@@ -385,11 +385,11 @@ pub async fn generate_ai_report(
     let valid_pids: Vec<String> = context.processes.iter().map(|p| p.pid.to_string()).collect();
     let pid_list_str = valid_pids.join(", ");
 
-    // SAFETY CHECK: If we have very little data (e.g. just the root process start), warn the AI
+    // SAFETY CHECK: Minimal Data Warning (Balanced to avoid False Benign)
     let forced_benign_instruction = if context.processes.is_empty() || (context.processes.len() == 1 && context.processes[0].network_activity.is_empty() && context.processes[0].file_activity.is_empty()) {
-        "ALERT: Telemetry is minimal. The sample likely did NOT execute or is benign. You MUST return a 'Benign' verdict unless you see EXPLICIT malicious indicators in the logs. Do NOT hallucinate a 'PowerShell' attack if none exists."
+        "ALERT: Telemetry is minimal. If the binary is suspicious (e.g. specialized tool or LOLBin), valid legitimate use often looks 'Benign'. However, if you see encoded commands or obfuscation, FLAG IT."
     } else {
-        ""
+        "INSTRUCTION: Pay close attention to processes spawned by the Target, especially if they are legitimate windows tools used as LOLBins (e.g. powershell, bitsadmin, cmd)."
     };
 
     // SAFETY: Aggressive Truncation for <8k Context Window
@@ -400,33 +400,90 @@ pub async fn generate_ai_report(
     truncated_processes.sort_by(|a, b| {
         let get_score = |p: &ProcessSummary| -> i32 {
              let mut score = 0;
-             if p.pid == root_pid { score += 1000; }
-             if p.ppid == root_pid { score += 500; }
-             // Activity bonus
-             score += (p.network_activity.len() as i32) * 20;
-             score += (p.file_activity.len() as i32) * 5;
-             score += (p.registry_mods.len() as i32) * 5;
+             // Lineage Scoring
+             if p.pid == root_pid { score += 5000; }
+             if p.ppid == root_pid { score += 2000; }
+             
+             // Interest Scoring
+             if !p.image_name.to_lowercase().contains("windows") && !p.image_name.to_lowercase().contains("system32") { 
+                 score += 500; 
+             }
+             
+             // Activity Scoring
+             score += (p.network_activity.len() as i32) * 200; // High value on network
+             score += (p.file_activity.len() as i32) * 50;
+             score += (p.registry_mods.len() as i32) * 50;
+             
+             // Specific Suspicion Bonus
+             if p.image_name.to_lowercase().contains("powershell") || p.image_name.to_lowercase().contains("cmd") || p.image_name.to_lowercase().contains("bitsadmin") {
+                 if p.ppid == root_pid { score += 1000; } // LOLBin spawned by malware
+             }
+             
              score
         };
         get_score(b).cmp(&get_score(a))
     });
 
-    if truncated_processes.len() > 20 {
-        truncated_processes.truncate(20);
+    // Increased limit to 30 processes for better context
+    if truncated_processes.len() > 30 {
+        truncated_processes.truncate(30);
     }
     for proc in &mut truncated_processes {
-        if proc.network_activity.len() > 5 { proc.network_activity.truncate(5); }
-        if proc.file_activity.len() > 5 { proc.file_activity.truncate(5); }
-        if proc.registry_mods.len() > 5 { proc.registry_mods.truncate(5); }
+        // Network: External IPs first, then non-standard ports
+        proc.network_activity.sort_by(|a, b| {
+            let score = |n: &NetworkOp| {
+                let mut s = 0;
+                if !n.dest.starts_with("127.") && !n.dest.starts_with("192.168.") && !n.dest.starts_with("10.") { s += 100; }
+                if n.port != "80" && n.port != "443" { s += 10; } // Non-standard ports slightly interesting
+                s
+            };
+            score(b).cmp(&score(a))
+        });
+        if proc.network_activity.len() > 15 { proc.network_activity.truncate(15); }
+
+        // File: Executables and sensitive paths first
+        proc.file_activity.sort_by(|a, b| {
+            let score = |f: &FileOp| {
+                let mut s = 0;
+                let path = f.path.to_lowercase();
+                if f.is_executable || path.ends_with(".exe") || path.ends_with(".dll") || path.ends_with(".ps1") { s += 50; }
+                if path.contains("\\users\\public\\") || path.contains("\\appdata\\") || path.contains("\\temp\\") { s += 20; }
+                if path.contains("system32") { s -= 10; } // Noise reduction
+                s
+            };
+            score(b).cmp(&score(a))
+        });
+        if proc.file_activity.len() > 15 { proc.file_activity.truncate(15); }
+
+        // Registry: Persistence keys first
+        proc.registry_mods.sort_by(|a, b| {
+            let score = |r: &RegistryOp| {
+                let mut s = 0;
+                let key = r.key.to_lowercase();
+                if key.contains("run") || key.contains("runonce") || key.contains("services") { s += 100; }
+                s
+            };
+            score(b).cmp(&score(a))
+        });
+        if proc.registry_mods.len() > 15 { proc.registry_mods.truncate(15); }
     }
 
     let mut truncated_ghidra = context.static_analysis.clone();
-    if truncated_ghidra.functions.len() > 10 {
-        truncated_ghidra.functions.truncate(10);
+    
+    // Sort functions: Suspicious tags first
+    truncated_ghidra.functions.sort_by(|a, b| {
+        let score = |f: &DecompiledFunction| {
+            if !f.suspicious_tag.is_empty() && f.suspicious_tag != "None" { 100 } else { 0 }
+        };
+        score(b).cmp(&score(a))
+    });
+
+    if truncated_ghidra.functions.len() > 15 {
+        truncated_ghidra.functions.truncate(15);
     }
     for func in &mut truncated_ghidra.functions {
-        if func.pseudocode.len() > 500 {
-            func.pseudocode = func.pseudocode.chars().take(500).collect();
+        if func.pseudocode.len() > 800 {
+            func.pseudocode = func.pseudocode.chars().take(800).collect();
             func.pseudocode.push_str("\n...[TRUNCATED]");
         }
     }
