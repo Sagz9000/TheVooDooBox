@@ -134,7 +134,26 @@ pub fn generate_pdf_file(_task_id: &String, report: &ForensicReport, context: &A
     // Executive Summary Text
     doc.push(elements::Paragraph::new("Technical Narrative").styled(style::Style::new().bold().with_font_size(11)));
     doc.push(elements::Paragraph::new(&report.executive_summary).styled(style::Style::new().italic()));
-    doc.push(elements::Break::new(2.0));
+    doc.push(elements::Break::new(1.0));
+ 
+    // --- FORENSIC REASONING (Optional "Thinking" field) ---
+    if let Some(think) = &report.thinking {
+        doc.push(elements::Paragraph::new("Forensic Analyst Log (Internal Reasoning)").styled(style::Style::new().bold().with_font_size(11).with_color(style::Color::Rgb(100, 100, 100))));
+        doc.push(elements::Break::new(0.5));
+        
+        // Styled box for reasoning with monospace font feel (if possible via style)
+        let reasoning_style = style::Style::new()
+            .with_font_size(9)
+            .with_color(style::Color::Rgb(80, 80, 80));
+            
+        let mut reasoning_panel = elements::LinearLayout::vertical();
+        reasoning_panel.push(elements::Paragraph::new(think).styled(reasoning_style));
+        
+        doc.push(reasoning_panel);
+        doc.push(elements::Break::new(2.0));
+    } else {
+        doc.push(elements::Break::new(1.0));
+    }
 
     // --- THREAT INTELLIGENCE (VirusTotal) ---
     if let Some(vt) = &context.virustotal {

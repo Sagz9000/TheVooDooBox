@@ -110,6 +110,26 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                         </div>
                     </div>
 
+                    {/* AI Reasoning (Forensic Analyst Log) */}
+                    {report.thinking && (
+                        <div className="space-y-3">
+                            <details className="group bg-security-panel/40 border border-security-border/50 rounded-lg overflow-hidden">
+                                <summary className="flex items-center justify-between p-3 cursor-pointer hover:bg-security-panel/60 transition-colors list-none">
+                                    <div className="flex items-center gap-2">
+                                        <Terminal size={12} className="text-brand-500" />
+                                        <span className="text-[9px] text-slate-500 uppercase font-black tracking-[0.2em]">Forensic Analyst Log (Internal Reasoning)</span>
+                                    </div>
+                                    <ChevronDown size={14} className="text-slate-600 transition-transform group-open:rotate-180" />
+                                </summary>
+                                <div className="p-4 border-t border-security-border/30 bg-black/20">
+                                    <div className="text-[11px] font-mono text-slate-500 leading-relaxed whitespace-pre-wrap select-text selection:bg-brand-500/30">
+                                        {report.thinking}
+                                    </div>
+                                </div>
+                            </details>
+                        </div>
+                    )}
+
                     {/* Threat Intelligence (VirusTotal) */}
                     {report.virustotal && (
                         <VirusTotalCard data={report.virustotal} />
@@ -187,8 +207,8 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                                             </div>
                                             <div className="flex items-center justify-between mb-2 relative z-10">
                                                 <span className={`text-[9px] font-black uppercase tracking-widest px-1.5 py-0.5 rounded border ${sample.verdict === 'Malicious' ? 'bg-threat-critical/20 text-threat-critical border-threat-critical/20' :
-                                                        sample.verdict === 'Suspicious' ? 'bg-threat-high/20 text-threat-high border-threat-high/20' :
-                                                            'bg-brand-500/10 text-brand-500 border-brand-500/20'
+                                                    sample.verdict === 'Suspicious' ? 'bg-threat-high/20 text-threat-high border-threat-high/20' :
+                                                        'bg-brand-500/10 text-brand-500 border-brand-500/20'
                                                     }`}>
                                                     {sample.verdict}
                                                 </span>

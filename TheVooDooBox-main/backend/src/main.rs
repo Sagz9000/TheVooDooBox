@@ -1683,7 +1683,17 @@ CONTEXT SUMMARY:
             match ai_manager_clone.ask(history_final, sys_prompt_final).await {
                 Ok(response) => {
                     println!("[AI] Received response from provider (len: {})", response.len());
-                    let _ = tx.send(Ok(StreamEvent::Final(response))).await;
+                    
+                    let mut final_text = response.clone();
+                    if let Some(start_idx) = response.find("<think>") {
+                        if let Some(end_idx) = response.find("</think>") {
+                            let thought = &response[start_idx + 7..end_idx];
+                            let _ = tx.send(Ok(StreamEvent::Thought(thought.trim().to_string()))).await;
+                            final_text = format!("{}{}", &response[..start_idx], &response[end_idx + 8..]).trim().to_string();
+                        }
+                    }
+                    
+                    let _ = tx.send(Ok(StreamEvent::Final(final_text))).await;
                     println!("[AI] Sent Final response to stream");
                 },
                 Err(e) => {

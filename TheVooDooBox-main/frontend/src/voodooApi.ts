@@ -32,6 +32,7 @@ export interface ForensicReport {
     executive_summary: string;
     behavioral_timeline: TimelineEvent[];
     artifacts: Artifacts;
+    thinking?: string;
     virustotal?: VirusTotalData;
     related_samples?: RelatedSample[];
 }

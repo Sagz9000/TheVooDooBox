@@ -90,28 +90,24 @@ pub struct AIReport {
 }
 
 // --- LLM Response Schema (Forensic) ---
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ForensicReport {
     pub verdict: Verdict, 
-    #[serde(default)]
     pub malware_family: Option<String>,
-    #[serde(default = "default_threat_score")]
     pub threat_score: i32,
-    #[serde(default)]
     pub executive_summary: String,
-    #[serde(default)]
     pub behavioral_timeline: Vec<TimelineEvent>,
-    #[serde(default)]
     pub artifacts: Artifacts,
-    #[serde(default)]
+    pub thinking: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub virustotal: Option<crate::virustotal::VirusTotalData>,
-    #[serde(default)]
+    #[serde(skip_serializing_if = "Vec::is_empty")]
     pub related_samples: Vec<crate::memory::BehavioralFingerprint>,
 }
 
 fn default_threat_score() -> i32 { 0 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Verdict {
     Benign,
     Suspicious,
@@ -191,7 +187,7 @@ pub struct AnalysisContext {
     pub related_samples: Vec<crate::memory::BehavioralFingerprint>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct TimelineEvent {
     pub timestamp_offset: String,
     pub stage: String, // "Execution", "Persistence", etc
@@ -200,7 +196,7 @@ pub struct TimelineEvent {
     pub related_pid: String, // Dynamic PID or "STATIC_ANALYSIS"
 }
 
-#[derive(Serialize, Deserialize, Debug, Default)]
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
 pub struct Artifacts {
     #[serde(default)]
     pub dropped_files: Vec<String>,
@@ -680,11 +676,29 @@ pub async fn generate_ai_report(
                                 .replace("INTERNAL_LOGIC_REVIEW", "STATIC_ANALYSIS");
 
     
-    // 7. Parse JSON with Regex Fallback
-    let mut report: ForensicReport = match serde_json::from_str(&response_text) {
-        Ok(r) => r,
-        Err(e) => {
-            println!("[AI] JSON Parse Error: {}. Attempting Regex Fallback...", e);
+    // 6. Extraction & Parsing
+    let mut extracted_thinking = None;
+
+    // Check for <think> tags (common in DeepSeek-R1)
+    if let Some(start_idx) = response_text.find("<think>") {
+        if let Some(end_idx) = response_text.find("</think>") {
+            let thought_content = &response_text[start_idx + 7..end_idx];
+            extracted_thinking = Some(thought_content.trim().to_string());
+            // Remove the think block from the response before parsing JSON
+            response_text = format!("{}{}", &response_text[..start_idx], &response_text[end_idx + 8..]);
+        }
+    }
+
+    let report_result: Option<ForensicReport> = serde_json::from_str(&response_text).ok();
+    
+    let mut report = match report_result {
+        Some(mut r) => {
+            r.thinking = extracted_thinking;
+            r
+        },
+        None => {
+            // Regex Fallback
+            println!("[AI] JSON Parsing Failed. Attempting Regex Fallback...");
             
             // Regex Extraction Patterns
             let re_verdict = Regex::new(r"(?i)\*\*Verdict:\*\*\s*(Custom|Benign|Suspicious|Malicious)").unwrap();
@@ -727,6 +741,7 @@ pub async fn generate_ai_report(
                     mutual_exclusions: vec![],
                     command_lines: vec![]
                 },
+                thinking: extracted_thinking,
                 virustotal: None,
                 related_samples: vec![],
             }

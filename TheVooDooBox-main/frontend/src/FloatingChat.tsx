@@ -30,6 +30,26 @@ const CodeBlock = ({ language, code }: { language: string, code: string }) => {
     );
 };
 
+const ThinkingBubble = ({ thought }: { thought: string }) => {
+    return (
+        <div className="flex justify-start mb-4 animate-in fade-in slide-in-from-left-2 duration-300">
+            <div className="bg-security-panel/40 border border-brand-500/20 rounded-xl rounded-bl-none overflow-hidden max-w-[90%] shadow-lg shadow-brand-500/5">
+                <div className="px-3 py-1.5 bg-brand-500/10 border-b border-brand-500/10 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                        <Terminal size={10} className="text-brand-500" />
+                        <span className="text-[8px] text-brand-500 uppercase font-black tracking-widest">Neural Chain-of-Thought</span>
+                    </div>
+                </div>
+                <div className="p-3">
+                    <div className="text-[10px] font-mono text-slate-500 leading-relaxed italic whitespace-pre-wrap">
+                        {thought}
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
 const FormattedMessage = ({ content }: { content: string }) => {
     const parts = content.split(/```(\w*)\n([\s\S]*?)```/g);
 
@@ -54,10 +74,23 @@ const FormattedMessage = ({ content }: { content: string }) => {
     return <div className="select-text cursor-text" style={{ userSelect: 'text' }}>{elements}</div>;
 };
 
-export default function FloatingChat({ activeTaskId, pageContext, activeProvider }: { activeTaskId?: string | null, pageContext?: string, activeProvider?: string | null }) {
+interface Message {
+    id: string;
+    role: 'user' | 'assistant';
+    content: string;
+    timestamp: number;
+    thought?: string;
+}
+
+const FloatingChat = () => {
     const [isOpen, setIsOpen] = useState(false);
-    const [messages, setMessages] = useState<{ role: 'user' | 'assistant', content: string }[]>([
-        { role: 'assistant', content: 'VoodooBox AI Online. I can analyze task telemetry, correlate Ghidra findings, and assist with forensic investigation.' }
+    const [messages, setMessages] = useState<Message[]>([
+        {
+            id: '1',
+            role: 'assistant',
+            content: "I am the VooDooBox Intelligence Core. How can I assist with your malware investigation today?",
+            timestamp: Date.now()
+        }
     ]);
     const [input, setInput] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -170,10 +203,25 @@ export default function FloatingChat({ activeTaskId, pageContext, activeProvider
                 messages.map(m => ({ role: m.role, content: m.content })),
                 activeTaskId || undefined,
                 pageContext,
-                (thought) => setThinkingText(thought)
+                (thought) => {
+                    setThinkingText(thought);
+                    setMessages(prev => {
+                        const lastMsg = prev[prev.length - 1];
+                        if (lastMsg && lastMsg.role === 'assistant' && lastMsg.id === 'typing') {
+                            return [...prev.slice(0, -1), { ...lastMsg, thought }];
+                        }
+                        return prev;
+                    });
+                }
             );
 
-            setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
+            setMessages(prev => [...prev.filter(m => m.id !== 'typing'), {
+                id: Date.now().toString(),
+                role: 'assistant',
+                content: data.content,
+                timestamp: Date.now(),
+                thought: thinkingText || undefined // Capture final thought state
+            }]);
         } catch (error: any) {
             const errorMsg = error.message || 'AI Core offline';
             setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ Neural Sync Error: ${errorMsg}` }]);
