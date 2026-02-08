@@ -268,7 +268,16 @@ export const voodooApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ message, history, task_id: taskId, page_context: pageContext })
         });
-        if (!resp.ok) throw new Error("Chat failed");
+        if (!resp.ok) {
+            try {
+                const errData = await resp.json();
+                throw new Error(errData.response || errData.error || "Chat failed");
+            } catch (e: any) {
+                // If parsing failed or valid error wasn't found, rethrow original or generic
+                if (e.message && e.message !== "Chat failed") throw e;
+                throw new Error(`Chat failed: ${resp.status} ${resp.statusText}`);
+            }
+        }
         return resp.json();
     },
 

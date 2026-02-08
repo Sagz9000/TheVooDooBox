@@ -171,8 +171,9 @@ export default function FloatingChat({ activeTaskId, pageContext, activeProvider
             );
 
             setMessages(prev => [...prev, { role: 'assistant', content: data.response }]);
-        } catch (error) {
-            setMessages(prev => [...prev, { role: 'assistant', content: '⚠️ Neural Sync Error: AI Core offline.' }]);
+        } catch (error: any) {
+            const errorMsg = error.message || 'AI Core offline';
+            setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ Neural Sync Error: ${errorMsg}` }]);
         } finally {
             setIsLoading(false);
         }
