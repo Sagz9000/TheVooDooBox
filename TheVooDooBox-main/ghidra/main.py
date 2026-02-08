@@ -147,8 +147,36 @@ def _headless_analyze_unsafe(binary_name: str, project_name: str, task_id: Optio
     if task_id:
         env["TASK_ID"] = task_id
 
-    with ghidra_lock:
-        result = subprocess.run(cmd, capture_output=True, text=True, env=env)
+    # Log pre-execution
+    try:
+        with open(os.path.join(BINARIES_DIR, "ghidra_proc.log"), "a") as f:
+             f.write(f"\n[PRE-EXEC] Launching Ghidra for {binary_name}...\n")
+             f.write(f"CMD: {' '.join(cmd)}\n")
+    except:
+        pass
+
+    try:
+        with ghidra_lock:
+            # Added 10-minute timeout
+            result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=600)
+    except subprocess.TimeoutExpired:
+        logger.error("Ghidra timed out!")
+        try:
+            with open(os.path.join(BINARIES_DIR, "ghidra_proc.log"), "a") as f:
+                 f.write(f"\n[ERROR] TIMEOUT EXPIRED (600s)\n")
+        except:
+            pass
+        return
+    except Exception as e:
+         logger.error(f"Subprocess failed: {e}")
+         try:
+            with open(os.path.join(BINARIES_DIR, "ghidra_proc.log"), "a") as f:
+                 f.write(f"\n[ERROR] Subprocess Exception: {e}\n")
+         except:
+            pass
+         return
+
+    # Write raw output to shared volume for debugging
     
     # Write raw output to shared volume for debugging
     try:
