@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, X, Bot, Sparkles, Copy, Check } from 'lucide-react';
+import { MessageSquare, Send, X, Bot, Sparkles, Copy, Check, Terminal, ChevronDown } from 'lucide-react';
 import { voodooApi } from './voodooApi';
 
 const CodeBlock = ({ language, code }: { language: string, code: string }) => {
@@ -82,7 +82,7 @@ interface Message {
     thought?: string;
 }
 
-const FloatingChat = () => {
+const FloatingChat = ({ activeTaskId, pageContext, activeProvider }: { activeTaskId?: string | null, pageContext?: string, activeProvider?: string | null }) => {
     const [isOpen, setIsOpen] = useState(false);
     const [messages, setMessages] = useState<Message[]>([
         {
@@ -191,15 +191,23 @@ const FloatingChat = () => {
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
 
-        const userMsg = { role: 'user' as const, content: input };
+        const userMsg: Message = {
+            id: Date.now().toString(),
+            role: 'user',
+            content: input,
+            timestamp: Date.now()
+        };
         setMessages(prev => [...prev, userMsg]);
         setInput('');
         setIsLoading(true);
-        setThinkingText("Initializing Neural Core...");
+        setThinkingText(null);
+
+        // Add placeholder for AI response
+        setMessages(prev => [...prev, { id: 'typing', role: 'assistant', content: '', timestamp: Date.now() }]);
 
         try {
             const data = await voodooApi.chat(
-                userMsg.content,
+                input,
                 messages.map(m => ({ role: m.role, content: m.content })),
                 activeTaskId || undefined,
                 pageContext,
@@ -218,16 +226,15 @@ const FloatingChat = () => {
             setMessages(prev => [...prev.filter(m => m.id !== 'typing'), {
                 id: Date.now().toString(),
                 role: 'assistant',
-                content: data.content,
+                content: data.response,
                 timestamp: Date.now(),
-                thought: thinkingText || undefined // Capture final thought state
+                thought: thinkingText || undefined
             }]);
         } catch (error: any) {
             const errorMsg = error.message || 'AI Core offline';
-            setMessages(prev => [...prev, { role: 'assistant', content: `⚠️ Neural Sync Error: ${errorMsg}` }]);
+            setMessages(prev => [...prev.filter(m => m.id !== 'typing'), { id: Date.now().toString(), role: 'assistant', content: `⚠️ Neural Sync Error: ${errorMsg}`, timestamp: Date.now() }]);
         } finally {
             setIsLoading(false);
-            setThinkingText(null);
         }
     };
 
@@ -272,14 +279,17 @@ const FloatingChat = () => {
 
                     <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar bg-black/20">
                         {messages.map((m, i) => (
-                            <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                                <div className={`max-w-[90%] p-3.5 rounded-xl text-sm leading-relaxed shadow-sm ${m.role === 'user'
-                                    ? 'bg-brand-600 text-white rounded-br-none'
-                                    : 'bg-security-surface border border-security-border text-slate-200 rounded-bl-none'
-                                    }`}>
-                                    <FormattedMessage content={m.content} />
+                            <React.Fragment key={i}>
+                                {m.thought && <ThinkingBubble thought={m.thought} />}
+                                <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                                    <div className={`max-w-[90%] p-3.5 rounded-xl text-sm leading-relaxed shadow-sm ${m.role === 'user'
+                                        ? 'bg-brand-600 text-white rounded-br-none'
+                                        : 'bg-security-surface border border-security-border text-slate-200 rounded-bl-none'
+                                        }`}>
+                                        <FormattedMessage content={m.content} />
+                                    </div>
                                 </div>
-                            </div>
+                            </React.Fragment>
                         ))}
                         {isLoading && (
                             <div className="flex justify-start animate-pulse">
@@ -341,3 +351,5 @@ const FloatingChat = () => {
         </div>
     );
 }
+
+export default FloatingChat;
