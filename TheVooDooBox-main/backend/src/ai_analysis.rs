@@ -22,7 +22,7 @@ pub struct RawEvent {
 // --- Structured Analysis Context for LLM ---
 // (Moved AnalysisContext definition to below to avoid duplicates and ensure static_analysis field is present)
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct CriticalAlert {
     pub rule_name: String, 
     pub severity: String,
@@ -158,21 +158,25 @@ const HIGH_RISK_APIS: &[(&str, &str)] = &[
     ("AdjustTokenPrivileges", "Privilege Escalation"),
 ];
 
-#[derive(Serialize, Debug, Clone, sqlx::FromRow)]
+#[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
 pub struct AnalystNote {
+    pub id: String,
+    pub task_id: String,
     pub author: String,
     pub content: String,
     pub is_hint: bool,
+    pub created_at: i64,
 }
 
-#[derive(Serialize, Debug, Clone, sqlx::FromRow)]
+#[derive(Serialize, Deserialize, Debug, Clone, sqlx::FromRow)]
 pub struct TelemetryTag {
+    pub task_id: String,
     pub event_id: i32,
     pub tag_type: String,
     pub comment: Option<String>,
 }
 
-#[derive(Serialize, Debug)]
+#[derive(Serialize, Debug, Clone)]
 pub struct AnalysisContext {
     pub scan_id: String,
     pub generated_at: String,
@@ -783,8 +787,14 @@ pub async fn generate_ai_report(
         .execute(pool)
         .await?;
     
-    // 9. Generate PDF and Save to Disk
-    match crate::reports::generate_pdf_file(task_id, &report, &context) {
+    // 9. Generate PDF causing the "Detailed Activity Log" to match the AI's focused analysis
+    let refined_context = AnalysisContext {
+        processes: truncated_processes.clone(),
+        static_analysis: truncated_ghidra.clone(), // Use sorted/truncated ghidra too
+        ..context.clone()
+    };
+
+    match crate::reports::generate_pdf_file(task_id, &report, &refined_context) {
         Ok(pdf_bytes) => {
             let dir_path = "reports";
             if let Err(e) = std::fs::create_dir_all(dir_path) {
