@@ -182,7 +182,6 @@ impl AIManager {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
-#[serde(tag = "type", content = "content")]
 pub enum StreamEvent {
     Thought(String),
     Final(String),
