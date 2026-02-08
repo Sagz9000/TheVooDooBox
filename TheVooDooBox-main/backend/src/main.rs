@@ -1435,7 +1435,7 @@ async fn chat_handler(
             "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
              FROM events 
              WHERE task_id = $1 
-             ORDER BY timestamp ASC LIMIT 2000"
+             ORDER BY timestamp ASC LIMIT 500"
         )
         .bind(tid)
         .fetch_all(pool.get_ref())
@@ -1511,6 +1511,35 @@ async fn chat_handler(
         vec![]
     };
 
+    // --- High-Density Optimization: Prioritize Suspicious Functions ---
+    let mut prioritized_ghidra = ghidra_findings;
+    if !prioritized_ghidra.is_empty() {
+        let high_risk_keywords = vec![
+            "VirtualAlloc", "WriteProcessMemory", "CreateRemoteThread", 
+            "RegSetValueEx", "InternetOpen", "HttpSendRequest", 
+            "GetProcAddress", "IsDebuggerPresent", "CryptEncrypt", "ShellExecute"
+        ];
+
+        prioritized_ghidra.sort_by_key(|f| {
+            let mut score = 0;
+            let code_lower = f.decompiled_code.to_lowercase();
+            let name_lower = f.function_name.to_lowercase();
+            
+            for &kw in &high_risk_keywords {
+                let kw_lower = kw.to_lowercase();
+                if code_lower.contains(&kw_lower) { score += 5; }
+                if name_lower.contains(&kw_lower) { score += 10; }
+            }
+            std::cmp::Reverse(score) // Highest score first
+        });
+
+        // Limit to top 20 functions to preserve context window
+        if prioritized_ghidra.len() > 20 {
+            prioritized_ghidra.truncate(20);
+        }
+    }
+
+
     let mut context_summary = String::new();
     
     // Add task summary
@@ -1526,9 +1555,9 @@ async fn chat_handler(
     }
 
     // Add Ghidra Insight
-    if !ghidra_findings.is_empty() {
-        context_summary.push_str("### STATIC ANALYSIS (Ghidra Findings for current task):\n");
-        for func in &ghidra_findings {
+    if !prioritized_ghidra.is_empty() {
+        context_summary.push_str("### STATIC ANALYSIS (Top Forensic Findings):\n");
+        for func in &prioritized_ghidra {
             context_summary.push_str(&format!(
                 "- Function: {} @ {}\n  Code Snippet: {}\n",
                 func.function_name,
@@ -1544,7 +1573,9 @@ async fn chat_handler(
         context_summary.push_str("BEHAVIORAL TELEMETRY DATA (Filtered - Malicious Activity Only):\n");
         context_summary.push_str("Benign Windows processes have been filtered out. Analyze this data to understand malicious behavior:\n\n");
         
-        for (idx, evt) in filtered_events.iter().enumerate() {
+        // Safety: Limit telemetry in context if too large
+        let telemetry_limit = if prioritized_ghidra.is_empty() { 300 } else { 150 };
+        for (idx, evt) in filtered_events.iter().take(telemetry_limit).enumerate() {
             context_summary.push_str(&format!(
                 "{}. [{}] PID:{} PPID:{} Process:'{}' - {}\n",
                 idx + 1,
@@ -1603,6 +1634,14 @@ async fn chat_handler(
         context_summary.push_str("\n\nCURRENT ANALYST VIEW CONTEXT (Screen Data):\n");
         context_summary.push_str(pc);
         context_summary.push_str("\n");
+    }
+
+    // Safety Cap: Hard limit on total context characters to prevent token overflow
+    // 100k chars is approx 25k tokens (safe buffer for 8k-16k models while allowing for compression)
+    // We'll be more aggressive: 40k chars (~10k tokens) to stay within the user's 8k-16k GPU sweet spot.
+    if context_summary.len() > 40000 {
+        context_summary.truncate(40000);
+        context_summary.push_str("\n... [CONTEXT TRUNCATED FOR PERFORMANCE] ...");
     }
 
 
