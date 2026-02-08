@@ -23,7 +23,9 @@ def setup_logging():
             print(msg)
         return log
     except:
-        return print
+        def console_log(msg):
+            print(msg)
+        return console_log
 
 DEBUG_LOG = setup_logging()
 
