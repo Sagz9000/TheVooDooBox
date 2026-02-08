@@ -29,7 +29,7 @@ pub struct CriticalAlert {
     pub details: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ProcessSummary {
     pub pid: i32,
     pub ppid: i32,
@@ -392,8 +392,30 @@ pub async fn generate_ai_report(
         ""
     };
 
-    let sysmon_json = serde_json::to_string_pretty(&context.processes)?;
-    let ghidra_json = serde_json::to_string_pretty(&context.static_analysis)?;
+    // SAFETY: Aggressive Truncation for <8k Context Window
+    let mut truncated_processes = context.processes.clone();
+    if truncated_processes.len() > 20 {
+        truncated_processes.truncate(20);
+    }
+    for proc in &mut truncated_processes {
+        if proc.network_activity.len() > 5 { proc.network_activity.truncate(5); }
+        if proc.file_activity.len() > 5 { proc.file_activity.truncate(5); }
+        if proc.registry_mods.len() > 5 { proc.registry_mods.truncate(5); }
+    }
+
+    let mut truncated_ghidra = context.static_analysis.clone();
+    if truncated_ghidra.functions.len() > 10 {
+        truncated_ghidra.functions.truncate(10);
+    }
+    for func in &mut truncated_ghidra.functions {
+        if func.pseudocode.len() > 500 {
+            func.pseudocode = func.pseudocode.chars().take(500).collect();
+            func.pseudocode.push_str("\n...[TRUNCATED]");
+        }
+    }
+
+    let sysmon_json = serde_json::to_string_pretty(&truncated_processes)?;
+    let ghidra_json = serde_json::to_string_pretty(&truncated_ghidra)?;
 
     // Format VirusTotal Section
     let vt_section = if let Some(vt) = &context.virustotal {
