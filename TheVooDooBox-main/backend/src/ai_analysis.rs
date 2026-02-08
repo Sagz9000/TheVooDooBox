@@ -394,6 +394,23 @@ pub async fn generate_ai_report(
 
     // SAFETY: Aggressive Truncation for <8k Context Window
     let mut truncated_processes = context.processes.clone();
+    
+    // Sort by Relevance to keep interesting processes
+    let root_pid = context.patient_zero_pid.parse::<i32>().unwrap_or(-1);
+    truncated_processes.sort_by(|a, b| {
+        let get_score = |p: &ProcessSummary| -> i32 {
+             let mut score = 0;
+             if p.pid == root_pid { score += 1000; }
+             if p.ppid == root_pid { score += 500; }
+             // Activity bonus
+             score += (p.network_activity.len() as i32) * 20;
+             score += (p.file_activity.len() as i32) * 5;
+             score += (p.registry_mods.len() as i32) * 5;
+             score
+        };
+        get_score(b).cmp(&get_score(a))
+    });
+
     if truncated_processes.len() > 20 {
         truncated_processes.truncate(20);
     }
