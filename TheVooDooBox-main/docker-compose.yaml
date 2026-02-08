@@ -63,6 +63,7 @@ services:
     volumes:
       - ./ghidra/projects:/data/projects
       - ./backend/uploads:/data/binaries
+      - ./ghidra/scripts:/app/scripts
     environment:
       - HOST_IP=${HOST_IP}
     restart: unless-stopped
