@@ -11,7 +11,7 @@ pub struct ChatMessage {
 #[async_trait]
 pub trait AIProvider: Send + Sync {
     /// Asks the AI a question with the given history and system prompt.
-    async fn ask(&self, history: Vec<ChatMessage>, system_prompt: String) -> Result<String, Box<dyn Error>>;
+    async fn ask(&self, history: Vec<ChatMessage>, system_prompt: String) -> Result<String, Box<dyn Error + Send + Sync>>;
     
     /// Returns the name of the provider (e.g., "Gemini", "Ollama")
     fn name(&self) -> &str;

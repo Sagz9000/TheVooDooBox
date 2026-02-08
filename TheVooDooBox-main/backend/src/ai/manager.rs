@@ -70,7 +70,7 @@ impl AIManager {
         provider.name().to_string()
     }
 
-    pub async fn ask(&self, history: Vec<crate::ai::provider::ChatMessage>, system_prompt: String) -> Result<String, Box<dyn std::error::Error>> {
+    pub async fn ask(&self, history: Vec<crate::ai::provider::ChatMessage>, system_prompt: String) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let provider = self.provider.read().await;
         provider.ask(history, system_prompt).await
     }
@@ -81,7 +81,7 @@ impl AIManager {
         long_context: String,
         prompt_instruction: String
     ) -> tokio_stream::wrappers::ReceiverStream<Result<StreamEvent, Box<dyn std::error::Error + Send + Sync>>> {
-        let (tx, rx) = tokio::sync::mpsc::channel(100);
+        let (tx, rx): (tokio::sync::mpsc::Sender<Result<StreamEvent, Box<dyn std::error::Error + Send + Sync>>>, _) = tokio::sync::mpsc::channel(100);
         let manager = self.clone();
         
         tokio::spawn(async move {

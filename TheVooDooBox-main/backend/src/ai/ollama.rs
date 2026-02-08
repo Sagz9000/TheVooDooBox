@@ -29,7 +29,7 @@ impl AIProvider for OllamaProvider {
         "Ollama"
     }
 
-    async fn ask(&self, history: Vec<ChatMessage>, system_prompt: String) -> Result<String, Box<dyn Error>> {
+    async fn ask(&self, history: Vec<ChatMessage>, system_prompt: String) -> Result<String, Box<dyn Error + Send + Sync>> {
         let url = format!("{}/v1/chat/completions", self.base_url);
 
         let mut messages = Vec::new();

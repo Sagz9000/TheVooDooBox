@@ -558,7 +558,7 @@ async fn submit_sample(
     let mut target_node: Option<String> = None;
     
     // Iterate over multipart stream
-    while let Ok(Some(mut field)) = payload.try_next().await {
+    while let Ok(Some(mut field)) = TryStreamExt::try_next(&mut payload).await {
         let content_disposition = field.content_disposition();
         let name_opt = content_disposition.as_ref().and_then(|cd| cd.get_filename());
         let field_name = content_disposition.as_ref().and_then(|cd| cd.get_name()).unwrap_or("");
@@ -578,7 +578,7 @@ async fn submit_sample(
             
             let mut hasher = Sha256::new();
 
-            while let Ok(Some(chunk)) = field.try_next().await {
+            while let Ok(Some(chunk)) = TryStreamExt::try_next(&mut field).await {
                 f.write_all(&chunk).await
                     .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
                 hasher.update(&chunk);
@@ -595,7 +595,7 @@ async fn submit_sample(
             });
         } else if field_name == "analysis_duration" {
             let mut value_bytes = Vec::new();
-            while let Ok(Some(chunk)) = field.try_next().await {
+            while let Ok(Some(chunk)) = TryStreamExt::try_next(&mut field).await {
                 value_bytes.extend_from_slice(&chunk);
             }
             if let Ok(value_str) = String::from_utf8(value_bytes) {
@@ -606,7 +606,7 @@ async fn submit_sample(
             }
         } else if field_name == "vmid" {
             let mut value_bytes = Vec::new();
-            while let Ok(Some(chunk)) = field.try_next().await {
+            while let Ok(Some(chunk)) = TryStreamExt::try_next(&mut field).await {
                 value_bytes.extend_from_slice(&chunk);
             }
             if let Ok(value_str) = String::from_utf8(value_bytes) {
@@ -618,7 +618,7 @@ async fn submit_sample(
             }
         } else if field_name == "node" {
             let mut value_bytes = Vec::new();
-            while let Ok(Some(chunk)) = field.try_next().await {
+            while let Ok(Some(chunk)) = TryStreamExt::try_next(&mut field).await {
                 value_bytes.extend_from_slice(&chunk);
             }
             if let Ok(value_str) = String::from_utf8(value_bytes) {
@@ -984,7 +984,7 @@ pub async fn pivot_upload(
     let mut original_filename = String::new();
     let mut sha256_hash = String::new();
     
-    while let Ok(Some(mut field)) = payload.try_next().await {
+    while let Ok(Some(mut field)) = TryStreamExt::try_next(&mut payload).await {
         let content_disposition = field.content_disposition();
         if let Some(name) = content_disposition.and_then(|cd| cd.get_filename()) {
             original_filename = name.to_string();
@@ -998,7 +998,7 @@ pub async fn pivot_upload(
                 .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
             
             let mut hasher = Sha256::new();
-            while let Ok(Some(chunk)) = field.try_next().await {
+            while let Ok(Some(chunk)) = TryStreamExt::try_next(&mut field).await {
                 f.write_all(&chunk).await
                     .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
                 hasher.update(&chunk);
@@ -1281,7 +1281,7 @@ async fn upload_screenshot(
     let task_dir = format!("./screenshots/{}", task_id);
     let _ = tokio::fs::create_dir_all(&task_dir).await;
     
-    while let Ok(Some(mut field)) = payload.try_next().await {
+    while let Ok(Some(mut field)) = TryStreamExt::try_next(&mut payload).await {
         let name = match field.content_disposition().and_then(|cd| cd.get_filename()) {
             Some(n) => n.to_string(),
             None => format!("screenshot_{}.png", Utc::now().timestamp_millis()),
@@ -1290,7 +1290,7 @@ async fn upload_screenshot(
         let mut f = tokio::fs::File::create(&path).await
             .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
 
-        while let Ok(Some(chunk)) = field.try_next().await {
+        while let Ok(Some(chunk)) = TryStreamExt::try_next(&mut field).await {
             f.write_all(&chunk).await
                 .map_err(|e| actix_web::error::ErrorInternalServerError(e))?;
         }
@@ -1402,7 +1402,6 @@ async fn chat_handler(
     pool: web::Data<Pool<Postgres>>
 ) -> impl Responder {
 
-
     // Fetch recent analysis context
     let recent_tasks = sqlx::query_as::<_, Task>(
         "SELECT id, filename, original_filename, file_hash, status, verdict, risk_score, created_at, completed_at, ghidra_status, verdict_manual FROM tasks ORDER BY created_at DESC LIMIT 5"
@@ -1433,7 +1432,6 @@ async fn chat_handler(
     }
 
     let telemetry_events = if let Some(tid) = &target_task_id {
-        // CHANGED: ASC order to capture start of execution, Limit increased to 2000
         sqlx::query_as::<_, RawAgentEvent>(
             "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
              FROM events 
@@ -1550,7 +1548,8 @@ async fn chat_handler(
         context_summary.push_str("### SYSTEM CONTEXT: RECENTLY ANALYZED FILES\n");
         for t in &recent_tasks {
             context_summary.push_str(&format!(
-                "- {} (SHA256: {}) - Status: {}, Verdict: {} (Risk Score: {})\n", 
+                "- {} (SHA256: {}) - Status: {}, Verdict: {} (Risk Score: {})
+", 
                 t.original_filename, t.file_hash, t.status, t.verdict.as_deref().unwrap_or("Pending"), t.risk_score.unwrap_or(0)
             ));
         }
@@ -1645,47 +1644,32 @@ async fn chat_handler(
         context_summary.push_str("\n... [CONTEXT TRUNCATED] ...");
     }
 
-    // SYSTEM PROMPT (Extracted to be shared)
-    let system_prompt_base = format!(
+    // SYSTEM PROMPT
+    let system_prompt = format!(
 "## VooDooBox Intelligence Core | System Prompt
-... (Persona & Instructions omitted for brevity ... see original) ...
-"); 
-    // NOTE: For brevity in this tool call, I am not replacing the huge system prompt string. 
-    // I will assume the system prompt logic remains similar but constructed differently below.
+You are the VooDooBox AI, a high-fidelity forensic analysis node. 
+Analyze the provided context and respond to the user's query.
 
-    // Actually, I need to wrap the response.
-    // The previous code had `match ai_manager.ask...` at the end.
-    // I need to replace the END of the function mostly.
-    
+CONTEXT SUMMARY:
+{}
+", context_summary);
+
     let use_map_reduce = context_summary.len() > 10000;
     let ai_manager_clone = ai_manager.get_ref().clone();
     let history_clone = req.history.clone();
     let message_clone = req.message.clone();
-    let prompt_instruction = req.message.clone();
-
-    // Standard Prompt Construction (for non-map-reduce)
-    // We need to re-use the specific system prompt string from the original code or reconstruct it.
-    // Since I can't easily capture the visible system prompt 1792-1891 without replacing it, 
-    // I will use `system_prompt` variable if I don't touch lines 1792-1893.
-    // But I DO need to replace the `match` block at 1896.
 
     let stream = if use_map_reduce {
          ai_manager_clone.map_reduce_ask(
              history_clone,
              context_summary,
-             prompt_instruction
+             message_clone
          )
     } else {
-        // Construct full system prompt with context
-        // We reuse the `system_prompt` variable created in lines 1792-1891 (which includes context_summary)
-        let (tx, rx) = tokio::sync::mpsc::channel(1);
+        let (tx, rx): (tokio::sync::mpsc::Sender<Result<StreamEvent, Box<dyn std::error::Error + Send + Sync>>>, _) = tokio::sync::mpsc::channel(1);
         
-        let sys_prompt_final = system_prompt; // Variable from original scope
-
-        // history needs user message appended?
-        // Original code: history.push(UserMessage)
-        // Check line 1786. `history` variable has the new message.
-        let history_final = history; 
+        let sys_prompt_final = system_prompt; 
+        let history_final = req.history.clone(); 
 
         tokio::spawn(async move {
             let _ = tx.send(Ok(StreamEvent::Thought("Analyzing...".to_string()))).await;
@@ -1694,13 +1678,13 @@ async fn chat_handler(
                     let _ = tx.send(Ok(StreamEvent::Final(response))).await;
                 },
                 Err(e) => {
-                    let _ = tx.send(Err(Box::new(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))).await;
+                    let _ = tx.send(Err(e)).await;
                 }
             }
         });
         tokio_stream::wrappers::ReceiverStream::new(rx)
     };
-
+    
     let sse_stream = stream.map(|result| {
         match result {
             Ok(event) => {
@@ -1719,6 +1703,7 @@ async fn chat_handler(
         .content_type("text/event-stream")
         .streaming(sse_stream)
 }
+
 
 #[post("/vms/analysis/ai-insight")]
 async fn ai_insight_handler(
