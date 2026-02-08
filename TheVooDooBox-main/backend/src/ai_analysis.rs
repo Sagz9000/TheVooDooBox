@@ -847,19 +847,19 @@ fn build_process_lineage(events: &[RawEvent], target_filename: &str) -> (std::co
         parent_map.insert(evt.process_id, evt.parent_process_id);
     }
 
-    // Identify Patient Zero: First PROCESS_CREATE matching filename in Name OR Command Line
+    // Identify Patient Zero: First PROCESS_CREATE matching filename in Name ONLY
+    // We strictly avoid checking 'details' (command line) because launchers like cmd.exe 
+    // often contain the target name in arguments but are NOT the target process itself.
     let patient_zero = events.iter()
-        .find(|e| e.event_type == "PROCESS_CREATE" && (
-            e.process_name.to_lowercase().ends_with(&target_filename.to_lowercase()) || 
-            e.details.to_lowercase().contains(&target_filename.to_lowercase())
-        ));
+        .find(|e| e.event_type == "PROCESS_CREATE" && e.process_name.to_lowercase().ends_with(&target_filename.to_lowercase()));
         
     let root_pid = if let Some(pz) = patient_zero {
         pz.process_id
     } else {
         // Fallback: If no direct match, find the first non-noise PID
+        // Improved Noise Filter: Use contains() to catch full paths (e.g. C:\Windows\System32\svchost.exe)
         events.iter()
-            .filter(|e| !NOISE_PROCESSES.iter().any(|np| e.process_name.eq_ignore_ascii_case(np)))
+            .filter(|e| !NOISE_PROCESSES.iter().any(|np| e.process_name.to_lowercase().contains(&np.to_lowercase())))
             .map(|e| e.process_id)
             .next()
             .unwrap_or(0)
