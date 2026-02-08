@@ -35,14 +35,59 @@ export default function GhidraConsole({ taskId, filename, onClose }: GhidraConso
         setLogs(prev => [...prev, `[${new Date().toLocaleTimeString()}] ${msg}`]);
     };
 
+    const startPolling = async () => {
+        setIsAnalyzing(true);
+        // Poll for results every 5 seconds for up to 5 minutes (60 attempts)
+        let attempts = 0;
+        const pollInterval = setInterval(async () => {
+            attempts++;
+            const count = await fetchFunctions(true);
+
+            // Check task status to see if it's finished via signal
+            try {
+                const taskRes = await fetch(`${BASE_URL}/tasks`);
+                const tasks = await taskRes.json();
+                const currentTask = tasks.find((t: any) => t.id === taskId);
+
+                if (currentTask?.ghidra_status === 'Analysis Complete' || count > 0 || attempts >= 60) {
+                    clearInterval(pollInterval);
+                    setIsAnalyzing(false);
+                    if (currentTask?.ghidra_status === 'Analysis Complete' || count > 0) {
+                        addLog("SUCCESS: Static analysis data synchronized.");
+                        fetchFunctions(false); // Final refresh
+                    } else {
+                        addLog("TIMEOUT: Analysis taking longer than expected. Check logs.");
+                    }
+                }
+            } catch (e) {
+                console.error("Polling status check failed", e);
+            }
+        }, 5000);
+    };
+
     useEffect(() => {
+        const checkStatus = async () => {
+            const res = await fetch(`${BASE_URL}/tasks`);
+            const tasks = await res.json();
+            const currentTask = tasks.find((t: any) => t.id === taskId);
+
+            if (currentTask?.ghidra_status === 'Analysis Running') {
+                addLog("AUTO-DETECT: Background analysis in progress. Hooking stream...");
+                startPolling();
+            } else if (currentTask?.ghidra_status === 'Analysis Complete') {
+                addLog("Data found in persistent cache. Loading symbols...");
+                fetchFunctions(false);
+            }
+        };
+
         addLog(`Ghidra session active for task ${taskId}`);
-        fetchFunctions();
+        checkStatus();
     }, [taskId]);
 
     const runAnalysis = async () => {
+        if (isAnalyzing) return;
         setIsAnalyzing(true);
-        addLog(`Analyzing ${filename} for task ${taskId}...`);
+        addLog(`Initiating manual analysis for ${filename}...`);
         try {
             const res = await fetch(`${BASE_URL}/ghidra/analyze`, {
                 method: 'POST',
@@ -54,28 +99,15 @@ export default function GhidraConsole({ taskId, filename, onClose }: GhidraConso
             });
             const data = await res.json();
             addLog(`Ghidra Status: ${data.status || 'OK'}`);
-
-            // Poll for results every 5 seconds for up to 2 minutes
-            let attempts = 0;
-            const pollInterval = setInterval(async () => {
-                attempts++;
-                const count = await fetchFunctions();
-                if (count > 0 || attempts >= 24) {
-                    clearInterval(pollInterval);
-                    setIsAnalyzing(false);
-                    if (count > 0) addLog("Analysis finished and data loaded.");
-                    else addLog("Analysis timed out or returned no findings.");
-                }
-            }, 5000);
-
+            startPolling();
         } catch (e) {
             addLog(`Error: ${e}`);
             setIsAnalyzing(false);
         }
     };
 
-    const fetchFunctions = async () => {
-        setIsLoading(true);
+    const fetchFunctions = async (silent = false) => {
+        if (!silent) setIsLoading(true);
         try {
             // Fetch from persistent DB
             const res = await fetch(`${BASE_URL}/tasks/${taskId}/ghidra-findings`);

@@ -666,8 +666,9 @@ async fn submit_sample(
     // Trigger Ghidra Static Analysis (Parallel Background)
     let ghidra_filename = filename.clone();
     let ghidra_task_id = task_id.clone();
+    let ghidra_pool = pool.get_ref().clone(); 
     actix_web::rt::spawn(async move {
-        trigger_ghidra_background(ghidra_filename, ghidra_task_id).await;
+        trigger_ghidra_background(ghidra_filename, ghidra_task_id, ghidra_pool).await;
     });
 
     // Spawn Analysis Job
@@ -1900,7 +1901,13 @@ Return ONLY RAW JSON.",
     }
 }
 
-async fn trigger_ghidra_background(filename: String, task_id: String) {
+async fn trigger_ghidra_background(filename: String, task_id: String, pool: Pool<Postgres>) {
+    // 1. Set status to Running in DB immediately
+    let _ = sqlx::query("UPDATE tasks SET ghidra_status = 'Analysis Running' WHERE id = $1")
+        .bind(&task_id)
+        .execute(&pool)
+        .await;
+
     let ghidra_api = env::var("GHIDRA_API_INTERNAL").unwrap_or_else(|_| "http://ghidra:8000".to_string());
     let client = reqwest::Client::new();
     
@@ -1916,7 +1923,14 @@ async fn trigger_ghidra_background(filename: String, task_id: String) {
         .send()
         .await {
             Ok(_) => println!("[GHIDRA] Background analysis queued successfully."),
-            Err(e) => println!("[GHIDRA] Failed to queue background analysis: {}", e),
+            Err(e) => {
+                println!("[GHIDRA] Failed to queue background analysis: {}", e);
+                // Mark as failed so UI doesn't hang
+                let _ = sqlx::query("UPDATE tasks SET ghidra_status = 'Failed' WHERE id = $1")
+                    .bind(&task_id)
+                    .execute(&pool)
+                    .await;
+            }
         }
 }
 
