@@ -1672,12 +1672,18 @@ CONTEXT SUMMARY:
         let history_final = req.history.clone(); 
 
         tokio::spawn(async move {
+            println!("[AI] Starting chat stream. Prompt len: {}", sys_prompt_final.len());
             let _ = tx.send(Ok(StreamEvent::Thought("Analyzing...".to_string()))).await;
+            println!("[AI] Sent 'Analyzing' event to stream");
+
             match ai_manager_clone.ask(history_final, sys_prompt_final).await {
                 Ok(response) => {
+                    println!("[AI] Received response from provider (len: {})", response.len());
                     let _ = tx.send(Ok(StreamEvent::Final(response))).await;
+                    println!("[AI] Sent Final response to stream");
                 },
                 Err(e) => {
+                    println!("[AI] Ask failed: {}", e);
                     let _ = tx.send(Err(e)).await;
                 }
             }
