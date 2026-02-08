@@ -63,6 +63,8 @@ services:
     volumes:
       - ./ghidra/projects:/data/projects
       - ./backend/uploads:/data/binaries
+    environment:
+      - HOST_IP=${HOST_IP}
     restart: unless-stopped
 
   mcp-server:

@@ -13,6 +13,20 @@ import urllib2
 import os
 
 # Configuration
+def setup_logging():
+    log_file = "/data/binaries/ghidra_debug.log"
+    try:
+        # Simple file append
+        def log(msg):
+            with open(log_file, "a") as f:
+                f.write(msg + "\n")
+            print(msg)
+        return log
+    except:
+        return print
+
+DEBUG_LOG = setup_logging()
+
 def get_api_urls():
     urls = []
     # 1. Try Docker Internal DNS first (most robust)
@@ -41,23 +55,23 @@ def send_to_api(payload):
 
     for url in API_URLS:
         try:
-            print("Attempting to send to: " + url)
+            DEBUG_LOG("Attempting to send to: " + url)
             req = urllib2.Request(url)
             req.add_header('Content-Type', 'application/json')
             
             response = urllib2.urlopen(req, json.dumps(payload))
-            print("Successfully sent batch to API (" + url + "): " + str(response.getcode()))
+            DEBUG_LOG("Successfully sent batch to API (" + url + "): " + str(response.getcode()))
             success = True
             break
         except Exception as e:
             errors.append(str(e))
-            print("Failed sending to " + url + ": " + str(e))
+            DEBUG_LOG("Failed sending to " + url + ": " + str(e))
     
     if not success:
-        print("CRITICAL: All API attempts failed. Errors: " + str(errors))
+        DEBUG_LOG("CRITICAL: All API attempts failed. Errors: " + str(errors))
 
 def analyze_and_ingest():
-    print("Starting AI Ingestion for: " + currentProgram.getName() + " (Task: " + str(TASK_ID) + ")")
+    DEBUG_LOG("Starting AI Ingestion for: " + currentProgram.getName() + " (Task: " + str(TASK_ID) + ")")
     
     di = get_decompiler_interface()
     monitor = ConsoleTaskMonitor()
@@ -70,7 +84,7 @@ def analyze_and_ingest():
         if monitor.isCancelled():
             break
             
-        print("Processing: " + func.getName())
+        DEBUG_LOG("Processing: " + func.getName())
         
         # Decompile
         res = di.decompileFunction(func, 60, monitor)
@@ -108,7 +122,7 @@ def analyze_and_ingest():
     # NEW: Send completion signal explicitly
     send_completion_signal()
         
-    print("Ingestion Complete.")
+    DEBUG_LOG("Ingestion Complete.")
 
 def send_completion_signal():
     if not TASK_ID:
@@ -124,12 +138,12 @@ def send_completion_signal():
         # We want ".../ghidra/ingest/complete"
         url = base_url + "/complete"
         try:
-            print("Attempting to signal completion to: " + url)
+            DEBUG_LOG("Attempting to signal completion to: " + url)
             req = urllib2.Request(url)
             req.add_header('Content-Type', 'application/json')
             
             response = urllib2.urlopen(req, json.dumps(payload))
-            print("Successfully signaled completion to API (" + url + "): " + str(response.getcode()))
+            DEBUG_LOG("Successfully signaled completion to API (" + url + "): " + str(response.getcode()))
             success = True
             break
         except Exception as e:
