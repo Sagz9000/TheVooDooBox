@@ -42,6 +42,35 @@ class AnalysisRequest(BaseModel):
     task_id: Optional[str] = None
     project_name: Optional[str] = "voodoobox_default"
 
+@app.on_event("startup")
+async def startup_event():
+    log_path = os.path.join(BINARIES_DIR, "ghidra_service_startup.log")
+    try:
+        with open(log_path, "w") as f:
+            f.write(f"Service initialized at {time.ctime()}\n")
+            f.write(f"BINARIES_DIR: {BINARIES_DIR}\n")
+            f.write(f"PROJECTS_DIR: {PROJECTS_DIR}\n")
+            f.write(f"Env HOST_IP: {os.getenv('HOST_IP')}\n")
+        logger.info("Startup check: Wrote to volume successfully.")
+    except Exception as e:
+        logger.error(f"Startup check FAILED: {e}")
+
+@app.get("/debug/logs")
+def get_debug_logs():
+    files = ["ghidra_proc.log", "ghidra_debug.log", "ghidra_service_startup.log"]
+    logs = {}
+    for filename in files:
+        path = os.path.join(BINARIES_DIR, filename)
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    logs[filename] = f.read()[-5000:] # Last 5000 chars
+            except Exception as e:
+                logs[filename] = f"Error reading file: {e}"
+        else:
+            logs[filename] = "File not found."
+    return logs
+
 @app.get("/health")
 def health():
     return {"status": "online", "service": "ghidra-static-engine"}
@@ -59,9 +88,35 @@ def run_analysis(request: AnalysisRequest, background_tasks: BackgroundTasks):
     return {"status": "queued", "binary": request.binary_name, "task_id": request.task_id}
 
 def headless_analyze(binary_name: str, project_name: str, task_id: Optional[str] = None):
+    try:
+        _headless_analyze_unsafe(binary_name, project_name, task_id)
+    except Exception as e:
+        logger.error(f"CRITICAL WORKER ERROR: {e}")
+        # Try to log to file
+        try:
+            debug_log_path = os.path.join(BINARIES_DIR, "ghidra_proc.log")
+            with open(debug_log_path, "a") as f:
+                f.write(f"CRITICAL EXCEPTION IN WORKER: {e}\n")
+        except:
+            pass
+
+def _headless_analyze_unsafe(binary_name: str, project_name: str, task_id: Optional[str] = None):
     binary_path = os.path.join(BINARIES_DIR, binary_name)
+    
+    # Debug log the path check
+    try:
+        with open(os.path.join(BINARIES_DIR, "ghidra_proc.log"), "a") as f:
+             f.write(f"Checking for binary at: {binary_path}\n")
+    except:
+        pass
+
     if not os.path.exists(binary_path):
         logger.error(f"Binary not found: {binary_path}")
+        try:
+            with open(os.path.join(BINARIES_DIR, "ghidra_proc.log"), "a") as f:
+                 f.write(f"ERROR: Binary path does not exist: {binary_path}\n")
+        except:
+            pass
         return
 
     # Clean up existing project to avoid conflicts
