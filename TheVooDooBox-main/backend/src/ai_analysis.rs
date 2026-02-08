@@ -657,14 +657,27 @@ pub async fn generate_ai_report(
          if let Some(inner) = caps.get(1) {
              response_text = inner.as_str().trim().to_string();
          }
-    } else if let Some(start_idx) = response_text.find('{') {
-         // Fallback: No markdown fences, but found a starting brace.
-         // Attempt to slice from first '{' to last '}' to strip "Here is the JSON:" prefixes
-         if let Some(end_idx) = response_text.rfind('}') {
-             if end_idx > start_idx {
-                 response_text = response_text[start_idx..=end_idx].to_string();
-             }
-         }
+    }
+
+    // CRITICAL FIX: Detect if the response is a JSON string containing escaped JSON
+    // Check this BEFORE brace slicing, because brace slicing might strip the quotes from a valid JSON string
+    if response_text.trim().starts_with('"') && response_text.trim().ends_with('"') {
+        // Try to parse as a JSON string first
+        if let Ok(unescaped) = serde_json::from_str::<String>(&response_text) {
+            println!("[AI] Detected double-encoded JSON string, unescaping...");
+            response_text = unescaped.trim().to_string();
+        }
+    }
+
+    // Fallback: If it still doesn't look like JSON (doesn't start with {), try to find the bounds
+    if !response_text.trim().starts_with('{') {
+        if let Some(start_idx) = response_text.find('{') {
+            if let Some(end_idx) = response_text.rfind('}') {
+                if end_idx > start_idx {
+                    response_text = response_text[start_idx..=end_idx].to_string();
+                }
+            }
+        }
     }
 
     // 7. Neutral To Forensic Mapping (Internal Logic)
@@ -692,17 +705,6 @@ pub async fn generate_ai_report(
             extracted_thinking = Some(thought_content.trim().to_string());
             // Remove the think block from the response before parsing JSON
             response_text = format!("{}{}", &response_text[..start_idx], &response_text[end_idx + 8..]);
-        }
-    }
-
-
-    // CRITICAL FIX: Detect if the response is a JSON string containing escaped JSON
-    // This happens when the model wraps the entire response in quotes
-    if response_text.starts_with('"') && response_text.ends_with('"') {
-        // Try to parse as a JSON string first
-        if let Ok(unescaped) = serde_json::from_str::<String>(&response_text) {
-            println!("[AI] Detected double-encoded JSON string, unescaping...");
-            response_text = unescaped;
         }
     }
 
