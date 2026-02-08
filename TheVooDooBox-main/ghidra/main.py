@@ -134,6 +134,7 @@ def _headless_analyze_unsafe(binary_name: str, project_name: str, task_id: Optio
         project_name,
         "-import", binary_path,
         "-overwrite",
+        "-analysisTimeoutPerFile", "300",
         "-scriptPath", SCRIPTS_DIR,
         "-loader-config", "PeLoader:Parse Resources=false",
         "-postScript", "AnalyzeAndIngest.py"
