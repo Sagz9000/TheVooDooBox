@@ -18,7 +18,10 @@ impl OllamaProvider {
         Self {
             base_url: clean_url,
             model,
-            client: Client::new(),
+            client: Client::builder()
+                .timeout(std::time::Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
         }
     }
 }
@@ -31,6 +34,7 @@ impl AIProvider for OllamaProvider {
 
     async fn ask(&self, history: Vec<ChatMessage>, system_prompt: String) -> Result<String, Box<dyn Error + Send + Sync>> {
         let url = format!("{}/v1/chat/completions", self.base_url);
+        println!("[OLLAMA] Sending request to: {} (Model: {})", url, self.model);
 
         let mut messages = Vec::new();
 
