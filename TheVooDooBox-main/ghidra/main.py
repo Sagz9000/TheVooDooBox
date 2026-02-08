@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import threading
 import time
+import sys
 
 # Lock for Ghidra headless execution (only one at a time to prevent corruption)
 ghidra_lock = threading.Lock()
@@ -157,16 +158,36 @@ def _headless_analyze_unsafe(binary_name: str, project_name: str, task_id: Optio
 
     try:
         with ghidra_lock:
-            # Added 10-minute timeout
-            result = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=600)
-    except subprocess.TimeoutExpired:
-        logger.error("Ghidra timed out!")
-        try:
-            with open(os.path.join(BINARIES_DIR, "ghidra_proc.log"), "a") as f:
-                 f.write(f"\n[ERROR] TIMEOUT EXPIRED (600s)\n")
-        except:
-            pass
-        return
+            # Use Popen to stream output
+            process = subprocess.Popen(
+                cmd,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT, # Merge stderr into stdout
+                env=env,
+                text=True,
+                bufsize=1 # Line buffered
+            )
+
+            # Stream output to log file
+            log_path = os.path.join(BINARIES_DIR, "ghidra_proc.log")
+            try:
+                with open(log_path, "a") as f:
+                    for line in process.stdout:
+                        sys.stdout.write(line) # Echo to container logs
+                        f.write(line)
+            except Exception as e:
+                logger.error(f"Error streaming logs: {e}")
+
+            process.wait()
+
+            if process.returncode != 0:
+                 logger.error(f"Ghidra exited with code {process.returncode}")
+                 try:
+                    with open(log_path, "a") as f:
+                        f.write(f"\n[ERROR] Process exited with code {process.returncode}\n")
+                 except:
+                    pass
+
     except Exception as e:
          logger.error(f"Subprocess failed: {e}")
          try:
@@ -175,33 +196,7 @@ def _headless_analyze_unsafe(binary_name: str, project_name: str, task_id: Optio
          except:
             pass
          return
-
-    # Write raw output to shared volume for debugging
     
-    # Write raw output to shared volume for debugging
-    try:
-        debug_log_path = os.path.join(BINARIES_DIR, "ghidra_proc.log")
-        with open(debug_log_path, "a") as f:
-            f.write(f"\n--- Analysis Task: {task_id} --- {binary_name} ---\n")
-            f.write(f"Command: {' '.join(cmd)}\n")
-            if result.stdout:
-                f.write(f"STDOUT:\n{result.stdout}\n")
-            if result.stderr:
-                f.write(f"STDERR:\n{result.stderr}\n")
-            f.write(f"Return Code: {result.returncode}\n")
-    except Exception as e:
-        logger.error(f"Failed to write debug log: {e}")
-
-    # Always log output for debugging
-    if result.stdout:
-        logger.info(f"Ghidra STDOUT:\n{result.stdout}")
-    if result.stderr:
-        logger.error(f"Ghidra STDERR:\n{result.stderr}")
-
-    if result.returncode == 0:
-        logger.info(f"Analysis complete for {binary_name}")
-    else:
-        logger.error(f"Analysis failed for {binary_name}: {result.stderr}")
 
 @app.get("/binary/{name}/functions")
 def get_functions(name: str):
