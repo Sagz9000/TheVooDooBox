@@ -2443,7 +2443,7 @@ async fn main() -> std::io::Result<()> {
 
     // AI Manager Initialization
     let gemini_key = std::env::var("GEMINI_API_KEY").unwrap_or_default();
-    let ollama_url = std::env::var("OLLAMA_URL").unwrap_or("http://localhost:11434".to_string());
+    let ollama_url = std::env::var("OLLAMA_URL").unwrap_or("http://192.168.50.98:11434".to_string());
     let ai_manager = web::Data::new(AIManager::new(gemini_key, ollama_url));
 
     tokio::spawn(start_tcp_listener(broadcaster, agent_manager, pool));
