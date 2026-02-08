@@ -1669,7 +1669,11 @@ CONTEXT SUMMARY:
         let (tx, rx): (tokio::sync::mpsc::Sender<Result<StreamEvent, Box<dyn std::error::Error + Send + Sync>>>, _) = tokio::sync::mpsc::channel(1);
         
         let sys_prompt_final = system_prompt; 
-        let history_final = req.history.clone(); 
+        let mut history_final = req.history.clone();
+        history_final.push(crate::ai::provider::ChatMessage {
+            role: "user".to_string(),
+            content: req.message.clone(),
+        }); 
 
         tokio::spawn(async move {
             println!("[AI] Starting chat stream. Prompt len: {}", sys_prompt_final.len());
