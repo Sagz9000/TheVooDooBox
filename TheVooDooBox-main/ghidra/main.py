@@ -95,6 +95,20 @@ def headless_analyze(binary_name: str, project_name: str, task_id: Optional[str]
     with ghidra_lock:
         result = subprocess.run(cmd, capture_output=True, text=True, env=env)
     
+    # Write raw output to shared volume for debugging
+    try:
+        debug_log_path = os.path.join(BINARIES_DIR, "ghidra_proc.log")
+        with open(debug_log_path, "a") as f:
+            f.write(f"\n--- Analysis Task: {task_id} --- {binary_name} ---\n")
+            f.write(f"Command: {' '.join(cmd)}\n")
+            if result.stdout:
+                f.write(f"STDOUT:\n{result.stdout}\n")
+            if result.stderr:
+                f.write(f"STDERR:\n{result.stderr}\n")
+            f.write(f"Return Code: {result.returncode}\n")
+    except Exception as e:
+        logger.error(f"Failed to write debug log: {e}")
+
     # Always log output for debugging
     if result.stdout:
         logger.info(f"Ghidra STDOUT:\n{result.stdout}")
