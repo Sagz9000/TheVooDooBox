@@ -682,39 +682,63 @@ pub async fn generate_ai_report(
     
     response_text = response_text.trim().to_string();
 
-    // STEP C: Remove Markdown JSON blocks
-    let re_md = Regex::new(r"(?s)```(?:json)?\s*(.*?)\s*```").unwrap();
-    if let Some(caps) = re_md.captures(&response_text) {
-         if let Some(inner) = caps.get(1) {
-             response_text = inner.as_str().trim().to_string();
-         }
-    }
+    // --- ROBUST JSON PARSING PIPELINE ---
+    let mut current_json = response_text.clone();
+    let mut report_result: Option<ForensicReport> = None;
 
-    // STEP D: Fallback - If it still doesn't look like JSON, try to find the bounds
-    if !response_text.trim().starts_with('{') {
-        if let Some(start_idx) = response_text.find('{') {
-            if let Some(end_idx) = response_text.rfind('}') {
-                if end_idx > start_idx {
-                    response_text = response_text[start_idx..=end_idx].to_string();
+    for pass in 0..3 {
+        let trimmed = current_json.trim();
+        if trimmed.is_empty() { break; }
+
+        // 1. Try direct parse
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(trimmed) {
+            if value.is_object() {
+                // It's a valid object! Try to map to ForensicReport
+                if let Ok(r) = serde_json::from_value::<ForensicReport>(value) {
+                    report_result = Some(r);
+                    break;
+                }
+            } else if let Some(inner_str) = value.as_str() {
+                // It's a string containing JSON! Unescape and try again
+                println!("[AI] Detected string-wrapped JSON (Pass {}), unescaping...", pass);
+                current_json = inner_str.trim().to_string();
+                continue;
+            }
+        }
+
+        // 2. If parsing failed, try to find bounds { ... }
+        if let Some(start) = current_json.find('{') {
+            if let Some(end) = current_json.rfind('}') {
+                if end > start {
+                    let extracted = &current_json[start..=end];
+                    // If it looks escaped, clean it manually
+                    if extracted.contains("\\\"") {
+                        current_json = extracted.replace("\\\"", "\"")
+                                               .replace("\\n", "\n")
+                                               .replace("\\r", "");
+                    } else {
+                        current_json = extracted.to_string();
+                    }
+                    
+                    // Re-clean common neural/logic markers that might be inside the JSON
+                    current_json = current_json.replace("[Diagnostic Alpha]", "Benign")
+                                              .replace("[Diagnostic Beta]", "Suspicious")
+                                              .replace("[Diagnostic Gamma]", "Malicious")
+                                              .replace("Diagnostic Alpha", "Benign")
+                                              .replace("Diagnostic Beta", "Suspicious")
+                                              .replace("Diagnostic Gamma", "Malicious")
+                                              .replace("\"[Benign]\"", "\"Benign\"")
+                                              .replace("\"[Suspicious]\"", "\"Suspicious\"")
+                                              .replace("\"[Malicious]\"", "\"Malicious\"")
+                                              .replace("\"reasoning\":", "\"executive_summary\":")
+                                              .replace("INTERNAL_LOGIC_REVIEW", "STATIC_ANALYSIS");
+                    
+                    if pass < 2 { continue; } // Try parsing the cleaned version
                 }
             }
         }
+        break;
     }
-
-    // 7. Neutral To Forensic Mapping (Internal Logic)
-    response_text = response_text.replace("[Diagnostic Alpha]", "Benign")
-                                .replace("[Diagnostic Beta]", "Suspicious")
-                                .replace("[Diagnostic Gamma]", "Malicious")
-                                .replace("Diagnostic Alpha", "Benign")
-                                .replace("Diagnostic Beta", "Suspicious")
-                                .replace("Diagnostic Gamma", "Malicious")
-                                .replace("\"[Benign]\"", "\"Benign\"")
-                                .replace("\"[Suspicious]\"", "\"Suspicious\"")
-                                .replace("\"[Malicious]\"", "\"Malicious\"")
-                                .replace("\"reasoning\":", "\"executive_summary\":")
-                                .replace("INTERNAL_LOGIC_REVIEW", "STATIC_ANALYSIS");
-
-    let report_result: Option<ForensicReport> = serde_json::from_str(&response_text).ok();
     
     let mut report = match report_result {
         Some(mut r) => {
