@@ -18,12 +18,11 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
     const [expandedHive, setExpandedHive] = useState(true);
 
     const getVerdictColor = (verdict: string) => {
-        switch (verdict) {
-            case 'Malicious': return 'text-threat-critical border-threat-critical bg-threat-critical/10';
-            case 'Suspicious': return 'text-threat-high border-threat-high bg-threat-high/10';
-            case 'Benign': return 'text-threat-low border-threat-low bg-threat-low/10';
-            default: return 'text-slate-500 border-slate-500 bg-slate-500/10';
-        }
+        const v = verdict.toLowerCase();
+        if (v.includes('malicious') || v.includes('gamma') || v.includes('critical')) return 'text-threat-critical border-threat-critical bg-threat-critical/10';
+        if (v.includes('suspicious') || v.includes('beta') || v.includes('risk')) return 'text-threat-high border-threat-high bg-threat-high/10';
+        if (v.includes('benign') || v.includes('alpha') || v.includes('safe')) return 'text-threat-low border-threat-low bg-threat-low/10';
+        return 'text-slate-500 border-slate-500 bg-slate-500/10';
     };
 
     const getStageColor = (stage: string) => {

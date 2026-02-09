@@ -26,8 +26,8 @@ export interface GhidraFinding {
 }
 
 export interface ForensicReport {
-    verdict: 'Benign' | 'Suspicious' | 'Malicious';
-    malware_family: string | null;
+    verdict: string;
+    malware_family: string;
     threat_score: number;
     executive_summary: string;
     behavioral_timeline: TimelineEvent[];
