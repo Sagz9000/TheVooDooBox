@@ -1,24 +1,52 @@
-# PowerShell Script to Force-Install Browser Extension in Chrome/Edge
-# Usage: .\install_browser_extension.ps1 -ExtensionId "acemimpy" -UpdateUrl "https://clients2.google.com/service/update2/crx"
-# OR if local hosting is set up (more complex for force list), usually we pack it.
-# For Development (Sideloading), we just launch with args.
-
-# This script sets the Registry keys for enterprise policy installation (ForceInstall)
+# PowerShell Script to Force-Install Browser Extension in Chrome/Edge (Sideloading Unpacked)
+# This script applies enterprise policies and registry entries to load the extension.
 
 param (
-    [string]$ExtensionId = "YOUR_EXTENSION_ID_HERE", 
-    [string]$UpdateUrl = "https://clients2.google.com/service/update2/crx" # Default Web Store
+    [string]$ExtensionPath = "C:\Mallab\agent-windows\browser_extension",
+    # Deterministic ID generated from the key in manifest.json
+    [string]$ExtensionId = "ihglmjmdikjkbobldkhidkbhldkhidkh" 
 )
 
-Write-Host "Configuring Chrome Extension Policy..." -ForegroundColor Cyan
-$ChromeKey = "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist"
-if (-not (Test-Path $ChromeKey)) { New-Item -Path $ChromeKey -Force | Out-Null }
-# Value Name is arbitrary (1, 2, ...), Value Data is "ID;UpdateURL"
-Set-ItemProperty -Path $ChromeKey -Name "1" -Value "$ExtensionId;$UpdateUrl"
+# Robust path detection: check relative path if default doesn't exist
+if (-not (Test-Path $ExtensionPath)) {
+    $RelativePath = Join-Path $PSScriptRoot "agent-windows\browser_extension"
+    if (Test-Path $RelativePath) {
+        $ExtensionPath = $RelativePath
+    }
+    elseif (Test-Path (Join-Path $PSScriptRoot "..\agent-windows\browser_extension")) {
+        $ExtensionPath = (Join-Path $PSScriptRoot "..\agent-windows\browser_extension")
+    }
+}
 
-Write-Host "Configuring Edge Extension Policy..." -ForegroundColor Cyan
-$EdgeKey = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist"
-if (-not (Test-Path $EdgeKey)) { New-Item -Path $EdgeKey -Force | Out-Null }
-Set-ItemProperty -Path $EdgeKey -Name "1" -Value "$ExtensionId;$UpdateUrl"
+if (-not (Test-Path $ExtensionPath)) {
+    Write-Error "Extension path not found: $ExtensionPath. Please ensure the extension files are copied to the sandbox."
+    exit 1
+}
 
-Write-Host "Extension Policy Applied. Restart Browsers to take effect." -ForegroundColor Green
+Write-Host "Configuring Chrome Policies..." -ForegroundColor Cyan
+# 1. Allow Developer Mode (Required for unpacked sideloading via registry)
+$ChromePolicyKey = "HKLM:\SOFTWARE\Policies\Google\Chrome"
+if (-not (Test-Path $ChromePolicyKey)) { New-Item -Path $ChromePolicyKey -Force | Out-Null }
+Set-ItemProperty -Path $ChromePolicyKey -Name "DeveloperModeAllowed" -Value 1 -Type DWord
+
+# 2. Register External Extension (Direct Path)
+$ChromeExtKey = "HKLM:\SOFTWARE\Google\Chrome\Extensions\$ExtensionId"
+if (-not (Test-Path $ChromeExtKey)) { New-Item -Path $ChromeExtKey -Force | Out-Null }
+Set-ItemProperty -Path $ChromeExtKey -Name "path" -Value $ExtensionPath
+Set-ItemProperty -Path $ChromeExtKey -Name "version" -Value "1.0"
+
+Write-Host "Configuring Edge Policies..." -ForegroundColor Cyan
+# 1. Allow Developer Mode
+$EdgePolicyKey = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
+if (-not (Test-Path $EdgePolicyKey)) { New-Item -Path $EdgePolicyKey -Force | Out-Null }
+Set-ItemProperty -Path $EdgePolicyKey -Name "DeveloperModeAllowed" -Value 1 -Type DWord
+
+# 2. Register External Extension
+$EdgeExtKey = "HKLM:\SOFTWARE\Microsoft\Edge\Extensions\$ExtensionId"
+if (-not (Test-Path $EdgeExtKey)) { New-Item -Path $EdgeExtKey -Force | Out-Null }
+Set-ItemProperty -Path $EdgeExtKey -Name "path" -Value $ExtensionPath
+Set-ItemProperty -Path $EdgeExtKey -Name "version" -Value "1.0"
+
+Write-Host "Extension Policy Applied." -ForegroundColor Green
+Write-Host "NOTE: You may need to restart the browser. In some environments, you must manually 'Enable' it once if it appears as 'Disabled (External Source)'." -ForegroundColor Yellow
+

@@ -1,5 +1,6 @@
 {
     "manifest_version": 3,
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAyY6GvC8v6jV/VqY7+W89vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9Y7vL0Yn7U+m/kP2+X8nS8b8X9AgMBAAE=",
     "name": "VooDooBox Telemetry Capture",
     "version": "1.0",
     "description": "Captures high-fidelity browser telemetry (URLs, DOM, Redirects) for analysis.",
