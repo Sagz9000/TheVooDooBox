@@ -202,11 +202,7 @@ pub fn generate_pdf_file(_task_id: &String, report: &ForensicReport, context: &A
         
         // Highlight malware PIDs (only if they are numerical)
         let is_suspicious = report.behavioral_timeline.iter().any(|t| {
-            if let Ok(pid) = t.related_pid.parse::<i32>() {
-                pid == proc.pid
-            } else {
-                false
-            }
+            t.related_pid == proc.pid
         });
         if is_suspicious {
             doc.push(p.styled(style::Style::new().bold().with_color(style::Color::Rgb(220, 38, 38))));

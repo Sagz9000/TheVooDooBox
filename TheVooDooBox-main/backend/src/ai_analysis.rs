@@ -193,7 +193,7 @@ pub struct TimelineEvent {
     pub stage: String, // "Execution", "Persistence", etc
     pub event_description: String,
     pub technical_context: String,
-    pub related_pid: String, // Dynamic PID or "STATIC_ANALYSIS"
+    pub related_pid: i32, // Dynamic PID
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -775,7 +775,7 @@ pub async fn generate_ai_report(
 
     // 7. DB Mapping (Best Effort)
     let mut suspicious_pids: Vec<i32> = report.behavioral_timeline.iter()
-        .filter_map(|e| e.related_pid.parse::<i32>().ok())
+        .map(|e| e.related_pid)
         .collect();
     suspicious_pids.sort();
     suspicious_pids.dedup();

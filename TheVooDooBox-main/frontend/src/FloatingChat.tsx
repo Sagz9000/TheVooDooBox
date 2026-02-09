@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { MessageSquare, Send, X, Bot, Sparkles, Copy, Check, Terminal, ChevronDown } from 'lucide-react';
+import { Send, X, Bot, Sparkles, Copy, Check, Terminal } from 'lucide-react';
 import { voodooApi } from './voodooApi';
 
 const CodeBlock = ({ language, code }: { language: string, code: string }) => {
@@ -50,6 +50,55 @@ const ThinkingBubble = ({ thought }: { thought: string }) => {
     );
 };
 
+const StructuredReport = ({ report }: { report: any }) => {
+    return (
+        <div className="my-4 bg-security-panel border border-brand-500/30 rounded-xl overflow-hidden shadow-2xl animate-in zoom-in-95 duration-300">
+            <div className="p-3 bg-brand-500/10 border-b border-brand-500/20 flex items-center gap-2">
+                <Bot size={14} className="text-brand-500" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-white">Forensic Intelligence Report</span>
+            </div>
+            <div className="p-4 space-y-4">
+                <div className="flex items-center justify-between">
+                    <div className={`px-2 py-1 rounded text-[10px] font-bold uppercase tracking-widest border ${report.verdict === 'Malicious' ? 'bg-threat-critical/10 text-threat-critical border-threat-critical/30' :
+                        report.verdict === 'Suspicious' ? 'bg-threat-high/10 text-threat-high border-threat-high/30' :
+                            'bg-threat-low/10 text-threat-low border-threat-low/30'
+                        }`}>
+                        {report.verdict}
+                    </div>
+                    <div className="text-right">
+                        <div className="text-xl font-black text-white leading-none">{report.threat_score}</div>
+                        <div className="text-[8px] text-slate-500 uppercase tracking-tighter">Score</div>
+                    </div>
+                </div>
+
+                <div className="text-xs text-slate-300 italic border-l-2 border-brand-500/50 pl-3 py-1">
+                    "{report.executive_summary}"
+                </div>
+
+                {report.behavioral_timeline && report.behavioral_timeline.length > 0 && (
+                    <div className="space-y-2">
+                        <div className="text-[8px] text-slate-500 uppercase font-bold tracking-widest">Key Observations</div>
+                        <div className="space-y-1.5">
+                            {report.behavioral_timeline.slice(0, 3).map((event: any, i: number) => (
+                                <div key={i} className="bg-black/20 p-2 rounded border border-white/5">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <span className="text-[9px] font-bold text-brand-400 uppercase tracking-tight">{event.stage}</span>
+                                        <span className="text-[8px] font-mono text-slate-600">PID {event.related_pid}</span>
+                                    </div>
+                                    <div className="text-[10px] text-white/90 leading-tight">{event.event_description}</div>
+                                </div>
+                            ))}
+                            {report.behavioral_timeline.length > 3 && (
+                                <div className="text-[9px] text-slate-500 text-center italic">+{report.behavioral_timeline.length - 3} more events in full report</div>
+                            )}
+                        </div>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
+};
+
 const FormattedMessage = ({ content }: { content: string }) => {
     const parts = content.split(/```(\w*)\n([\s\S]*?)```/g);
 
@@ -67,7 +116,24 @@ const FormattedMessage = ({ content }: { content: string }) => {
             elements.push(<p key={`text-${i}`} className="whitespace-pre-wrap mb-2 select-text cursor-text">{text}</p>);
         }
         if (code !== undefined) {
-            elements.push(<CodeBlock key={`code-${i}`} language={lang} code={code} />);
+            // Try to see if this is a Forensic Report
+            let isReport = false;
+            if (lang === 'json' || !lang) {
+                try {
+                    // Pre-clean common AI artifacts
+                    const cleanCode = code.trim().replace(/^\[REPORT\]\s*/i, '');
+                    const parsed = JSON.parse(cleanCode);
+                    if (parsed && (parsed.verdict || parsed.threat_score !== undefined) && parsed.executive_summary) {
+                        elements.push(<StructuredReport key={`report-${i}`} report={parsed} />);
+                        isReport = true;
+                    }
+                } catch (e: any) {
+                }
+            }
+
+            if (!isReport) {
+                elements.push(<CodeBlock key={`code-${i}`} language={lang} code={code} />);
+            }
         }
     }
 
@@ -186,7 +252,7 @@ const FloatingChat = ({ activeTaskId, pageContext, activeProvider }: { activeTas
         resetPosition();
         window.addEventListener('resize', resetPosition);
         return () => window.removeEventListener('resize', resetPosition);
-    }, [isOpen, size.width, size.height]);
+    }, [isOpen, size.width, size.height, position.x, position.y]); // Added position.x, position.y to dependencies
 
     const handleSend = async () => {
         if (!input.trim() || isLoading) return;
@@ -278,7 +344,7 @@ const FloatingChat = ({ activeTaskId, pageContext, activeProvider }: { activeTas
                     </div>
 
                     <div className="flex-1 overflow-y-auto p-4 space-y-5 custom-scrollbar bg-black/20">
-                        {messages.map((m, i) => (
+                        {messages.map((m: Message, i: number) => (
                             <React.Fragment key={i}>
                                 {m.thought && <ThinkingBubble thought={m.thought} />}
                                 <div className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>

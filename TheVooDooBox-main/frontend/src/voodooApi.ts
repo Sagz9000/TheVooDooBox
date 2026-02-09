@@ -60,12 +60,13 @@ export interface TimelineEvent {
     stage: string;
     event_description: string;
     technical_context: string;
-    related_pid: number;
+    related_pid: number | string;
 }
 
 export interface Artifacts {
     dropped_files: string[];
     c2_domains: string[];
+    c2_ips?: string[];
     mutual_exclusions: string[];
     command_lines: string[];
 }
@@ -364,13 +365,21 @@ export const voodooApi = {
     fetchAIReport: async (taskId: string): Promise<ForensicReport | null> => {
         const resp = await fetch(`${BASE_URL}/tasks/${taskId}/ai-report`);
         if (!resp.ok) return null;
-        return resp.json();
+        let data = await resp.json();
+        if (typeof data === 'string') {
+            try { data = JSON.parse(data); } catch (e) { }
+        }
+        return data;
     },
 
     triggerTaskAnalysis: async (taskId: string) => {
         const resp = await fetch(`${BASE_URL}/tasks/${taskId}/analyze`, { method: 'POST' });
         if (!resp.ok) throw new Error("Failed to trigger task analysis");
-        return resp.json();
+        let data = await resp.json();
+        if (typeof data === 'string') {
+            try { data = JSON.parse(data); } catch (e) { }
+        }
+        return data;
     },
 
     downloadSample: async (taskId: string, filename: string) => {

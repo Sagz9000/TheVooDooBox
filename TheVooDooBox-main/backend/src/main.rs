@@ -2064,8 +2064,18 @@ async fn get_ai_report(
             use sqlx::Row;
             // Try to return the full forensic report if available (preferred)
             if let Ok(json_str) = row.try_get::<String, _>("forensic_report_json") {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&json_str) {
-                    return HttpResponse::Ok().json(parsed);
+                let mut current_json = json_str;
+                // Robust Unescape Loop: AI or DB sometimes double-wraps JSON in quotes
+                for _ in 0..3 {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&current_json) {
+                        if parsed.is_object() {
+                            return HttpResponse::Ok().json(parsed);
+                        } else if let Some(inner_str) = parsed.as_str() {
+                            current_json = inner_str.to_string();
+                            continue;
+                        }
+                    }
+                    break;
                 }
             }
 
@@ -2110,13 +2120,28 @@ async fn trigger_task_analysis(
                     use sqlx::Row;
                     let forensic_json: String = row.get("forensic_report_json");
                     
-                    // Parse and return as JSON
-                    match serde_json::from_str::<serde_json::Value>(&forensic_json) {
-                        Ok(report) => HttpResponse::Ok().json(report),
-                        Err(e) => {
-                            println!("[AI] Failed to parse forensic report JSON: {}", e);
-                            HttpResponse::InternalServerError().body("Failed to parse report")
+                    let mut current_json = forensic_json;
+                    let mut final_report = None;
+                    
+                    // Robust Unescape Loop
+                    for _ in 0..3 {
+                        if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&current_json) {
+                            if parsed.is_object() {
+                                final_report = Some(parsed);
+                                break;
+                            } else if let Some(inner_str) = parsed.as_str() {
+                                current_json = inner_str.to_string();
+                                continue;
+                            }
                         }
+                        break;
+                    }
+
+                    if let Some(report) = final_report {
+                        HttpResponse::Ok().json(report)
+                    } else {
+                        println!("[AI] Failed to parse forensic report JSON as object.");
+                        HttpResponse::InternalServerError().body("Failed to parse report")
                     }
                 },
                 _ => HttpResponse::InternalServerError().body("Report generated but failed to retrieve")

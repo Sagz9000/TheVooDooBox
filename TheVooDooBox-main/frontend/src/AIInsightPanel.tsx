@@ -170,7 +170,12 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                                                 </span>
                                             </div>
                                             <button
-                                                onClick={() => onSelectPid?.(event.related_pid)}
+                                                onClick={() => {
+                                                    const pid = typeof event.related_pid === 'string'
+                                                        ? parseInt(event.related_pid.replace(/\D/g, ''))
+                                                        : event.related_pid;
+                                                    if (!isNaN(pid)) onSelectPid?.(pid);
+                                                }}
                                                 className="px-2 py-1 bg-brand-500/10 text-brand-400 border border-brand-500/30 rounded font-mono text-[9px] md:text-[10px] font-bold hover:bg-brand-500 hover:text-white transition-all w-full sm:w-auto text-center"
                                             >
                                                 PID {event.related_pid}
