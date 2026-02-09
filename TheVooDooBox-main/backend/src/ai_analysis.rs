@@ -40,7 +40,15 @@ pub struct ProcessSummary {
     pub file_activity: Vec<FileOp>,
     pub network_activity: Vec<NetworkOp>,
     pub registry_mods: Vec<RegistryOp>,
+    pub web_activity: Vec<WebOp>,
     pub behavior_tags: Vec<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct WebOp {
+    pub url: String,
+    pub event_type: String, // NAVIGATE, REDIRECT, DOM
+    pub details: String, 
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -493,6 +501,9 @@ pub async fn generate_ai_report(
         if !proc.registry_mods.is_empty() {
              behavioral_text.push_str(&format!("Registry: {:?}. ", proc.registry_mods.iter().map(|r| &r.key).collect::<Vec<_>>()));
         }
+        if !proc.web_activity.is_empty() {
+             behavioral_text.push_str(&format!("Web: {:?}. ", proc.web_activity.iter().map(|w| &w.url).collect::<Vec<_>>()));
+        }
     }
 
     println!("[HiveMind] Querying for similar samples...");
@@ -571,6 +582,19 @@ pub async fn generate_ai_report(
 
         // Registry
         if proc.registry_mods.len() > 8 { proc.registry_mods.truncate(8); }
+
+        // Web Activity
+        proc.web_activity.sort_by(|a, b| {
+             let score = |w: &WebOp| {
+                 match w.event_type.as_str() {
+                     "DOM" => 100,
+                     "REDIRECT" => 80,
+                     _ => 50
+                 }
+             };
+             score(b).cmp(&score(a))
+        });
+        if proc.web_activity.len() > 5 { proc.web_activity.truncate(5); }
     }
 
     let mut truncated_ghidra = context.static_analysis.clone();
@@ -1086,6 +1110,7 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
             file_activity: Vec::new(),
             network_activity: Vec::new(),
             registry_mods: Vec::new(),
+            web_activity: Vec::new(),
             behavior_tags: Vec::new(),
         });
 
@@ -1171,6 +1196,26 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
                     details: format!("PID {}: {}", evt.process_id, evt.details)
                 });
                 proc.behavior_tags.push(evt.event_type.clone());
+            },
+            "BROWSER_NAVIGATE" | "BROWSER_REDIRECT" | "BROWSER_DOM" => {
+                // Parse details - format depends on Agent implementation
+                // Agent sends: "URL: ... | Title: ..." OR "REDIRECT: ... -> ..." OR "DOM SNAPSHOT: ... (Preview: ...)"
+                let mut url = "unknown".to_string();
+                let mut info = evt.details.clone();
+
+                if evt.details.starts_with("URL: ") {
+                     url = evt.details.split("|").next().unwrap_or("").replace("URL: ", "").trim().to_string();
+                } else if evt.details.starts_with("REDIRECT: ") {
+                    url = evt.details.split("->").next().unwrap_or("").replace("REDIRECT: ", "").trim().to_string();
+                } else if evt.details.starts_with("DOM SNAPSHOT: ") {
+                    url = evt.details.split("(Preview:").next().unwrap_or("").replace("DOM SNAPSHOT: ", "").trim().to_string();
+                }
+
+                proc.web_activity.push(WebOp {
+                    url,
+                    event_type: evt.event_type.replace("BROWSER_", ""),
+                    details: info
+                });
             },
             _ => {}
         }

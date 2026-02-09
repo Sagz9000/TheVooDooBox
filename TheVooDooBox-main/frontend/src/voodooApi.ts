@@ -200,7 +200,7 @@ export const voodooApi = {
         return resp.ok;
     },
 
-    getAIAnalysis: async (events: AgentEvent[]): Promise<ForensicReport> => {
+    getAIAnalysis: async (events: AgentEvent[], mode: string = 'quick'): Promise<ForensicReport> => {
         // Construct a simple process list from events for the analysis
         const processes = Array.from(new Set(events.map(e => e.process_id)))
             .map(pid => {
@@ -219,7 +219,8 @@ export const voodooApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
                 processes,
-                events
+                events,
+                mode
             })
         });
         if (!resp.ok) throw new Error("Failed to get AI analysis");
@@ -373,8 +374,12 @@ export const voodooApi = {
         return data;
     },
 
-    triggerTaskAnalysis: async (taskId: string) => {
-        const resp = await fetch(`${BASE_URL}/tasks/${taskId}/analyze`, { method: 'POST' });
+    triggerTaskAnalysis: async (taskId: string, mode: string = 'quick') => {
+        const resp = await fetch(`${BASE_URL}/tasks/${taskId}/analyze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+        });
         if (!resp.ok) throw new Error("Failed to trigger task analysis");
         let data = await resp.json();
         if (typeof data === 'string') {

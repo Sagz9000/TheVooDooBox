@@ -446,6 +446,82 @@ async fn upload_pivot_file(backend_url: &str, path: &str) -> Result<(), Box<dyn 
     Ok(())
 }
 
+#[derive(Deserialize, Debug)]
+struct BrowserEvent {
+    event_type: String,
+    url: String,
+    title: Option<String>,
+    html_preview: Option<String>,
+    source_url: Option<String>,
+    target_url: Option<String>,
+    status_code: Option<u16>,
+    tab_id: Option<i32>,
+}
+
+async fn start_browser_listener(evt_tx: mpsc::UnboundedSender<AgentEvent>, hostname: String) {
+    let listener = match tokio::net::TcpListener::bind("127.0.0.1:1337").await {
+        Ok(l) => l,
+        Err(e) => {
+            println!("[AGENT] Failed to bind Browser Listener: {}", e);
+            return;
+        }
+    };
+
+    println!("[AGENT] Browser Telemetry Listener active on 127.0.0.1:1337");
+
+    loop {
+        if let Ok((mut socket, _)) = listener.accept().await {
+            let tx = evt_tx.clone();
+            let h_name = hostname.clone();
+            
+            tokio::spawn(async move {
+                let mut buf = [0; 1024 * 64]; // 64KB buffer for large DOMs
+                match socket.read(&mut buf).await {
+                    Ok(n) if n > 0 => {
+                        let req = String::from_utf8_lossy(&buf[..n]);
+                        
+                        // Very basic HTTP parsing meant ONLY for this extension
+                        // We expect: POST /telemetry/browser ... \r\n\r\n{JSON}
+                        if let Some(body_start) = req.find("\r\n\r\n") {
+                            let body = &req[body_start+4..];
+                            // Handle Content-Length if needed, but for now try direct parse
+                            // Clean up null bytes if any
+                            let clean_body = body.trim_matches(char::from(0));
+                            
+                            if let Ok(browser_evt) = serde_json::from_str::<BrowserEvent>(clean_body) {
+                                // Map to AgentEvent
+                                let details = match browser_evt.event_type.as_str() {
+                                    "BROWSER_NAVIGATE" => format!("URL: {} | Title: {}", browser_evt.url, browser_evt.title.unwrap_or_default()),
+                                    "BROWSER_REDIRECT" => format!("REDIRECT: {} -> {} ({})", browser_evt.source_url.unwrap_or_default(), browser_evt.target_url.unwrap_or_default(), browser_evt.status_code.unwrap_or(0)),
+                                    "BROWSER_DOM" => format!("DOM SNAPSHOT: {} (Preview: {}...)", browser_evt.url, browser_evt.html_preview.as_deref().unwrap_or("").chars().take(50).collect::<String>()),
+                                    _ => format!("Unknown Browser Event: {:?}", browser_evt)
+                                };
+
+                                let _ = tx.send(AgentEvent {
+                                    event_type: browser_evt.event_type,
+                                    process_id: 0, 
+                                    parent_process_id: 0,
+                                    process_name: "chrome.exe".to_string(), // Assumed
+                                    details,
+                                    timestamp: chrono::Utc::now().timestamp_millis(),
+                                    hostname: h_name,
+                                });
+
+                                // Send 200 OK
+                                let response = "HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n";
+                                let _ = socket.write_all(response.as_bytes()).await;
+                            } else {
+                                // println!("[AGENT] Failed to json parse browser event body: {}", clean_body);
+                            }
+                        }
+                    },
+                    _ => {}
+                }
+            });
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Mallab Windows Agent (Active Eye) - v3.0.0");
@@ -489,6 +565,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hostname_sysmon = hostname.clone();
     std::thread::spawn(move || {
         unsafe { monitor_sysmon(tx_sysmon, hostname_sysmon); }
+    });
+
+    // 3. Browser Telemetry Listener (Port 1337)
+    let tx_browser = evt_tx.clone();
+    let hostname_browser = hostname.clone();
+    tokio::spawn(async move {
+        start_browser_listener(tx_browser, hostname_browser).await;
     });
 
     // 1. File System Watcher with Hashing
@@ -603,72 +686,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             }
                                         }
                                     },
-                                    "DOWNLOAD_EXEC" => {
-                                        if let (Some(url), Some(filename)) = (cmd.url.as_ref(), cmd.filename.as_ref()) {
-                                            println!("[AGENT] Downloading and executing: {} from {}", filename, url);
-                                            
-                                            // Download the file
-                                            let download_path = format!("C:\\Users\\Public\\{}", filename);
-                                            
-                                            match reqwest::blocking::get(url) {
-                                                Ok(mut response) => {
-                                                    match std::fs::File::create(&download_path) {
-                                                        Ok(mut file) => {
-                                                            if let Ok(_) = std::io::copy(&mut response, &mut file) {
-                                                                println!("[AGENT] Downloaded to: {}", download_path);
-                                                                
-                                                                let _ = evt_tx.send(AgentEvent {
-                                                                    event_type: "FILE_VERIFIED".to_string(),
-                                                                    process_id: 0,
-                                                                    parent_process_id: 0,
-                                                                    process_name: filename.clone(),
-                                                                    details: download_path.clone(),
-                                                                    timestamp: chrono::Utc::now().timestamp_millis(),
-                                                                    hostname: hostname.clone(),
-                                                                });
-                                                                
-                                                                // Execute the downloaded binary
-                                                                // Use cmd.exe /C start to handle permissions and file associations better
-                                                                match std::process::Command::new("cmd")
-                                                                    .args(&["/C", "start", "", &download_path])
-                                                                    .spawn() 
-                                                                {
-                                                                    Ok(child) => {
-                                                                        println!("[AGENT] Executed: {} (PID: {})", download_path, child.id());
-                                                                        let _ = evt_tx.send(AgentEvent {
-                                                                            event_type: "EXEC_SUCCESS".to_string(),
-                                                                            process_id: child.id(),
-                                                                            parent_process_id: std::process::id(),
-                                                                            process_name: download_path.clone(),
-                                                                            details: "Binary execution started via cmd.exe".to_string(),
-                                                                            timestamp: chrono::Utc::now().timestamp_millis(),
-                                                                            hostname: hostname.clone(),
-                                                                        });
-                                                                    }
-                                                                    Err(e) => {
-                                                                        println!("[AGENT] Failed to execute {}: {}", download_path, e);
-                                                                        let _ = evt_tx.send(AgentEvent {
-                                                                            event_type: "EXEC_ERROR".to_string(),
-                                                                            process_id: 0,
-                                                                            parent_process_id: 0,
-                                                                            process_name: download_path.clone(),
-                                                                            details: format!("Failed to execute: {}", e),
-                                                                            timestamp: chrono::Utc::now().timestamp_millis(),
-                                                                            hostname: hostname.clone(),
-                                                                        });
-                                                                    }
-                                                                }
-                                                            } else {
-                                                                println!("[AGENT] Failed to write downloaded file");
-                                                            }
-                                                        }
-                                                        Err(e) => println!("[AGENT] Failed to create file: {}", e),
-                                                    }
-                                                }
-                                                Err(e) => println!("[AGENT] Failed to download: {}", e),
-                                            }
-                                        }
-                                    },
+
                                     "EXEC_URL" => {
                                         if let Some(url) = cmd.url {
                                             // Windows-specific way to open URL in default browser

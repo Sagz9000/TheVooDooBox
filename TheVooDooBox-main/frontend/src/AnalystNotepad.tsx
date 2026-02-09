@@ -29,14 +29,41 @@ export default function AnalystNotepad({ taskId, onNoteAdded }: Props) {
         }
     };
 
+    const [selectedTags, setSelectedTags] = useState<string[]>([]);
+
+    const AVAILABLE_TAGS = ['Phishing', 'Loader', 'C2', 'FalsePositive', 'KeyArtifact', 'Malicious'];
+
+    const toggleTag = (tag: string) => {
+        if (selectedTags.includes(tag)) {
+            setSelectedTags(selectedTags.filter(t => t !== tag));
+        } else {
+            setSelectedTags([...selectedTags, tag]);
+        }
+    };
+
+    const parseNoteContent = (content: string) => {
+        const match = content.match(/^\[TAGS:(.*?)\]\s*(.*)/s);
+        if (match) {
+            const tags = match[1].split(',').filter(t => t);
+            const text = match[2];
+            return { tags, text };
+        }
+        return { tags: [], text: content };
+    };
+
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!taskId || !content.trim()) return;
 
         setLoading(true);
         try {
-            await voodooApi.addNote(taskId, content, isHint);
+            const finalContent = selectedTags.length > 0
+                ? `[TAGS:${selectedTags.join(',')}] ${content}`
+                : content;
+
+            await voodooApi.addNote(taskId, finalContent, isHint);
             setContent('');
+            setSelectedTags([]);
             setIsHint(false);
             loadNotes();
             if (onNoteAdded) onNoteAdded();
@@ -63,24 +90,51 @@ export default function AnalystNotepad({ taskId, onNoteAdded }: Props) {
                         <p className="text-[10px] uppercase tracking-widest">No notes recorded</p>
                     </div>
                 ) : (
-                    notes.map((note) => (
-                        <div key={note.id} className={`p-3 rounded-lg border text-sm ${note.is_hint ? 'bg-amber-500/10 border-amber-500/30' : 'bg-slate-800 border-white/5'}`}>
-                            <div className="flex items-center justify-between mb-2">
-                                <span className={`text-[10px] font-bold uppercase tracking-wider ${note.is_hint ? 'text-amber-400' : 'text-slate-400'}`}>
-                                    {note.is_hint ? <><Lightbulb size={10} className="inline mr-1" /> Hint</> : note.author}
-                                </span>
-                                <div className="flex items-center gap-1 text-[9px] text-slate-500 font-mono">
-                                    <Clock size={10} />
-                                    {new Date(note.created_at * 1000).toLocaleString()}
+                    notes.map((note) => {
+                        const { tags, text } = parseNoteContent(note.content);
+                        return (
+                            <div key={note.id} className={`p-3 rounded-lg border text-sm ${note.is_hint ? 'bg-amber-500/10 border-amber-500/30' : 'bg-slate-800 border-white/5'}`}>
+                                <div className="flex items-center justify-between mb-2">
+                                    <span className={`text-[10px] font-bold uppercase tracking-wider ${note.is_hint ? 'text-amber-400' : 'text-slate-400'}`}>
+                                        {note.is_hint ? <><Lightbulb size={10} className="inline mr-1" /> Hint</> : note.author}
+                                    </span>
+                                    <div className="flex items-center gap-1 text-[9px] text-slate-500 font-mono">
+                                        <Clock size={10} />
+                                        {new Date(note.created_at * 1000).toLocaleString()}
+                                    </div>
                                 </div>
+                                {tags.length > 0 && (
+                                    <div className="flex flex-wrap gap-1 mb-2">
+                                        {tags.map(tag => (
+                                            <span key={tag} className="text-[9px] px-1.5 py-0.5 rounded bg-brand-500/20 text-brand-400 font-mono font-bold uppercase">
+                                                #{tag}
+                                            </span>
+                                        ))}
+                                    </div>
+                                )}
+                                <p className="text-slate-300 whitespace-pre-wrap font-mono text-xs">{text}</p>
                             </div>
-                            <p className="text-slate-300 whitespace-pre-wrap font-mono text-xs">{note.content}</p>
-                        </div>
-                    ))
+                        );
+                    })
                 )}
             </div>
 
             <form onSubmit={handleSubmit} className="p-3 border-t border-white/5 bg-slate-950">
+                <div className="flex flex-wrap gap-1 mb-2">
+                    {AVAILABLE_TAGS.map(tag => (
+                        <button
+                            key={tag}
+                            type="button"
+                            onClick={() => toggleTag(tag)}
+                            className={`text-[9px] px-2 py-0.5 rounded border transition-colors ${selectedTags.includes(tag)
+                                    ? 'bg-brand-500/20 text-brand-400 border-brand-500/30'
+                                    : 'bg-slate-900 text-slate-500 border-white/10 hover:border-white/20'
+                                }`}
+                        >
+                            #{tag}
+                        </button>
+                    ))}
+                </div>
                 <textarea
                     value={content}
                     onChange={(e) => setContent(e.target.value)}

@@ -72,7 +72,7 @@ const NOISE_FILTER_PROCESSES = [
 
 export default function ReportView({ taskId, events: globalEvents, onBack }: Props) {
     const [selectedPid, setSelectedPid] = useState<number | null>(null);
-    const [activeTab, setActiveTab] = useState<'timeline' | 'network' | 'files' | 'registry' | 'console' | 'ghidra' | 'intelligence' | 'screenshots' | 'notes'>('timeline');
+    const [activeTab, setActiveTab] = useState<'timeline' | 'network' | 'web' | 'files' | 'registry' | 'console' | 'ghidra' | 'intelligence' | 'screenshots' | 'notes' | 'decoder'>('timeline');
     const [localEvents, setLocalEvents] = useState<AgentEvent[]>([]);
     const [ghidraFindings, setGhidraFindings] = useState<any[]>([]);
     const [screenshots, setScreenshots] = useState<string[]>([]);
@@ -237,16 +237,16 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         }
     }, [taskId]);
 
-    const handleAIAnalysis = async () => {
+    const handleAIAnalysis = async (mode: string = 'quick') => {
         setAiLoading(true);
         try {
             let report;
             if (taskId) {
                 // Task-based analysis (Historical)
-                report = await voodooApi.triggerTaskAnalysis(taskId);
+                report = await voodooApi.triggerTaskAnalysis(taskId, mode);
             } else {
                 // Session-based analysis (Live)
-                report = await voodooApi.getAIAnalysis(events);
+                report = await voodooApi.getAIAnalysis(events, mode);
             }
             setAiReport(report);
         } catch (error) {
@@ -400,6 +400,10 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
 
     const registryEvents = useMemo(() => {
         return sourceEvents.filter((e: AgentEvent) => e.event_type.includes('REG_') || e.event_type.includes('REGISTRY'));
+    }, [sourceEvents]);
+
+    const webEvents = useMemo(() => {
+        return sourceEvents.filter((e: AgentEvent) => e.event_type.startsWith('BROWSER_'));
     }, [sourceEvents]);
 
     const getProcessCreateDetail = () => {
@@ -571,11 +575,13 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             <TabButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} icon={<List size={14} />} label="Timeline" count={timelineEvents.length} />
                             <TabButton active={activeTab === 'screenshots'} onClick={() => setActiveTab('screenshots')} icon={<Image size={14} />} label="Screenshots" count={screenshots.length} />
                             <TabButton active={activeTab === 'network'} onClick={() => setActiveTab('network')} icon={<Globe size={14} />} label="Network" count={networkEvents.length} />
+                            <TabButton active={activeTab === 'web'} onClick={() => setActiveTab('web')} icon={<Globe size={14} />} label="Web" count={webEvents.length} />
                             <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<FileText size={14} />} label="Files" count={fileEvents.length} />
                             <TabButton active={activeTab === 'registry'} onClick={() => setActiveTab('registry')} icon={<Server size={14} />} label="Registry" count={registryEvents.length} />
                             <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Static Findings" count={ghidraFindings.length} />
                             <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} icon={<Sparkles size={14} />} label="Intelligence" />
                             <TabButton active={activeTab === 'notes'} onClick={() => setActiveTab('notes')} icon={<Pencil size={14} />} label="Notes" />
+                            <TabButton active={activeTab === 'decoder'} onClick={() => setActiveTab('decoder')} icon={<Binary size={14} />} label="Decoder" />
                             <TabButton active={activeTab === 'console'} onClick={() => setActiveTab('console')} icon={<Terminal size={14} />} label="Raw Feed" count={stats.count} />
                         </div>
 
@@ -662,6 +668,12 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                     onNoteAdded={() => setActiveTab('intelligence')}
                                 />
                             </div>
+                        )}
+                        {activeTab === 'web' && (
+                            <EventTable events={webEvents} type="web" tags={tags} onTag={onEventContextMenu} />
+                        )}
+                        {activeTab === 'decoder' && (
+                            <DecoderView />
                         )}
                         {activeTab === 'console' && (
                             <div className="absolute inset-0 flex flex-col bg-black">
@@ -796,6 +808,90 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         </div>
     );
 }
+
+const DecoderView = () => {
+    const [input, setInput] = useState("");
+    const [output, setOutput] = useState("");
+
+    const decodeBase64 = () => {
+        try {
+            setOutput(atob(input));
+        } catch (e) {
+            setOutput("Error: Invalid Base64: " + (e as Error).message);
+        }
+    };
+
+    const decodeHex = () => {
+        try {
+            let str = '';
+            for (let i = 0; i < input.length; i += 2) {
+                str += String.fromCharCode(parseInt(input.substr(i, 2), 16));
+            }
+            setOutput(str);
+        } catch (e) {
+            setOutput("Error: Invalid Hex");
+        }
+    };
+
+    const reverse = () => {
+        setOutput(input.split('').reverse().join(''));
+    };
+
+    const clear = () => {
+        setInput("");
+        setOutput("");
+    }
+
+    return (
+        <div className="absolute inset-0 p-8 flex flex-col gap-6 bg-[#080808]">
+            <div className="flex flex-col gap-2">
+                <h2 className="text-sm font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-2">
+                    <Binary size={16} className="text-brand-500" />
+                    CyberChef Lite / Decoder
+                </h2>
+                <p className="text-xs text-zinc-600">
+                    Quickly decode obfuscated strings found in telemetry.
+                </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-6 flex-1 min-h-0">
+                <div className="flex flex-col gap-2">
+                    <label className="text-[10px] uppercase font-bold text-zinc-500">Input (Obfuscated)</label>
+                    <textarea
+                        className="flex-1 bg-[#111] border border-white/10 rounded-lg p-4 font-mono text-xs text-zinc-300 focus:border-brand-500/50 focus:outline-none resize-none"
+                        placeholder="Paste base64, hex, or reversed strings here..."
+                        value={input}
+                        onChange={(e) => setInput(e.target.value)}
+                    />
+                </div>
+                <div className="flex flex-col gap-2">
+                    <label className="text-[10px] uppercase font-bold text-zinc-500">Output (Cleartext)</label>
+                    <textarea
+                        className="flex-1 bg-[#111] border border-white/10 rounded-lg p-4 font-mono text-xs text-brand-400 focus:border-brand-500/50 focus:outline-none resize-none"
+                        readOnly
+                        value={output}
+                    />
+                </div>
+            </div>
+
+            <div className="flex items-center gap-3 p-4 bg-[#111] rounded-lg border border-white/5">
+                <button onClick={decodeBase64} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded text-xs font-bold text-zinc-300 transition-colors border border-white/5">
+                    From Base64
+                </button>
+                <button onClick={decodeHex} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded text-xs font-bold text-zinc-300 transition-colors border border-white/5">
+                    From Hex
+                </button>
+                <button onClick={reverse} className="px-4 py-2 bg-white/5 hover:bg-white/10 rounded text-xs font-bold text-zinc-300 transition-colors border border-white/5">
+                    Reverse String
+                </button>
+                <div className="flex-1"></div>
+                <button onClick={clear} className="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded text-xs font-bold transition-colors border border-red-500/20">
+                    Clear Workspace
+                </button>
+            </div>
+        </div>
+    );
+};
 
 interface TabButtonProps {
     active: boolean;
