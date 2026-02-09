@@ -3,9 +3,10 @@ use std::env;
 use std::collections::HashMap;
 use chrono::Utc;
 use serde::{Deserialize, Serialize};
+use serde::de::{self, Deserializer};
 use std::fs::File;
 use std::io::Write;
-use regex::Regex; // Added for cleaning <think> tags
+use regex::Regex;
 
 // --- Raw DB Event ---
 #[derive(sqlx::FromRow, Serialize, Deserialize, Debug, Clone)]
@@ -89,20 +90,55 @@ pub struct AIReport {
     pub recommendations: Vec<String>,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Default)]
+pub struct RelatedSample {
+    pub name: String,
+    pub similarity: f32,
+}
+
 // --- LLM Response Schema (Forensic) ---
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct ForensicReport {
     pub verdict: Verdict, 
     pub malware_family: Option<String>,
+    #[serde(deserialize_with = "deserialize_number")]
     pub threat_score: i32,
     pub executive_summary: String,
     pub behavioral_timeline: Vec<TimelineEvent>,
     pub artifacts: Artifacts,
+    #[serde(default)]
     pub thinking: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(default)]
     pub virustotal: Option<crate::virustotal::VirusTotalData>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
+    #[serde(default)]
     pub related_samples: Vec<crate::memory::BehavioralFingerprint>,
+}
+
+fn deserialize_number<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let v: serde_json::Value = serde::Deserialize::deserialize(deserializer)?;
+    match v {
+        serde_json::Value::Number(n) => n.as_i64().map(|i| i as i32).ok_or_else(|| de::Error::custom("Invalid number")),
+        serde_json::Value::String(s) => s.parse::<i32>().or_else(|_| {
+            // Extract first number found
+            let re = Regex::new(r"(\d+)").unwrap();
+            if let Some(caps) = re.captures(&s) {
+                caps.get(1).unwrap().as_str().parse::<i32>().map_err(de::Error::custom)
+            } else {
+                Ok(0)
+            }
+        }),
+        _ => Ok(0),
+    }
+}
+
+fn deserialize_pid<'de, D>(deserializer: D) -> Result<i32, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    deserialize_number(deserializer)
 }
 
 fn default_threat_score() -> i32 { 0 }
@@ -193,6 +229,7 @@ pub struct TimelineEvent {
     pub stage: String, // "Execution", "Persistence", etc
     pub event_description: String,
     pub technical_context: String,
+    #[serde(deserialize_with = "deserialize_pid")]
     pub related_pid: i32, // Dynamic PID
 }
 
