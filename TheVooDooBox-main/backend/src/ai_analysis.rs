@@ -645,13 +645,36 @@ pub async fn generate_ai_report(
     
     println!("[AI] Received response ({} chars)", response_text.len());
 
-    // 6. Output Cleaning (Specialist Swap - DeepSeek R1 Support)
-    // Remove <think>...</think> blocks from reasoning models
-    let re = Regex::new(r"(?s)<think>.*?</think>").unwrap();
-    let cleaned_response = re.replace_all(&response_text, "");
-    response_text = cleaned_response.trim().to_string();
+    // 6. Extraction & Parsing
+    let mut extracted_thinking = None;
 
-    // Remove Markdown JSON blocks (More robust: find anywhere, not just start)
+    // STEP A: Extract <think> tags first (Before any cleaning that might remove them)
+    // Common in DeepSeek-R1 and other reasoning models
+    if let Some(start_idx) = response_text.find("<think>") {
+        if let Some(end_idx) = response_text.find("</think>") {
+            let thought_content = &response_text[start_idx + 7..end_idx];
+            extracted_thinking = Some(thought_content.trim().to_string());
+            println!("[AI] Extracted 'Thinking' process ({} chars)", thought_content.len());
+            
+            // Remove the think block from the response before parsing JSON
+            // We do this manually to ensure we remove exactly what we extracted
+             response_text = format!("{}{}", &response_text[..start_idx], &response_text[end_idx + 8..]);
+        }
+    } else {
+        // Fallback: Try Regex if simple find failed (e.g. mixed case or whitespace)
+        let re_think = Regex::new(r"(?s)<think>(.*?)</think>").unwrap();
+        if let Some(caps) = re_think.captures(&response_text) {
+            if let Some(thought) = caps.get(1) {
+                extracted_thinking = Some(thought.as_str().trim().to_string());
+                println!("[AI] Extracted 'Thinking' process via Regex ({} chars)", thought.as_str().len());
+                response_text = re_think.replace(&response_text, "").to_string();
+            }
+        }
+    }
+    
+    response_text = response_text.trim().to_string();
+
+    // STEP B: Remove Markdown JSON blocks (More robust: find anywhere, not just start)
     let re_md = Regex::new(r"(?s)```(?:json)?\s*(.*?)\s*```").unwrap();
     if let Some(caps) = re_md.captures(&response_text) {
          if let Some(inner) = caps.get(1) {
@@ -659,7 +682,7 @@ pub async fn generate_ai_report(
          }
     }
 
-    // CRITICAL FIX: Detect if the response is a JSON string containing escaped JSON
+    // STEP C: CRITICAL FIX - Detect if the response is a JSON string containing escaped JSON
     // Check this BEFORE brace slicing, because brace slicing might strip the quotes from a valid JSON string
     if response_text.trim().starts_with('"') && response_text.trim().ends_with('"') {
         // Try to parse as a JSON string first
@@ -669,7 +692,7 @@ pub async fn generate_ai_report(
         }
     }
 
-    // Fallback: If it still doesn't look like JSON (doesn't start with {), try to find the bounds
+    // STEP D: Fallback - If it still doesn't look like JSON (doesn't start with {), try to find the bounds
     if !response_text.trim().starts_with('{') {
         if let Some(start_idx) = response_text.find('{') {
             if let Some(end_idx) = response_text.rfind('}') {
@@ -694,22 +717,7 @@ pub async fn generate_ai_report(
                                 .replace("\"reasoning\":", "\"executive_summary\":")
                                 .replace("INTERNAL_LOGIC_REVIEW", "STATIC_ANALYSIS");
 
-    
-    // 6. Extraction & Parsing
-    let mut extracted_thinking = None;
-
-    // Check for <think> tags (common in DeepSeek-R1)
-    if let Some(start_idx) = response_text.find("<think>") {
-        if let Some(end_idx) = response_text.find("</think>") {
-            let thought_content = &response_text[start_idx + 7..end_idx];
-            extracted_thinking = Some(thought_content.trim().to_string());
-            // Remove the think block from the response before parsing JSON
-            response_text = format!("{}{}", &response_text[..start_idx], &response_text[end_idx + 8..]);
-        }
-    }
-
     let report_result: Option<ForensicReport> = serde_json::from_str(&response_text).ok();
-
     
     let mut report = match report_result {
         Some(mut r) => {
