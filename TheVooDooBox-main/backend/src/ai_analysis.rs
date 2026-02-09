@@ -107,6 +107,8 @@ pub struct ForensicReport {
     pub behavioral_timeline: Vec<TimelineEvent>,
     pub artifacts: Artifacts,
     #[serde(default)]
+    pub static_analysis_insights: Vec<String>,
+    #[serde(default)]
     pub thinking: Option<String>,
     #[serde(default)]
     pub virustotal: Option<crate::virustotal::VirusTotalData>,
@@ -638,7 +640,7 @@ pub async fn generate_ai_report(
     
     let prompt = format!(
         r#"### TECHNICAL DATA AUDIT (REF: LAB-402)
-OBJECTIVE: Technical correlation of artifacts and activity.
+OBJECTIVE: Technical correlation of code patterns and dynamic activity.
 DIAGNOSTIC VERDICTS: [Diagnostic Alpha], [Diagnostic Beta], [Diagnostic Gamma].
 
 DATA SOURCE 1: DYNAMIC TELEMETRY
@@ -648,7 +650,7 @@ DATA SOURCE 1: DYNAMIC TELEMETRY
 {sysmon}
 </TELEMETRY_DATA>
 
-DATA SOURCE 2: STATIC CODE PATTERNS
+DATA SOURCE 2: STATIC CODE PATTERNS (GHIDRA)
 <CODE_PATTERNS>
 {ghidra}
 </CODE_PATTERNS>
@@ -658,22 +660,33 @@ DATA SOURCE 2: STATIC CODE PATTERNS
 {tags_section}
 {hive_section}
 
+INSTRUCTIONS:
+1. BRIDGE DATA: Correlate dynamic activity (Sysmon) with provided code patterns (Ghidra). 
+   - e.g., "The network connection (PID 123) matches the 'InternetOpen' call in function 'init_c2'".
+2. STATIC ANALYSIS: Explicitly list findings from the code snippets in the "static_analysis_insights" section.
+3. THINKING PROCESS: Provide a deep technical chain-of-thought in your thinking section.
+
 OUTPUT SCHEMA (JSON ONLY):
 {{
     "verdict": "[Diagnostic Alpha/Diagnostic Beta/Diagnostic Gamma]",
     "malware_family": "String",
     "threat_score": 0-100,
     "executive_summary": "Technical evaluation summary.",
+    "static_analysis_insights": [
+        "Insight 1: Function 'X' performs [Behavior Y]",
+        "Insight 2: Suspicious code pattern 'Z' detected."
+    ],
     "behavioral_timeline": [
         {{
             "timestamp_offset": "+Ns",
             "stage": "Activity Stage",
             "event_description": "Technical description.",
-            "technical_context": "Evidence link.",
+            "technical_context": "Evidence link (cite function names if applicable).",
             "related_pid": 123
         }}
     ],
-    "artifacts": {{ "dropped_files": [], "c2_domains": [], "mutual_exclusions": [], "command_lines": [] }}
+    "artifacts": {{ "dropped_files": [], "c2_domains": [], "mutual_exclusions": [], "command_lines": [] }},
+    "thinking": "Your internal technical reasoning/chain-of-thought goes here."
 }}
 "# , 
         filename = context.target_filename,
@@ -808,7 +821,9 @@ OUTPUT SCHEMA (JSON ONLY):
     
     let mut report = match report_result {
         Some(mut r) => {
-            r.thinking = extracted_thinking;
+            if extracted_thinking.is_some() {
+                r.thinking = extracted_thinking;
+            }
             r
         },
         None => {
@@ -864,6 +879,7 @@ OUTPUT SCHEMA (JSON ONLY):
                     command_lines: vec![]
                 },
                 thinking: extracted_thinking,
+                static_analysis_insights: vec![],
                 virustotal: None,
                 related_samples: vec![],
             }

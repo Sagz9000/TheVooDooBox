@@ -30,6 +30,7 @@ export interface ForensicReport {
     malware_family: string;
     threat_score: number;
     executive_summary: string;
+    static_analysis_insights: string[];
     behavioral_timeline: TimelineEvent[];
     artifacts: Artifacts;
     thinking?: string;

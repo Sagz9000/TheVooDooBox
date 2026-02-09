@@ -109,23 +109,34 @@ export default function AIInsightPanel({ report, loading, onAnalyze, taskId, onS
                         </div>
                     </div>
 
-                    {/* AI Reasoning (Forensic Analyst Log) */}
+                    {/* Static Analysis Insights (Ghidra) */}
+                    {report.static_analysis_insights && report.static_analysis_insights.length > 0 && (
+                        <div className="space-y-3">
+                            <div className="text-[9px] text-slate-500 uppercase font-black tracking-[0.2em]">Static Analysis Insights (Ghidra)</div>
+                            <div className="grid grid-cols-1 gap-2">
+                                {report.static_analysis_insights.map((insight, i) => (
+                                    <div key={i} className="flex gap-3 p-3 bg-brand-500/5 border border-brand-500/10 rounded-lg">
+                                        <div className="p-1.5 bg-brand-500/10 rounded shrink-0 h-fit">
+                                            <FileText size={12} className="text-brand-400" />
+                                        </div>
+                                        <div className="text-[11px] text-slate-300 leading-relaxed font-mono">
+                                            {insight}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* AI Reasoning & Thinking */}
                     {report.thinking && (
                         <div className="space-y-3">
-                            <details className="group bg-security-panel/40 border border-security-border/50 rounded-lg overflow-hidden">
-                                <summary className="flex items-center justify-between p-3 cursor-pointer hover:bg-security-panel/60 transition-colors list-none">
-                                    <div className="flex items-center gap-2">
-                                        <Terminal size={12} className="text-brand-500" />
-                                        <span className="text-[9px] text-slate-500 uppercase font-black tracking-[0.2em]">Forensic Analyst Log (Internal Reasoning)</span>
-                                    </div>
-                                    <ChevronDown size={14} className="text-slate-600 transition-transform group-open:rotate-180" />
-                                </summary>
-                                <div className="p-4 border-t border-security-border/30 bg-black/20">
-                                    <div className="text-[11px] font-mono text-slate-500 leading-relaxed whitespace-pre-wrap select-text selection:bg-brand-500/30">
-                                        {report.thinking}
-                                    </div>
+                            <div className="text-[9px] text-slate-500 uppercase font-black tracking-[0.2em]">Forensic Reasoning (Chain of Thought)</div>
+                            <div className="p-4 bg-security-panel/40 border border-security-border/50 rounded-lg">
+                                <div className="text-[11px] font-mono text-slate-400 leading-relaxed whitespace-pre-wrap select-text selection:bg-brand-500/30 max-h-[300px] overflow-auto custom-scrollbar">
+                                    {report.thinking}
                                 </div>
-                            </details>
+                            </div>
                         </div>
                     )}
 
