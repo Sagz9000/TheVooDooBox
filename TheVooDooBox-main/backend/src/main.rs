@@ -1684,12 +1684,36 @@ CONTEXT SUMMARY:
                 Ok(response) => {
                     println!("[AI] Received response from provider (len: {})", response.len());
                     
-                    let mut final_text = response.clone();
-                    if let Some(start_idx) = response.find("<think>") {
-                        if let Some(end_idx) = response.find("</think>") {
-                            let thought = &response[start_idx + 7..end_idx];
+                    let mut response_text = response.clone();
+                    
+                    // CRITICAL FIX: Detect if the response is double-encoded (wrapped in quotes)
+                    if response_text.trim().starts_with('"') && response_text.trim().ends_with('"') {
+                         if let Ok(unescaped) = serde_json::from_str::<String>(&response_text) {
+                             println!("[AI] Detected double-encoded chat response, unescaping...");
+                             response_text = unescaped.trim().to_string();
+                         }
+                    }
+
+                    let mut final_text = response_text.clone();
+                    
+                    // Extraction with priority to simple find, fallback to regex
+                    let mut extracted = false;
+                    if let Some(start_idx) = response_text.find("<think>") {
+                        if let Some(end_idx) = response_text.find("</think>") {
+                            let thought = &response_text[start_idx + 7..end_idx];
                             let _ = tx.send(Ok(StreamEvent::Thought(thought.trim().to_string()))).await;
-                            final_text = format!("{}{}", &response[..start_idx], &response[end_idx + 8..]).trim().to_string();
+                            final_text = format!("{}{}", &response_text[..start_idx], &response_text[end_idx + 8..]).trim().to_string();
+                            extracted = true;
+                        }
+                    }
+                    
+                    if !extracted {
+                        let re_think = regex::Regex::new(r"(?s)<think>(.*?)</think>").unwrap();
+                        if let Some(caps) = re_think.captures(&response_text) {
+                            if let Some(thought) = caps.get(1) {
+                                let _ = tx.send(Ok(StreamEvent::Thought(thought.as_str().trim().to_string()))).await;
+                                final_text = re_think.replace(&response_text, "").to_string().trim().to_string();
+                            }
                         }
                     }
                     
