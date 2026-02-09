@@ -58,7 +58,8 @@ impl AIProvider for OllamaProvider {
         let payload = json!({
             "model": self.model,
             "messages": messages,
-            "stream": false
+            "stream": false,
+            "max_tokens": 4096
         });
 
         let resp = self.client.post(&url)

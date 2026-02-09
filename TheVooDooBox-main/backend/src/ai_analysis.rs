@@ -143,6 +143,89 @@ where
 
 fn default_threat_score() -> i32 { 0 }
 
+/// Robustly attempts to repair truncated JSON by closing unclosed objects/arrays.
+fn recover_truncated_json(input: &str) -> String {
+    let mut output = input.trim().to_string();
+    if output.is_empty() { return output; }
+    
+    let mut stack = Vec::new();
+    let mut in_string = false;
+    let mut escaped = false;
+
+    for (_pos, c) in output.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if c == '\\' {
+            escaped = true;
+            continue;
+        }
+        if c == '"' {
+            in_string = !in_string;
+            continue;
+        }
+        if !in_string {
+            if c == '{' || c == '[' {
+                stack.push(c);
+            } else if c == '}' || c == ']' {
+                stack.pop();
+            }
+        }
+    }
+
+    // If we are mid-string, close it
+    if in_string {
+        output.push('"');
+    }
+
+    // If we have unbalanced open brackets, we might have a truncated field or item.
+    // E.g. "... "behavioral_timeline": [" or "... "related_pid": 123"
+    // We try to validly close the stack.
+    while let Some(top) = stack.pop() {
+        match top {
+            '{' => {
+                // If it ends with a comma or colon, it's a truncated key/val. We can't easily fix mid-val.
+                // But we can try to close the object.
+                output.push('}');
+            }
+            '[' => {
+                output.push(']');
+            }
+            _ => {}
+        }
+    }
+
+    output
+}
+
+/// Last resort: Use Regex to extract individual TimelineEvent objects from a broken JSON string.
+fn extract_timeline_via_regex(text: &str) -> Vec<TimelineEvent> {
+    let mut events = Vec::new();
+    // This regex looks for individual { ... } objects that look like TimelineEvents
+    let re_event = Regex::new(r#"(?s)\{\s*"timestamp_offset":\s*"(?P<ts>[^"]+)"\s*,\s*"stage":\s*"(?P<stage>[^"]+)"\s*,\s*"event_description":\s*"(?P<desc>[^"]+)"\s*,\s*"technical_context":\s*"(?P<ctx>[^"]+)"\s*,\s*"related_pid":\s*(?P<pid>[^,\s}]+)\s*\}"#).unwrap();
+
+    for caps in re_event.captures_iter(text) {
+        let ts = caps.name("ts").map(|m| m.as_str().to_string()).unwrap_or_default();
+        let stage = caps.name("stage").map(|m| m.as_str().to_string()).unwrap_or_default();
+        let desc = caps.name("desc").map(|m| m.as_str().to_string()).unwrap_or_default();
+        let ctx = caps.name("ctx").map(|m| m.as_str().to_string()).unwrap_or_default();
+        let pid_str = caps.name("pid").map(|m| m.as_str().replace("\"", "")).unwrap_or_default();
+        
+        // Use a simple number extraction for the PID string
+        let pid = pid_str.chars().filter(|c| c.is_digit(10)).collect::<String>().parse::<i32>().unwrap_or(0);
+
+        events.push(TimelineEvent {
+            timestamp_offset: ts,
+            stage,
+            event_description: desc,
+            technical_context: ctx,
+            related_pid: pid,
+        });
+    }
+    events
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub enum Verdict {
     Benign,
@@ -422,24 +505,17 @@ pub async fn generate_ai_report(
     let valid_pids: Vec<String> = context.processes.iter().map(|p| p.pid.to_string()).collect();
     let pid_list_str = valid_pids.join(", ");
 
-    // SAFETY CHECK: Minimal Data Warning (Balanced to avoid False Benign)
-    let forced_benign_instruction = if context.processes.is_empty() || (context.processes.len() == 1 && context.processes[0].network_activity.is_empty() && context.processes[0].file_activity.is_empty()) {
-        "ALERT: Telemetry is minimal. If the binary is suspicious (e.g. specialized tool or LOLBin), valid legitimate use often looks 'Benign'. However, if you see encoded commands or obfuscation, FLAG IT."
-    } else {
-        "INSTRUCTION: Pay close attention to processes spawned by the Target, especially if they are legitimate windows tools used as LOLBins (e.g. powershell, bitsadmin, cmd)."
-    };
-
-    // SAFETY: Aggressive Truncation for <8k Context Window
+    // Aggressive Truncation for <8k Context Window
     let mut truncated_processes = context.processes.clone();
     
     // Sort by Relevance to keep interesting processes
-    let root_pid = context.patient_zero_pid.parse::<i32>().unwrap_or(-1);
+    let root_pid_num = context.patient_zero_pid.parse::<i32>().unwrap_or(-1);
     truncated_processes.sort_by(|a, b| {
         let get_score = |p: &ProcessSummary| -> i32 {
              let mut score = 0;
              // Lineage Scoring
-             if p.pid == root_pid { score += 5000; }
-             if p.ppid == root_pid { score += 2000; }
+             if p.pid == root_pid_num { score += 5000; }
+             if p.ppid == root_pid_num { score += 2000; }
              
              // Interest Scoring
              if !p.image_name.to_lowercase().contains("windows") && !p.image_name.to_lowercase().contains("system32") { 
@@ -453,7 +529,7 @@ pub async fn generate_ai_report(
              
              // Specific Suspicion Bonus
              if p.image_name.to_lowercase().contains("powershell") || p.image_name.to_lowercase().contains("cmd") || p.image_name.to_lowercase().contains("bitsadmin") {
-                 if p.ppid == root_pid { score += 1000; } // LOLBin spawned by malware
+                 if p.ppid == root_pid_num { score += 1000; } // LOLBin spawned by malware
              }
              
              score
@@ -461,48 +537,38 @@ pub async fn generate_ai_report(
         get_score(b).cmp(&get_score(a))
     });
 
-    // Increased limit to 30 processes for better context
-    if truncated_processes.len() > 30 {
-        truncated_processes.truncate(30);
+    // Moderate limit: 10 processes to save tokens
+    if truncated_processes.len() > 10 {
+        truncated_processes.truncate(10);
     }
     for proc in &mut truncated_processes {
-        // Network: External IPs first, then non-standard ports
+        // Network: External IPs first
         proc.network_activity.sort_by(|a, b| {
             let score = |n: &NetworkOp| {
                 let mut s = 0;
                 if !n.dest.starts_with("127.") && !n.dest.starts_with("192.168.") && !n.dest.starts_with("10.") { s += 100; }
-                if n.port != "80" && n.port != "443" { s += 10; } // Non-standard ports slightly interesting
+                if n.port != "80" && n.port != "443" { s += 10; }
                 s
             };
             score(b).cmp(&score(a))
         });
-        if proc.network_activity.len() > 15 { proc.network_activity.truncate(15); }
+        if proc.network_activity.len() > 8 { proc.network_activity.truncate(8); }
 
-        // File: Executables and sensitive paths first
+        // File: Executables first
         proc.file_activity.sort_by(|a, b| {
             let score = |f: &FileOp| {
                 let mut s = 0;
                 let path = f.path.to_lowercase();
                 if f.is_executable || path.ends_with(".exe") || path.ends_with(".dll") || path.ends_with(".ps1") { s += 50; }
                 if path.contains("\\users\\public\\") || path.contains("\\appdata\\") || path.contains("\\temp\\") { s += 20; }
-                if path.contains("system32") { s -= 10; } // Noise reduction
                 s
             };
             score(b).cmp(&score(a))
         });
-        if proc.file_activity.len() > 15 { proc.file_activity.truncate(15); }
+        if proc.file_activity.len() > 8 { proc.file_activity.truncate(8); }
 
-        // Registry: Persistence keys first
-        proc.registry_mods.sort_by(|a, b| {
-            let score = |r: &RegistryOp| {
-                let mut s = 0;
-                let key = r.key.to_lowercase();
-                if key.contains("run") || key.contains("runonce") || key.contains("services") { s += 100; }
-                s
-            };
-            score(b).cmp(&score(a))
-        });
-        if proc.registry_mods.len() > 15 { proc.registry_mods.truncate(15); }
+        // Registry
+        if proc.registry_mods.len() > 8 { proc.registry_mods.truncate(8); }
     }
 
     let mut truncated_ghidra = context.static_analysis.clone();
@@ -515,46 +581,37 @@ pub async fn generate_ai_report(
         score(b).cmp(&score(a))
     });
 
-    if truncated_ghidra.functions.len() > 15 {
-        truncated_ghidra.functions.truncate(15);
+    if truncated_ghidra.functions.len() > 12 {
+        truncated_ghidra.functions.truncate(12);
     }
     for func in &mut truncated_ghidra.functions {
-        if func.pseudocode.len() > 800 {
-            func.pseudocode = func.pseudocode.chars().take(800).collect();
+        if func.pseudocode.len() > 600 {
+            func.pseudocode = func.pseudocode.chars().take(600).collect();
             func.pseudocode.push_str("\n...[TRUNCATED]");
         }
     }
 
-    let sysmon_json = serde_json::to_string_pretty(&truncated_processes)?;
-    let ghidra_json = serde_json::to_string_pretty(&truncated_ghidra)?;
-
-    // Format VirusTotal Section
+    let sysmon_json = serde_json::to_string_pretty(&truncated_processes).unwrap_or_default();
+    let ghidra_json = serde_json::to_string_pretty(&truncated_ghidra.functions).unwrap_or_default();
+    
     let vt_section = if let Some(vt) = &context.virustotal {
-        format!(
-            r#"**DATA SOURCE 3: THREAT INTELLIGENCE (VIRUSTOTAL)**
-- **SHA256:** {}
-- **Detections:** {}
-- **Threat Label:** {}
-- **Family Labels:** {:?}
-- **Sandox Behavior Tags:** {:?}
-- **INSTRUCTION:** Use these Family Labels for attribution. Cross-reference the Sandbox Behavior Tags with the Dynamic Telemetry below. If VT detects 'debug-environment', look for IsDebuggerPresent in code or logs."#,
-            vt.hash, vt.malicious_votes, vt.threat_label, vt.family_labels, vt.behavior_tags
-        )
+        format!("**DATA SOURCE 3: THREAT INTEL (VIRUSTOTAL)**\n- Detections: {}\n- Label: {}\n- Family: {:?}\n- Behavior: {:?}", 
+            vt.malicious_votes, vt.threat_label, vt.family_labels, vt.behavior_tags)
     } else {
-        "**DATA SOURCE 3: THREAT INTELLIGENCE**\n- No VirusTotal data available.".to_string()
+        "**DATA SOURCE 3: THREAT INTEL**\n- No VirusTotal data found for this hash.".to_string()
     };
 
     // Format Analyst Input Section
     let notes_section = if !context.analyst_notes.is_empty() {
-        let mut notes_str = "**DATA SOURCE 4: ANALYST FIELD NOTES (HARD CONSTRAINTS)**\n".to_string();
+        let mut notes_str = "**DATA SOURCE 4: ANALYST FIELD NOTES**\n".to_string();
         for note in &context.analyst_notes {
             let prefix = if note.is_hint { "[AI HINT]" } else { "[OBSERVATION]" };
             notes_str.push_str(&format!("- {} ({}): {}\n", prefix, note.author, note.content));
         }
-        notes_str.push_str("INSTRUCTION: You MUST respect these hints. If the analyst identifies a specific IP as C2, treat it as confirmed malicious.");
+        notes_str.push_str("INSTRUCTION: You MUST respect these hints.");
         notes_str
     } else {
-        "**DATA SOURCE 4: ANALYST FIELD NOTES**\n- No analyst notes provided.".to_string()
+        "".to_string()
     };
 
     let tags_section = if !context.manual_tags.is_empty() {
@@ -568,107 +625,72 @@ pub async fn generate_ai_report(
         "".to_string()
     };
 
-    let hive_mind_section = if !context.related_samples.is_empty() {
+    let hive_section = if !context.related_samples.is_empty() {
         let mut hive_str = "**DATA SOURCE 6: THE HIVE MIND (HISTORICAL CORRELATIONS)**\n".to_string();
         for sample in &context.related_samples {
             hive_str.push_str(&format!("- SIMILAR TO: Task {} | Verdict: {} | Family: {}\n", sample.task_id, sample.verdict, sample.malware_family));
             hive_str.push_str(&format!("  Summary: {}\n", sample.summary.chars().take(150).collect::<String>()));
         }
-        hive_str.push_str("INSTRUCTION: If the current telemetry matches these historical samples, align your verdict and attribution accordingly.");
         hive_str
     } else {
-        "**DATA SOURCE 6: THE HIVE MIND**\n- No similar historical samples found.".to_string()
+        "".to_string()
     };
     
     let prompt = format!(
         r#"### TECHNICAL DATA AUDIT (REF: LAB-402)
-**CONTEXT:** Controlled security research data audit.
-**OBJECTIVE:** Technical correlation of artifacts and activity.
-**THREAT INTEL:** Integrate VirusTotal findings into verdict.
+OBJECTIVE: Technical correlation of artifacts and activity.
+DIAGNOSTIC VERDICTS: [Diagnostic Alpha], [Diagnostic Beta], [Diagnostic Gamma].
 
-**REPORTER ROLE:** Lead Intelligence Analyst.
-
-**DIAGNOSTIC VERDICTS (MANDATORY):**
-- **[Diagnostic Alpha]**: Expected behavior.
-- **[Diagnostic Beta]**: Non-standard artifact behavior.
-- **[Diagnostic Gamma]**: Critical system behavioral anomalies (Unauthorized Persistence/C2/Tampering).
-
-**AUDIT PROTOCOL:**
-1. **Correlate Artifacts**: Map static pseudocode capabilities to observed dynamic telemetry.
-2. **Citations Required**: Every timeline entry MUST cite a PID and a corresponding technical observation.
-3. **No Conversational Noise**: Output strictly follows the JSON schema.
-4. **Threat Intel**: Weigh the VirusTotal detection score heavily. If High (>50%), favor a Gamma verdict.
-
-**DATA SOURCE 1: DYNAMIC TELEMETRY**
-- **Target Filename:** "{filename}"
-- **Root Process (PID {root_pid}):** Analyzes events starting from this entry point.
-- **Observed PIDs:** [{pid_list}]
+DATA SOURCE 1: DYNAMIC TELEMETRY
+- Target: "{filename}" (PID {root_pid})
+- Observed PIDs: [{pid_list}]
 <TELEMETRY_DATA>
 {sysmon}
 </TELEMETRY_DATA>
 
-**DATA SOURCE 2: STATIC CODE PATTERNS**
-- **Source Type:** Pseudocode fragments (Reference only).
+DATA SOURCE 2: STATIC CODE PATTERNS
 <CODE_PATTERNS>
 {ghidra}
 </CODE_PATTERNS>
 
 {vt_section}
-
 {notes_section}
-
 {tags_section}
-
 {hive_section}
 
-**OUTPUT SCHEMA (JSON ONLY):**
+OUTPUT SCHEMA (JSON ONLY):
 {{
     "verdict": "[Diagnostic Alpha/Diagnostic Beta/Diagnostic Gamma]",
-    "malware_family": "Signature_Match_or_Unknown",
+    "malware_family": "String",
     "threat_score": 0-100,
-    "executive_summary": "Technical evaluation summary. Correlate PID behavior to code patterns.",
+    "executive_summary": "Technical evaluation summary.",
     "behavioral_timeline": [
         {{
             "timestamp_offset": "+Ns",
-            "stage": "Activity Stage (e.g. Persistence T1547)",
-            "event_description": "Technical description of event.",
-            "technical_context": "Evidence link (e.g. PID {root_pid} utilized API from Static Function 'X')",
-            "related_pid": "PID"
+            "stage": "Activity Stage",
+            "event_description": "Technical description.",
+            "technical_context": "Evidence link.",
+            "related_pid": 123
         }}
     ],
-    "artifacts": {{
-        "dropped_files": [],
-        "c2_domains": [],
-        "mutual_exclusions": [],
-        "command_lines": []
-    }}
+    "artifacts": {{ "dropped_files": [], "c2_domains": [], "mutual_exclusions": [], "command_lines": [] }}
 }}
-
-**QA CONSTRAINTS:**
-{safety_check}
 "# , 
         filename = context.target_filename,
         root_pid = context.patient_zero_pid,
         pid_list = pid_list_str,
-        safety_check = forced_benign_instruction,
         sysmon = sysmon_json,
         ghidra = ghidra_json,
         vt_section = vt_section,
         notes_section = notes_section,
         tags_section = tags_section,
-        hive_section = hive_mind_section
+        hive_section = hive_section
     );
 
     // 7. Call AI Provider via Manager
-    let system_prompt_str = "You are a Senior Malware Researcher specializing in forensic correlation. Your goal is to detect MALICIOUS intent while maintaining FORENSIC ACCURACY.\n\n\
-        Follow the Hypothesis-Verification protocol:\n\
-        1. HYPOTHESIS: Identifiy static capabilities from Ghidra artifacts.\n\
-        2. VERIFICATION: Search Dynamic Telemetry logs for empirical proof.\n\
-        3. SYNTHESIS: Correlate them. If a capability exists without activity, note as 'Dormant'. If activity exists without code, note as 'Potential Obfuscation'.\n\n\
-        OUTPUT REQUIREMENTS:\n\
-        - Use your <think> block for reasoning.\n\
-        - After </think>, output STRICTLY valid JSON according to the schema.\n\
-        - Correlate every artifact to a specific technical observation.".to_string();
+    let system_prompt_str = "You are a Senior Malware Researcher. Output strictly follows the JSON schema. \
+        Avoid preamble, avoid markdown fences if possible, just output the JSON object. \
+        Correlate telemetry to code patterns.".to_string();
 
     let history = vec![crate::ai::provider::ChatMessage {
         role: "user".to_string(),
@@ -718,12 +740,11 @@ pub async fn generate_ai_report(
     }
     
     response_text = response_text.trim().to_string();
-
     // --- ROBUST JSON PARSING PIPELINE ---
     let mut current_json = response_text.clone();
     let mut report_result: Option<ForensicReport> = None;
 
-    for pass in 0..3 {
+    for pass in 0..4 {
         let trimmed = current_json.trim();
         if trimmed.is_empty() { break; }
 
@@ -774,6 +795,14 @@ pub async fn generate_ai_report(
                 }
             }
         }
+
+        // 3. Last Resort: Try to repair truncated JSON
+        if pass == 2 {
+            println!("[AI] JSON still failing (Pass 2). Attempting truncated repair...");
+            current_json = recover_truncated_json(&current_json);
+            continue;
+        }
+
         break;
     }
     
@@ -784,10 +813,10 @@ pub async fn generate_ai_report(
         },
         None => {
             // Regex Fallback
-            println!("[AI] JSON Parsing Failed. Attempting Regex Fallback...");
+            println!("[AI] JSON Parsing Failed. Attempting Regex Fallback and Salvage...");
             
-            // Regex Extraction Patterns
-            let re_verdict = Regex::new(r"(?i)\*\*Verdict:\*\*\s*(Custom|Benign|Suspicious|Malicious)").unwrap();
+            // Regex Extraction Patterns for Summary
+            let re_verdict = Regex::new(r"(?i)\*\*Verdict:\*\*\s*(Custom|Benign|Suspicious|Malicious|Diagnostic Alpha|Diagnostic Beta|Diagnostic Gamma)").unwrap();
             let re_score = Regex::new(r"(?i)\*\*Threat Score:\*\*\s*(\d+)").unwrap();
             let re_summary = Regex::new(r"(?i)\*\*Executive Summary:\*\*\s*(.*?)(\n\n|\n\*\*|$)").unwrap();
 
@@ -807,19 +836,26 @@ pub async fn generate_ai_report(
                 .unwrap_or(&response_text); // Fallback to full text if summary not found
 
             let verdict_enum = match verdict_str.to_lowercase().as_str() {
-                "benign" => Verdict::Benign,
-                "malicious" => Verdict::Malicious,
+                s if s.contains("benign") || s.contains("alpha") => Verdict::Benign,
+                s if s.contains("malicious") || s.contains("gamma") => Verdict::Malicious,
                 _ => Verdict::Suspicious,
             };
 
-            println!("[AI] Regex Fallback Successful. Verdict: {:?}, Score: {}", verdict_enum, score);
+            // --- TIMELINE SALVAGE ---
+            // If JSON failed, we use Regex to find every valid { timestamp, stage... } block in the raw text
+            let salvaged_timeline = extract_timeline_via_regex(&response_text);
+            if !salvaged_timeline.is_empty() {
+                println!("[AI] Salvaged {} timeline events from fragmented response.", salvaged_timeline.len());
+            }
+
+            println!("[AI] Regex Fallback Result - Verdict: {:?}, Score: {}, Salvaged Items: {}", verdict_enum, score, salvaged_timeline.len());
 
             ForensicReport {
                 verdict: verdict_enum,
                 malware_family: None,
                 threat_score: score,
                 executive_summary: summary.to_string(),
-                behavioral_timeline: vec![],
+                behavioral_timeline: salvaged_timeline,
                 artifacts: Artifacts {
                     dropped_files: vec![],
                     c2_ips: vec![],
