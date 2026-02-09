@@ -25,12 +25,12 @@ Welcome to TheVooDooBox Documentation. Use the links below to navigate the techn
     *   *Workflow*: How telemetry is aggregated and synthesized into final PDF reports.
 
 ## 🤖 AI & Intelligence
-| Document | Description |
-|---|---|
-| [**03_AI_RAG.md**](03_AI_RAG.md) | Technical deep-dive into the Llama.cpp RAG pipeline, Deep Thinking, and Prompt Engineering. |
-| [**15_ANALYSIS.md**](15_ANALYSIS.md) | Analyst guide: Running scans, using the UI, and interpreting Deep Thinking. |
-| [**15_LLAMA_TESTING.md**](15_LLAMA_TESTING.md) | Guide to verifying your local Llama.cpp server and GGUF models. |
-| [**20_AI_REPORTS.md**](20_AI_REPORTS.md) | Interpreting AI verdicts, scores, and Chain of Thought reasoning. |
+*   [**03. AI Analyst & RAG**](03_AI_RAG.md)
+    *   *Intelligence*: Hybrid RAG approach and the specific system prompts used for analysis.
+*   [**17. Ghidra Integration**](17_GHIDRA_INTEGRATION.md)
+    *   *Static Analysis*: How Ghidra decompiles binaries and feeds insights into the AI Chat.
+*   [**15. Ollama Testing**](15_OLLAMA_TESTING.md)
+    *   *Troubleshooting*: Verification steps for the local LLM integration.
 
 ## 🛡️ Sandbox & Agent Internals
 *   [**05. Sandbox & Agent Internals**](05_SANDBOX_AND_AGENT.md)

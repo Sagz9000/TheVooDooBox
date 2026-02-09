@@ -11,6 +11,11 @@
 - **Step 3**: Headless Ghidra decompiles the binary in parallel.
 - **Step 4**: The AI correlates the streams.
 
+## 2a. The AI Engine (Deep Thinking)
+Unlike traditional "black box" classifiers, VoodooBox uses **DeepSeek-R1** (or Llama-3) running locally via `llama.cpp`.
+- **Chain of Thought**: The model is forced to "speak its mind" before generating the final JSON report. It debates with itself, correlates timestamps, and verifies API calls against the decompiled code.
+- **Why it matters**: This reduces hallucinations. If the AI is unsure about a C2 address, you will see it questioning the data in the "Forensic Reasoning" console.
+
 ## 3. Interpreting the Forensic Report
 
 The new AI-generated report is divided into four key sections:

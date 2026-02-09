@@ -1650,6 +1650,16 @@ async fn chat_handler(
 You are the VooDooBox AI, a high-fidelity forensic analysis node. 
 Analyze the provided context and respond to the user's query.
 
+FORMATTING RULES:
+1. You MUST enclose your internal reasoning in <think> tags before your final answer.
+2. The final answer should be clear and concise.
+
+Example:
+<think>
+User asks about file X. I see it in the context...
+</think>
+The file X appears to be malicious...
+
 CONTEXT SUMMARY:
 {}
 ", context_summary);

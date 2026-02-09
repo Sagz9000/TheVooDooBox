@@ -5,7 +5,7 @@
 The VoodooBox is a comprehensive forensic environment that combines:
 - **Dynamic Analysis**: Secure Windows Sandbox execution with Kernel-level telemetry.
 - **Static Analysis**: Automated Ghidra decompilation and function triage.
-- **AI Synthesis**: Generative AI (LLM) reasoning to correlate findings and produce actionable reports.
+- **AI Synthesis**: Powered by **llama.cpp** (DeepSeek-R1 / Llama-3), this engine performs "Deep Thinking" reasoning to correlate findings and produce actionable forensic reports with full chain-of-thought transparency.
 
 ## Documentation
 
@@ -13,11 +13,11 @@ We have moved to a structured documentation system. Please see the `docs/` direc
 
 | Guide | Description |
 | :--- | :--- |
-| **[01_OVERVIEW.md](docs/01_OVERVIEW.md)** | High-level introduction to features and goals. |
-| **[02_ARCHITECTURE.md](docs/02_ARCHITECTURE.md)** | System design, components, and data flow. |
-| **[07_INSTALLATION.md](docs/07_INSTALLATION.md)** | Step-by-step deployment guide (Docker + Proxmox). |
-| **[15_ANALYSIS.md](docs/15_ANALYSIS.md)** | Analyst guide: Running scans and using the UI. |
-| **[20_AI_REPORTS.md](docs/20_AI_REPORTS.md)** | Interpreting AI verdicts, scores, and reasoning. |
+| **[01_OVERVIEW.md](../docs/01_OVERVIEW.md)** | High-level introduction to features and goals. |
+| **[02_ARCHITECTURE.md](../docs/02_ARCHITECTURE.md)** | System design, components, and data flow. |
+| **[07_INSTALLATION.md](../docs/07_INSTALLATION.md)** | Step-by-step deployment guide (Docker + Proxmox). |
+| **[15_ANALYSIS.md](../docs/15_ANALYSIS.md)** | Analyst guide: Running scans and using the UI. |
+| **[20_AI_REPORTS.md](../docs/20_AI_REPORTS.md)** | Interpreting AI verdicts, scores, and reasoning. |
 
 ## Quick Start
 

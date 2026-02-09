@@ -40,7 +40,7 @@ The MCP server is configured via environment variables in `docker-compose.yaml`:
     environment:
       - BACKEND_URL=http://hyper-bridge:8080  # Rust Backend
       - GHIDRA_API=http://ghidra:8000         # Ghidra Headless Service
-      - LLAMA_API=http://host.docker.internal:8080 # Local Llama Server
+      - OLLAMA_HOST=http://192.168.50.98:11434 # Local LLM (Optional)
 ```
 
 ## 🚀 Usage with Gemini / Claude Desktop

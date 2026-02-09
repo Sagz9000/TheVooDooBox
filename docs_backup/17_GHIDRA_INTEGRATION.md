@@ -8,14 +8,7 @@ The integration consists of three main components:
 
 1.  **Ghidra Static Engine**: A standalone Docker service (`ghidra-static-engine`) running a headless version of Ghidra.
 2.  **Automated Ingestion**: Headless scripts that extract decompiled functions and assembly, pushing them to the central database.
-
-## 3. The AI Bridge
-
-Once analysis is complete, the `ai_analysis` module:
-1.  Reads the `function_dump.json`.
-2.  Selects the top 50 "high entropy" or suspicious functions.
-3.  Feeds them into the **llama.cpp** prompt context.
-4.  **Deep Thinking**: The AI uses this code to verify behavioral anomalies (e.g., "I see a network connection in logs, and function `0x40100` calls `connect()` - this is confirmed.").
+3.  **Hybrid context**: The backend merges these static findings with dynamic kernel telemetry before sending it to the AI Analyst.
 
 ### The Analysis Pipeline
 ```mermaid

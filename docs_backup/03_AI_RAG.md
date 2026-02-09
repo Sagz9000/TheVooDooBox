@@ -1,12 +1,6 @@
 # AI Analyst & RAG Pipeline
 
-The VoodooBox employs a specialized Retrieval-Augmented Generation (RAG) pipeline to ensure high-fidelity forensic reports. It moves beyond simple "chat" by enforcing strict schema adherence and grounding the AI in both dynamic (Sandbox) and static (Ghidra) telemetry.
-
-## 1. The Model (llama.cpp)
-
-We utilize **llama.cpp** to run high-performance reasoning models locally.
-- **Primary Model**: `DeepSeek-R1-Distill-Llama-8B` (or similar reasoning models).
-- **Why llama.cpp?**: It provides superior control over the inference process, allowing us to extract the raw "Chain of Thought" (`<think>` tags) that standard APIs often hide.
+TheVooDooBox employs a specialized AI Analyst to act as a "Force Multiplier" for human researchers. Instead of just dumping logs, the system uses a **Hybrid RAG (Retrieval-Augmented Generation)** approach to synthesize both active behavior and static code analysis into a coherent forensic narrative.
 
 ![AI Kill Chain Reconstruction](../TheVooDooBox-main/pictures/aianalysis.png)
 
@@ -26,15 +20,15 @@ sequenceDiagram
     participant Backend
     participant Postgres
     participant Ghidra
-    participant LlamaServer
+    participant Ollama
 
     User->>Backend: Request AI Analysis (Task ID)
     Backend->>Postgres: Fetch 2000+ Raw Events (Dynamic)
     Backend->>Backend: Aggregate & Deduplicate (Lineage Tracing)
     Backend->>Ghidra: Fetch Decompiled Functions (Static)
     Backend->>Backend: Construct JSON Context
-    Backend->>LlamaServer: Send "Forensic Triage" Prompt
-    LlamaServer-->>Backend: JSON Report (Verdict, Timeline, IOCs)
+    Backend->>Ollama: Send "Forensic Triage" Prompt
+    Ollama-->>Backend: JSON Report (Verdict, Timeline, IOCs)
     Backend->>Postgres: Save Report
     Backend-->>User: Display Report
 ```
@@ -174,12 +168,12 @@ Assume the provided telemetry represents malicious activity. Your goal is to ide
 2. **Thinking Budget:** Limit your reasoning to the top findings. Be fast.
 ```
 
-## 🚀 Llama.cpp & Model Optimization
+## 🚀 Ollama & Model Optimization
 
-TheVooDooBox is specifically tuned for **self-hosted local inference** using `llama.cpp`. While it supports cloud APIs, the core engine has been optimized for the **`DeepSeek-R1-Distill-Llama-8B`** model.
+TheVooDooBox is specifically tuned for **self-hosted local inference** using Ollama. While it supports cloud APIs, the core engine has been optimized for the **`qwen2.5-coder:14b`** model (and its smaller 7B variant).
 
 ### 1. Context Window Stewardship
-Local models can struggle with massive log dumps. We preserve context accuracy by:
+Local 14B models can struggle with massive log dumps. We preserve context accuracy by:
 *   **Patient Zero Filtering**: We identify the submitted binary and trace its descendants (Process Lineage), effectively ignoring background OS chatter. 
 *   **Scale & Depth**: We fetch the first **2000 events** in chronological order to ensure the initial infection vector (Download/Sleep) is never truncated by the "Last X" limit.
 *   **Deduplication**: Repeated events (like constant registry polling) are rolled up into single entries with hit counts.
@@ -191,9 +185,9 @@ The prompts were engineered to exploit the specific strengths of the Qwen-Coder 
 *   **Hybrid Injection**: Static code findings (decompiled snippets) are prioritized alongside dynamic events, allowing the model to perform "Chain-of-Analysis" (e.g., matching a static function call to a live driver event).
 
 ### 3. Backend Tunings
-*   **JSON Schema Enforcement**: The backend utilizes the model's instruction-following capabilities to output valid JSON.
-*   **Performance Flags**: We recommend running `llama-server` with `--n-gpu-layers 35` (or max VRAM) and `-c 8192` to handle the full forensic timeline without truncation.
-*   **Extended Timeouts**: Default timeouts are set to 600-1200 seconds (`AI_TIMEOUT_SECONDS`) to accommodate inference on mixed CPU/GPU setups.
+*   **Strict JSON Mode**: The backend enforces `format: json` at the Ollama API level to prevent parsing failures on local hardware.
+*   **KV Cache Optimization**: Recommended to run with `OLLAMA_KV_CACHE_TYPE=q8_0` and `OLLAMA_FLASH_ATTENTION=1` for maximum throughput.
+*   **Extended Timeouts**: Default timeouts are set to 600-1200 seconds (`AI_TIMEOUT_SECONDS`) to accommodate 14B inference on mid-range GPUs.
 *   **Vector DB Grounding**: We use a local **ChromaDB** to query MITRE ATT&CK techniques, providing the model with a "second-brain" knowledge base that bypasses its internal cutoff limits.
 
 ### 4. Scope of Analysis Rules

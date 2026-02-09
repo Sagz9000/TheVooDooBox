@@ -276,7 +276,7 @@ After successful deployment:
 2. **Test AI Analysis**
    - Collect some process/event data
    - Click "Run AI Threat Analysis"
-   - Verify Llama.cpp integration works (check "Forensic Reasoning" console)
+   - Verify Ollama integration works
 
 3. **Create Golden Snapshot**
    - Install the agent
@@ -306,4 +306,4 @@ After successful deployment:
 - **Full Deployment Guide**: `docs/13_AGENT_DEPLOYMENT.md`
 - **Build Script**: `TheVooDooBox-main/scripts/build_agent.ps1`
 - **Install Script**: `TheVooDooBox-main/scripts/install_agent.ps1`
-- **AI Testing**: `docs/15_LLAMA_TESTING.md`
+- **Ollama Testing**: `docs/15_OLLAMA_TESTING.md`
