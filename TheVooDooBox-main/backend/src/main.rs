@@ -1239,7 +1239,7 @@ async fn get_history(
             .await
         } else {
             sqlx::query_as::<_, RawAgentEvent>(
-                "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
+                "SELECT id, event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id 
                  FROM events 
                  WHERE task_id = $1 
                  ORDER BY timestamp DESC LIMIT 2000"
@@ -1251,9 +1251,9 @@ async fn get_history(
     } else {
         if let Some(search) = &query.search {
             sqlx::query_as::<_, RawAgentEvent>(
-                "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
+                "SELECT id, event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id 
                  FROM events 
-                 WHERE to_tsvector('english', process_name || ' ' || details) @@ websearch_to_tsquery('english', $1)
+                 WHERE to_tsvector('english', process_name || ' ' || details || ' ' || COALESCE(decoded_details, '')) @@ websearch_to_tsquery('english', $1)
                  ORDER BY timestamp DESC LIMIT 2000"
             )
             .bind(search)
@@ -1261,7 +1261,7 @@ async fn get_history(
             .await
         } else {
             sqlx::query_as::<_, RawAgentEvent>(
-                "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id FROM events ORDER BY timestamp DESC LIMIT 2000"
+                "SELECT id, event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id FROM events ORDER BY timestamp DESC LIMIT 2000"
             )
             .fetch_all(pool.get_ref())
             .await
@@ -1444,13 +1444,19 @@ async fn chat_handler(
         .fetch_all(pool.get_ref())
         .await
     } else {
+    .unwrap_or_default();
+    
+    // Fallback: Global search also needs decoded_details
+    let telemetry_events = if telemetry_events.is_empty() && target_task_id.is_none() {
         sqlx::query_as::<_, RawAgentEvent>(
-            "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id FROM events ORDER BY timestamp DESC LIMIT 200"
+            "SELECT id, event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id FROM events ORDER BY timestamp DESC LIMIT 200"
         )
         .fetch_all(pool.get_ref())
         .await
-    }
-    .unwrap_or_default();
+        .unwrap_or_default()
+    } else {
+        telemetry_events
+    };
 
     // Patient Zero / Lineage Filtering
     let filtered_events: Vec<&RawAgentEvent> = if target_task_id.is_some() && !target_filename.is_empty() {

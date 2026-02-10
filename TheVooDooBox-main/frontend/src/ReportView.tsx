@@ -442,7 +442,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     };
 
     const stats = useMemo(() => {
-        const taskEvents = events.filter((e: AgentEvent) => !taskId || (e as any).task_id === taskId);
+        const taskEvents = events.filter((e: AgentEvent) => !taskId || e.task_id === taskId);
         if (taskEvents.length === 0) return { duration: '00:00:00', count: 0 };
 
         const start = Math.min(...taskEvents.map((e: AgentEvent) => e.timestamp));
@@ -1189,7 +1189,7 @@ const EventTable = ({ events, type, tags, onTag }: { events: AgentEvent[], type:
                                                 </div>
                                             )}
                                             <button
-                                                onClick={(e) => onTag(e, evt.id)}
+                                                onClick={(e: React.MouseEvent) => onTag(e, evt.id)}
                                                 className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-brand-500 opacity-20 group-hover:opacity-100 transition-opacity"
                                                 title="Tag Event"
                                             >
@@ -1333,7 +1333,7 @@ const GhidraFindingsView = ({ findings }: { findings: any[] }) => {
                             placeholder="Filter symbols..."
                             className="w-full bg-zinc-900/50 border border-white/5 rounded px-7 py-1.5 text-[10px] focus:outline-none focus:border-brand-500/50 transition-colors"
                             value={filter}
-                            onChange={(e) => setFilter(e.target.value)}
+                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setFilter(e.target.value)}
                         />
                     </div>
                 </div>
