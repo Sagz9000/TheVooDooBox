@@ -7,11 +7,6 @@ import VirusTotalCard from './VirusTotalCard';
 interface AIInsightPanelProps {
     report: ForensicReport | null;
     loading: boolean;
-    onAnalyze: (mode: string) => void;
-
-interface AIInsightPanelProps {
-    report: ForensicReport | null;
-    loading: boolean;
     onAnalyze: (mode: string, autoResponse: boolean) => void;
     taskId?: string;
     onSelectPid?: (pid: number) => void;

@@ -77,7 +77,7 @@ impl AIManager {
 
     pub fn map_reduce_ask(
         &self, 
-        history: Vec<crate::ai::provider::ChatMessage>, 
+        _history: Vec<crate::ai::provider::ChatMessage>, 
         long_context: String,
         prompt_instruction: String
     ) -> tokio_stream::wrappers::ReceiverStream<Result<StreamEvent, Box<dyn std::error::Error + Send + Sync>>> {

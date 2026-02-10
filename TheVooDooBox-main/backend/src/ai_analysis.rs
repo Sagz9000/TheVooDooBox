@@ -78,7 +78,7 @@ pub struct RegistryOp {
 // --- Legacy Types for main.rs compatibility ---
 #[derive(Deserialize)]
 pub struct ManualAnalysisRequest {
-    pub mode: Option<String>,
+    pub _mode: Option<String>,
     pub auto_response: Option<bool>,
 }
 
