@@ -1,4 +1,4 @@
-FROM rust:latest as builder
+FROM rust:bookworm as builder
 ENV CACHE_BUST=3
 
 WORKDIR /usr/src/app
