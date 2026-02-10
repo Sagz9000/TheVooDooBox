@@ -570,7 +570,10 @@ pub async fn generate_ai_report(
              
              // Interest Scoring
              if !p.image_name.to_lowercase().contains("windows") && !p.image_name.to_lowercase().contains("system32") { 
-                 score += 500; 
+                 // Allow commonly benign paths like "Program Files" to be neutral
+                 if !p.image_name.to_lowercase().contains("program files") {
+                    score += 200; // Reduced from 500 to be less punitive to 3rd party software
+                 }
              }
              
              // Activity Scoring
@@ -727,6 +730,7 @@ INSTRUCTIONS:
    - e.g., "The network connection (PID 123) matches the 'InternetOpen' call in function 'init_c2'".
 2. STATIC ANALYSIS: Explicitly list findings from the code snippets in the "static_analysis_insights" section.
 3. THINKING PROCESS: Provide a deep technical chain-of-thought in your thinking section.
+4. BENIGN HYPOTHESIS TESTING: Explicitly state why this activity is NOT a standard software update or installation.
 
 OUTPUT SCHEMA (JSON ONLY):
 {{
@@ -770,9 +774,9 @@ OUTPUT SCHEMA (JSON ONLY):
     );
 
     // 7. Call AI Provider via Manager
-    let system_prompt_str = "You are a Senior Malware Researcher. Output strictly follows the JSON schema. \
-        Avoid preamble, avoid markdown fences if possible, just output the JSON object. \
-        Correlate telemetry to code patterns.".to_string();
+    let system_prompt_str = "You are a Digital Forensics Expert. Your goal is to provide an OBJECTIVE assessment. \
+        You MUST evaluate the possibility of benign behavior (software updates, installers, administration). \
+        If evidence is circumstantial, favor a lower threat score. Output strictly follows the JSON schema.".to_string();
 
     let history = vec![crate::ai::provider::ChatMessage {
         role: "user".to_string(),
