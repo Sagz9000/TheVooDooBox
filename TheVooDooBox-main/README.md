@@ -8,6 +8,8 @@ The VoodooBox is a comprehensive forensic environment that combines:
 - **AI Synthesis & Orchestration**: Powered by **llama.cpp** (DeepSeek-R1 / Llama-3), this engine performs "Deep Thinking" reasoning to correlate findings.
 - **Interactive Intelligence**: A unified dashboard with real-time AI insights, toggleable auto-response modes, and detailed behavioral timelines.
 - **Agentic Automation**: The AI doesn't just report; it moves into action. It can autonomously trigger **Automated Responses** such as payload fetching (`FETCH_URL`), memory forensics (`MEM_DUMP`), and intelligent telemetry tagging (`TAG_EVENT`) to accelerate the investigation.
+- **The Hive Mind**: Historical behavioral correlation system that identifies similarities between current telemetry and past investigations.
+- **Threat Intel Integration**: Deep integration with VirusTotal for multi-engine reputation and family labeling.
 
 ## Agentic AI & Automated Response
 
