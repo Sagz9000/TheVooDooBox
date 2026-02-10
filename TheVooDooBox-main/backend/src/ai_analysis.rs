@@ -21,8 +21,6 @@ pub struct RawEvent {
 }
 
 // --- Structured Analysis Context for LLM ---
-// --- Structured Analysis Context for LLM ---
-// (Moved AnalysisContext definition to below to avoid duplicates and ensure static_analysis field is present)
 
 #[derive(Serialize, Debug, Clone)]
 pub struct CriticalAlert {
