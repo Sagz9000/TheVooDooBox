@@ -11,12 +11,13 @@ use regex::Regex;
 // --- Raw DB Event ---
 #[derive(sqlx::FromRow, Serialize, Deserialize, Debug, Clone)]
 pub struct RawEvent {
-    event_type: String,
-    process_id: i32,
-    parent_process_id: i32,
-    process_name: String,
-    details: String,
-    timestamp: i64,
+    pub event_type: String,
+    pub process_id: i32,
+    pub parent_process_id: i32,
+    pub process_name: String,
+    pub details: String,
+    pub decoded_details: Option<String>,
+    pub timestamp: i64,
 }
 
 // --- Structured Analysis Context for LLM ---
@@ -430,7 +431,7 @@ pub async fn generate_ai_report(
 
     // 2. Fetch Raw Telemetry (Dynamic)
     let rows = sqlx::query_as::<_, RawEvent>(
-        "SELECT event_type, process_id, parent_process_id, process_name, details, timestamp 
+        "SELECT event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp 
          FROM events WHERE task_id = $1 ORDER BY timestamp ASC"
     )
     .bind(task_id)
@@ -1120,7 +1121,9 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
             "PROCESS_CREATE" => {
                // Parse Command Line
                // Format usually: "Process Created: c:\path\malware.exe Command Line: malware.exe -evil"
-               if let Some(pos) = evt.details.find("Command Line: ") {
+               if let Some(decoded) = &evt.decoded_details {
+                   proc.command_line = format!("{} (DECODED: {})", evt.details, decoded);
+               } else if let Some(pos) = evt.details.find("Command Line: ") {
                    proc.command_line = evt.details[pos+14..].trim().to_string();
                } else {
                    proc.command_line = evt.details.clone();
@@ -1129,11 +1132,16 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
             "NETWORK_CONNECT" | "NETWORK_DNS" => {
                 // Parse details: "SYSMON: TCP 192.168.1.5:5433 -> 142.250.1.1:443" OR "SYSMON: DNS: query -> result"
                 // Simplified fuzzy parsing for robustness
-                let dest = if evt.details.contains("->") {
+                let mut dest = if evt.details.contains("->") {
                     evt.details.split("->").nth(1).unwrap_or("unknown").trim().to_string()
                 } else {
                     evt.details.clone()
                 };
+
+                // Inject decoded info (e.g. resolved IPs from DNS)
+                if let Some(decoded) = &evt.decoded_details {
+                    dest = format!("{} ({})", dest, decoded);
+                }
 
                 // Filter out excluded IPs (e.g. backend)
                 let ip_only = dest.split(':').next().unwrap_or(&dest);
@@ -1214,7 +1222,11 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
                 proc.web_activity.push(WebOp {
                     url,
                     event_type: evt.event_type.replace("BROWSER_", ""),
-                    details: info
+                    details: if let Some(decoded) = &evt.decoded_details {
+                        format!("{} | DECODED: {}", info, decoded)
+                    } else {
+                        info
+                    }
                 });
             },
             _ => {}

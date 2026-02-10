@@ -570,14 +570,37 @@ async fn start_browser_listener(evt_tx: mpsc::UnboundedSender<AgentEvent>, hostn
                                 let details = match browser_evt.event_type.as_str() {
                                     "BROWSER_NAVIGATE" => format!("URL: {} | Title: {}", browser_evt.url, browser_evt.title.unwrap_or_default()),
                                     "BROWSER_REDIRECT" => format!("REDIRECT: {} -> {} ({})", browser_evt.source_url.unwrap_or_default(), browser_evt.target_url.unwrap_or_default(), browser_evt.status_code.unwrap_or(0)),
-                                    "BROWSER_DOM" => format!("DOM SNAPSHOT: {} (Preview: {}...)", browser_evt.url, browser_evt.html_preview.as_deref().unwrap_or("").chars().take(50).collect::<String>()),
+                                    "BROWSER_DOM" => format!("DOM SNAPSHOT: {} (Preview: {}...)", browser_evt.url, browser_evt.html_preview.as_deref().unwrap_or("").chars().take(100).collect::<String>()),
                                     _ => format!("Unknown Browser Event: {:?}", browser_evt)
                                 };
 
+                                let mut decoded_details = None;
+                                
+                                // Scan details for encoded data
                                 let decodes = decoder::scan_and_decode(&details);
-                                let decoded_details = if decodes.is_empty() { None } else {
-                                    Some(decodes.iter().map(|d| format!("[{}] {}", d.method, d.decoded)).collect::<Vec<_>>().join(" | "))
-                                };
+                                if !decodes.is_empty() {
+                                    decoded_details = Some(decodes.iter().map(|d| format!("[{}] {}", d.method, d.decoded)).collect::<Vec<_>>().join(" | "));
+                                }
+
+                                // For DOM events, also pass the (potentially large) HTML preview as decoded context
+                                if browser_evt.event_type == "BROWSER_DOM" {
+                                    if let Some(html) = &browser_evt.html_preview {
+                                         // Scan HTML for encoded data as well
+                                         let html_decodes = decoder::scan_and_decode(html);
+                                         let mut combined = html.clone();
+                                         if !html_decodes.is_empty() {
+                                             let dec_str = html_decodes.iter().map(|d| format!("[{}] {}", d.method, d.decoded)).collect::<Vec<_>>().join(" | ");
+                                             combined = format!("DECODED DATA FOUND IN DOM: {}\n\nFULL DOM PREVIEW:\n{}", dec_str, html);
+                                         }
+                                         
+                                         // Append to any existing decoded_details
+                                         if let Some(existing) = decoded_details {
+                                             decoded_details = Some(format!("{}\n\n{}", existing, combined));
+                                         } else {
+                                             decoded_details = Some(combined);
+                                         }
+                                    }
+                                }
 
                                 let _ = tx.send(AgentEvent {
                                     event_type: browser_evt.event_type,

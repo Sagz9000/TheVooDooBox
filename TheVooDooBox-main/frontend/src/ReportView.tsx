@@ -1280,13 +1280,28 @@ const WebView = ({ events }: { events: AgentEvent[], taskId?: string }) => {
 
                                 {/* Right Side: Visual Evidence or Context */}
                                 {e.decoded_details && (
-                                    <div className="w-1/3 shrink-0 p-3 bg-brand-500/5 border border-brand-500/20 rounded-lg animate-in fade-in duration-500">
-                                        <div className="flex items-center gap-2 mb-2">
+                                    <div className="w-1/3 shrink-0 p-3 bg-brand-500/5 border border-brand-500/20 rounded-lg animate-in fade-in duration-500 max-h-[300px] overflow-hidden flex flex-col">
+                                        <div className="flex items-center gap-2 mb-2 shrink-0">
                                             <Sparkles size={12} className="text-brand-500" />
-                                            <span className="text-[9px] font-black text-brand-500 uppercase tracking-widest">Web Decoded</span>
+                                            <span className="text-[9px] font-black text-brand-500 uppercase tracking-widest">
+                                                {e.decoded_details.includes("FULL DOM PREVIEW") ? "DOM Snapshot" : "Web Decoded"}
+                                            </span>
                                         </div>
-                                        <div className="text-brand-300/80 font-mono text-[10px] whitespace-pre-wrap leading-relaxed">
-                                            {e.decoded_details}
+                                        <div className="text-brand-300/80 font-mono text-[10px] whitespace-pre-wrap leading-relaxed overflow-y-auto custom-scrollbar flex-1">
+                                            {e.decoded_details.includes("FULL DOM PREVIEW") ? (
+                                                <div className="space-y-4">
+                                                    {e.decoded_details.split("FULL DOM PREVIEW:")[0].includes("DECODED DATA FOUND IN DOM:") && (
+                                                        <div className="p-2 bg-brand-500/10 border border-brand-500/20 rounded text-brand-400 font-bold">
+                                                            {e.decoded_details.split("FULL DOM PREVIEW:")[0]}
+                                                        </div>
+                                                    )}
+                                                    <div className="opacity-50 text-[9px] italic">
+                                                        {e.decoded_details.split("FULL DOM PREVIEW:")[1] || e.decoded_details}
+                                                    </div>
+                                                </div>
+                                            ) : (
+                                                e.decoded_details
+                                            )}
                                         </div>
                                     </div>
                                 )}
