@@ -1443,8 +1443,10 @@ async fn chat_handler(
         .bind(tid)
         .fetch_all(pool.get_ref())
         .await
+        .unwrap_or_default()
     } else {
-    .unwrap_or_default();
+        Vec::new()
+    };
     
     // Fallback: Global search also needs decoded_details
     let telemetry_events = if telemetry_events.is_empty() && target_task_id.is_none() {
