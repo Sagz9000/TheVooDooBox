@@ -130,7 +130,6 @@ const AIInsightPanel = ({ report, loading, onAnalyze, taskId, onSelectPid }: AII
                                 <div className="mt-3 sm:mt-2 text-xs text-slate-400">
                                     Family: <span className="text-white font-mono break-all">{report.malware_family}</span>
                                 </div>
-                                )}
                                 {report.digital_signature && (
                                     <div className="mt-2 text-xs text-slate-400 flex items-center gap-2">
                                         <ShieldCheck size={12} className={report.digital_signature.includes("Signed by") ? "text-green-400" : "text-slate-500"} />
