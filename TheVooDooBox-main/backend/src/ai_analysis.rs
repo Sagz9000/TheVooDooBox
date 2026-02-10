@@ -110,6 +110,7 @@ pub struct AIReport {
 #[derive(Serialize, Deserialize, Debug, Clone)]
 pub struct RecommendedAction {
     pub action: String, // e.g., "FETCH_URL", "MEM_DUMP", "TAG_EVENT"
+    #[serde(deserialize_with = "deserialize_map_to_string_values")]
     pub params: HashMap<String, String>,
     pub reasoning: String,
 }
@@ -161,6 +162,24 @@ where
     D: Deserializer<'de>,
 {
     deserialize_number(deserializer)
+}
+
+fn deserialize_map_to_string_values<'de, D>(deserializer: D) -> Result<HashMap<String, String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let map: HashMap<String, serde_json::Value> = serde::Deserialize::deserialize(deserializer)?;
+    let mut result = HashMap::new();
+    for (k, v) in map {
+        let val_str = match v {
+            serde_json::Value::String(s) => s,
+            serde_json::Value::Number(n) => n.to_string(),
+            serde_json::Value::Bool(b) => b.to_string(),
+            _ => v.to_string(),
+        };
+        result.insert(k, val_str);
+    }
+    Ok(result)
 }
 
 
@@ -247,10 +266,16 @@ fn extract_timeline_via_regex(text: &str) -> Vec<TimelineEvent> {
     events
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
 pub enum Verdict {
+    #[serde(alias = "Diagnostic Alpha")]
+    #[serde(alias = "[Diagnostic Alpha]")]
     Benign,
+    #[serde(alias = "Diagnostic Beta")]
+    #[serde(alias = "[Diagnostic Beta]")]
     Suspicious,
+    #[serde(alias = "Diagnostic Gamma")]
+    #[serde(alias = "[Diagnostic Gamma]")]
     Malicious,
 }
 
@@ -845,30 +870,32 @@ OUTPUT SCHEMA (JSON ONLY):
         if let Some(start) = current_json.find('{') {
             if let Some(end) = current_json.rfind('}') {
                 if end > start {
-                    let extracted = &current_json[start..=end];
+                    let mut extracted = current_json[start..=end].to_string();
+                    
                     // If it looks escaped, clean it manually
                     if extracted.contains("\\\"") {
-                        current_json = extracted.replace("\\\"", "\"")
-                                               .replace("\\n", "\n")
-                                               .replace("\\r", "");
-                    } else {
-                        current_json = extracted.to_string();
+                        extracted = extracted.replace("\\\"", "\"")
+                                             .replace("\\n", "\n")
+                                             .replace("\\r", "");
                     }
                     
-                    // Re-clean common neural/logic markers that might be inside the JSON
-                    current_json = current_json.replace("[Diagnostic Alpha]", "Benign")
-                                              .replace("[Diagnostic Beta]", "Suspicious")
-                                              .replace("[Diagnostic Gamma]", "Malicious")
-                                              .replace("Diagnostic Alpha", "Benign")
-                                              .replace("Diagnostic Beta", "Suspicious")
-                                              .replace("Diagnostic Gamma", "Malicious")
-                                              .replace("\"[Benign]\"", "\"Benign\"")
-                                              .replace("\"[Suspicious]\"", "\"Suspicious\"")
-                                              .replace("\"[Malicious]\"", "\"Malicious\"")
-                                              .replace("\"reasoning\":", "\"executive_summary\":")
-                                              .replace("INTERNAL_LOGIC_REVIEW", "STATIC_ANALYSIS");
+                    // Normalization Step: Consolidate label fixing here so it applies to both raw text and JSON fields
+                    extracted = extracted.replace("[Diagnostic Alpha]", "Benign")
+                                         .replace("[Diagnostic Beta]", "Suspicious")
+                                         .replace("[Diagnostic Gamma]", "Malicious")
+                                         .replace("Diagnostic Alpha", "Benign")
+                                         .replace("Diagnostic Beta", "Suspicious")
+                                         .replace("Diagnostic Gamma", "Malicious")
+                                         .replace("\"[Benign]\"", "\"Benign\"")
+                                         .replace("\"[Suspicious]\"", "\"Suspicious\"")
+                                         .replace("\"[Malicious]\"", "\"Malicious\"")
+                                         .replace("\"reasoning\":", "\"executive_summary\":")
+                                         .replace("INTERNAL_LOGIC_REVIEW", "STATIC_ANALYSIS");
                     
-                    if pass < 2 { continue; } // Try parsing the cleaned version
+                    if extracted != current_json {
+                        current_json = extracted;
+                        continue; // try parsing the cleaned version
+                    }
                 }
             }
         }
