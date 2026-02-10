@@ -597,15 +597,15 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                 onClick={() => scrollNav('left')}
                                 onMouseEnter={() => startAutoScroll('left')}
                                 onMouseLeave={stopAutoScroll}
-                                className="absolute left-0 top-0 bottom-0 w-16 z-30 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent flex items-center pl-3 hover:from-brand-500/20 transition-colors group"
+                                className="absolute left-0 top-0 bottom-0 w-12 z-50 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent flex items-center pl-2 hover:from-brand-500/20 transition-colors group"
                             >
-                                <ArrowLeft size={20} className="text-brand-500 group-hover:scale-125 transition-transform drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
+                                <ArrowLeft size={20} className="text-brand-500 group-hover:scale-125 transition-transform drop-shadow-[0_0_8px_rgba(59,130,246,0.3)]" />
                             </button>
                         )}
 
                         <div
                             ref={navRef}
-                            className="flex items-center px-4 overflow-x-auto overflow-y-hidden custom-scrollbar whitespace-nowrap scroll-smooth min-h-[48px]"
+                            className="flex items-center px-12 overflow-x-auto overflow-y-hidden custom-scrollbar whitespace-nowrap scroll-smooth min-h-[48px] relative z-20"
                         >
                             <TabButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} icon={<List size={14} />} label="Timeline" count={timelineEvents.length} />
                             <TabButton active={activeTab === 'screenshots'} onClick={() => setActiveTab('screenshots')} icon={<Image size={14} />} label="Screenshots" count={screenshots.length} />
@@ -626,7 +626,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                 onClick={() => scrollNav('right')}
                                 onMouseEnter={() => startAutoScroll('right')}
                                 onMouseLeave={stopAutoScroll}
-                                className="absolute right-0 top-0 bottom-0 w-16 z-30 bg-gradient-to-l from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent flex items-center justify-end pr-3 hover:from-brand-500/20 transition-colors group"
+                                className="absolute right-0 top-0 bottom-0 w-12 z-50 bg-gradient-to-l from-[#0a0a0a] via-[#0a0a0a]/90 to-transparent flex items-center justify-end pr-2 hover:from-brand-500/20 transition-colors group"
                             >
                                 <ChevronRight size={20} className="text-brand-500 group-hover:scale-125 transition-transform drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                             </button>
