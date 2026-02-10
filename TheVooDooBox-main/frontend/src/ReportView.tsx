@@ -268,13 +268,13 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         }
     }, [taskId]);
 
-    const handleAIAnalysis = async (mode: string = 'quick') => {
+    const handleAIAnalysis = async (mode: string = 'quick', autoResponse: boolean = true) => {
         setAiLoading(true);
         try {
             let report;
             if (taskId) {
                 // Task-based analysis (Historical)
-                report = await voodooApi.triggerTaskAnalysis(taskId, mode);
+                report = await voodooApi.triggerTaskAnalysis(taskId, mode, autoResponse);
             } else {
                 // Session-based analysis (Live)
                 report = await voodooApi.getAIAnalysis(events, mode);

@@ -18,7 +18,7 @@ mod virustotal; // Registered
 mod notes;
 mod memory;
 mod action_manager;
-use ai_analysis::{AnalysisRequest, AIReport};
+use ai_analysis::{AnalysisRequest, AIReport, ManualAnalysisRequest};
 use ai::manager::{AIManager, ProviderType};
 use ai::provider::{ChatMessage};
 use tokio_stream::StreamExt;
@@ -898,7 +898,7 @@ async fn orchestrate_sandbox(
 
     // 8. Generate AI Report (can take up to 10 minutes - VM is already stopped)
     println!("[ORCHESTRATOR] Step 7: Generating AI Analysis Report...");
-    if let Err(e) = ai_analysis::generate_ai_report(&task_id, &pool, &ai_manager, manager.clone()).await {
+    if let Err(e) = ai_analysis::generate_ai_report(&task_id, &pool, &ai_manager, manager.clone(), true).await {
         println!("[ORCHESTRATOR] Failed to generate AI report: {}", e);
     } else {
         println!("[ORCHESTRATOR] AI Analysis Report generated successfully.");
@@ -2117,14 +2117,16 @@ async fn get_ai_report(
 #[post("/tasks/{id}/analyze")]
 async fn trigger_task_analysis(
     path: web::Path<String>,
+    req: web::Json<ManualAnalysisRequest>,
     ai_manager: web::Data<AIManager>,
     manager: web::Data<Arc<AgentManager>>,
     pool: web::Data<Pool<Postgres>>
 ) -> impl Responder {
     let task_id = path.into_inner();
-    println!("[AI] Manual analysis trigger for task: {}", task_id);
+    let auto_response = req.auto_response.unwrap_or(true); // Default to true if not specified, or false? Let's say true for now.
+    println!("[AI] Manual analysis trigger for task: {} (Auto-Response: {})", task_id, auto_response);
     
-    match ai_analysis::generate_ai_report(&task_id, pool.get_ref(), &ai_manager, manager.get_ref().clone()).await {
+    match ai_analysis::generate_ai_report(&task_id, pool.get_ref(), &ai_manager, manager.get_ref().clone(), auto_response).await {
         Ok(_) => {
             // After generation, fetch the full forensic report JSON
             let res = sqlx::query("SELECT forensic_report_json FROM analysis_reports WHERE task_id = $1")

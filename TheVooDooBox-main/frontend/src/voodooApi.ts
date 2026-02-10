@@ -37,6 +37,13 @@ export interface ForensicReport {
     thinking?: string;
     virustotal?: VirusTotalData;
     related_samples?: RelatedSample[];
+    recommended_actions?: RecommendedAction[];
+}
+
+export interface RecommendedAction {
+    action: string;
+    params: Record<string, string>;
+    reasoning: string;
 }
 
 export interface RelatedSample {
@@ -375,11 +382,11 @@ export const voodooApi = {
         return data;
     },
 
-    triggerTaskAnalysis: async (taskId: string, mode: string = 'quick') => {
+    triggerTaskAnalysis: async (taskId: string, mode: string = 'quick', autoResponse: boolean = true) => {
         const resp = await fetch(`${BASE_URL}/tasks/${taskId}/analyze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mode })
+            body: JSON.stringify({ mode, auto_response: autoResponse })
         });
         if (!resp.ok) throw new Error("Failed to trigger task analysis");
         let data = await resp.json();

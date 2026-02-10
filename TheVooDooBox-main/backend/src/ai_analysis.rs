@@ -76,6 +76,12 @@ pub struct RegistryOp {
 }
 
 // --- Legacy Types for main.rs compatibility ---
+#[derive(Deserialize)]
+pub struct ManualAnalysisRequest {
+    pub mode: Option<String>,
+    pub auto_response: Option<bool>,
+}
+
 #[derive(Serialize, Deserialize, Debug)]
 pub struct AnalysisRequest {
     pub processes: Vec<ProcessSummary>, // Simplified for legacy
@@ -398,7 +404,8 @@ pub async fn generate_ai_report(
     task_id: &String, 
     pool: &Pool<Postgres>,
     ai_manager: &crate::ai::manager::AIManager,
-    agent_manager: Arc<AgentManager>
+    agent_manager: Arc<AgentManager>,
+    auto_response: bool
 ) -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Wait for Ghidra analysis if it's currently running
@@ -1010,15 +1017,19 @@ OUTPUT SCHEMA (JSON ONLY):
     println!("[AI] Forensic Analysis Complete. Score: {}", report.threat_score);
 
     // 9.5 Execute AI Recommended Actions (Auto-Response)
-    let actions = report.recommended_actions.clone();
-    if !actions.is_empty() {
-        let task_id_clone = task_id.clone();
-        let agent_manager_clone = agent_manager.clone();
-        let pool_clone = pool.clone();
-        
-        tokio::spawn(async move {
-            ActionManager::execute_actions(&task_id_clone, actions, agent_manager_clone, &pool_clone).await;
-        });
+    if auto_response {
+        let actions = report.recommended_actions.clone();
+        if !actions.is_empty() {
+            let task_id_clone = task_id.clone();
+            let agent_manager_clone = agent_manager.clone();
+            let pool_clone = pool.clone();
+            
+            tokio::spawn(async move {
+                ActionManager::execute_actions(&task_id_clone, actions, agent_manager_clone, &pool_clone).await;
+            });
+        }
+    } else {
+        println!("[AI] Auto-Response disabled. Skipping {} actions.", report.recommended_actions.len());
     }
 
     // 10. Store Fingerprint in The Hive Mind (Async, don't block heavily but wait for result)

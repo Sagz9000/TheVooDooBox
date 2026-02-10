@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { Brain, ShieldAlert, Clock, FileText, Globe, Terminal, Sparkles, Loader2, ChevronDown, ChevronRight, Share2 } from 'lucide-react';
-import { voodooApi, ForensicReport, TimelineEvent, Artifacts, RelatedSample } from './voodooApi';
+import { Brain, ShieldAlert, Clock, FileText, Globe, Terminal, Sparkles, Loader2, ChevronDown, ChevronRight, Share2, Zap } from 'lucide-react';
+import { voodooApi, ForensicReport, TimelineEvent, Artifacts, RelatedSample, RecommendedAction } from './voodooApi';
 
 import VirusTotalCard from './VirusTotalCard';
 
@@ -8,12 +8,18 @@ interface AIInsightPanelProps {
     report: ForensicReport | null;
     loading: boolean;
     onAnalyze: (mode: string) => void;
+
+interface AIInsightPanelProps {
+    report: ForensicReport | null;
+    loading: boolean;
+    onAnalyze: (mode: string, autoResponse: boolean) => void;
     taskId?: string;
     onSelectPid?: (pid: number) => void;
 }
 
 const AIInsightPanel = ({ report, loading, onAnalyze, taskId, onSelectPid }: AIInsightPanelProps) => {
     const [analysisMode, setAnalysisMode] = useState<'quick' | 'deep'>('quick');
+    const [autoResponse, setAutoResponse] = useState(true);
     const [expandedTimeline, setExpandedTimeline] = useState(true);
     const [expandedHive, setExpandedHive] = useState(true);
     const [expandedArtifacts, setExpandedArtifacts] = useState(true);
@@ -51,6 +57,20 @@ const AIInsightPanel = ({ report, loading, onAnalyze, taskId, onSelectPid }: AII
                     </div>
                 </div>
                 <div className="flex items-center gap-2 w-full md:w-auto">
+                    <div className="flex bg-black/40 rounded-lg p-1 border border-white/10 checkbox-wrapper items-center gap-2 px-3">
+                        <input
+                            type="checkbox"
+                            id="auto-response"
+                            checked={autoResponse}
+                            onChange={(e) => setAutoResponse(e.target.checked)}
+                            className="accent-brand-500 w-3 h-3"
+                        />
+                        <label htmlFor="auto-response" className="text-[10px] uppercase font-bold text-slate-400 cursor-pointer select-none flex items-center gap-1">
+                            <Zap size={10} className={autoResponse ? "text-brand-400 fill-brand-400" : "text-slate-600"} />
+                            Auto-Response
+                        </label>
+                    </div>
+
                     <div className="flex bg-black/40 rounded-lg p-1 border border-white/10">
                         <button
                             onClick={() => setAnalysisMode('quick')}
@@ -68,7 +88,7 @@ const AIInsightPanel = ({ report, loading, onAnalyze, taskId, onSelectPid }: AII
                         </button>
                     </div>
                     <button
-                        onClick={() => onAnalyze(analysisMode)}
+                        onClick={() => onAnalyze(analysisMode, autoResponse)}
                         disabled={loading}
                         className="btn-primary h-8 px-3 text-[10px] flex items-center gap-2 shadow-lg shadow-brand-600/20 disabled:opacity-50 disabled:cursor-wait whitespace-nowrap flex-1 md:flex-initial justify-center"
                     >
@@ -159,6 +179,45 @@ const AIInsightPanel = ({ report, loading, onAnalyze, taskId, onSelectPid }: AII
                     {/* Threat Intelligence (VirusTotal) */}
                     {report.virustotal && (
                         <VirusTotalCard data={report.virustotal} />
+                    )}
+
+                    {/* Recommended Actions */}
+                    {report.recommended_actions && report.recommended_actions.length > 0 && (
+                        <div className="space-y-3">
+                            <div className="flex items-center gap-2">
+                                <Zap size={14} className="text-yellow-400 fill-yellow-400" />
+                                <div className="text-[9px] text-slate-500 uppercase font-black tracking-[0.2em]">Recommended Actions</div>
+                            </div>
+                            <div className="grid grid-cols-1 gap-3">
+                                {report.recommended_actions.map((action, i) => (
+                                    <div key={i} className="flex flex-col bg-yellow-500/5 border border-yellow-500/20 rounded-lg p-3 relative overflow-hidden">
+                                        <div className="flex items-center justify-between mb-2">
+                                            <div className="flex items-center gap-2">
+                                                <span className="text-xs font-black text-yellow-400 uppercase tracking-wider bg-yellow-500/10 px-2 py-0.5 rounded border border-yellow-500/20">
+                                                    {action.action}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <div className="text-[11px] text-slate-300 mb-2 font-mono leading-relaxed">
+                                            {action.reasoning}
+                                        </div>
+                                        {Object.keys(action.params).length > 0 && (
+                                            <div className="bg-black/40 rounded p-2 border border-white/5">
+                                                <div className="text-[9px] text-slate-500 uppercase font-bold mb-1">Parameters</div>
+                                                <div className="grid grid-cols-1 gap-1">
+                                                    {Object.entries(action.params).map(([k, v], j) => (
+                                                        <div key={j} className="flex items-start gap-2 text-[10px] font-mono">
+                                                            <span className="text-slate-500">{k}:</span>
+                                                            <span className="text-slate-300 break-all">{v}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
                     )}
 
                     {/* Executive Summary */}
