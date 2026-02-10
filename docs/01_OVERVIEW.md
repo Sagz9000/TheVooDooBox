@@ -20,6 +20,12 @@ A retro-futuristic "Cyberpunk/Hacker" interface that provides:
 - Direct access to Ghidra decompilation.
 - "Chat with Malware" functionality for Q&A about the sample.
 
+### 4. Deep Telemetry & De-obfuscation
+The platform features an advanced behavioral engine that:
+- **Auto-Decoder**: Real-time identification and de-obfuscation of Base64 and XORed payloads in command lines and network traffic.
+- **DOM Snapshots**: Full capture and analysis of browser DOM state during web-based malware execution.
+- **Lineage Filtering**: Intelligent "Patient Zero" identification to isolate relevant activity from OS noise.
+
 ## Core Components
 
 | Component | Function | Tech Stack |

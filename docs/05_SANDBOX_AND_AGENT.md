@@ -82,6 +82,8 @@ While Sysmon handles high-volume event tracing, the Agent performs specialized f
 *   **Registry Persistence**: Periodically polls high-value AutoRun keys (`HKLM\...\Run`) to detect persistence mechanisms that rely on simply setting a value.
 *   **Visual Capture**: Takes periodic screenshots of the desktop to capture ransomware notes or error dialogs.
 *   **DNS Snapshots**: Captures the state of the Windows DNS Cache to identify domains that may have been queried before monitoring started.
+*   **Deep Browser Instrumentation**: A specialized module that captures full DOM snapshots from Edge/Chrome via a dedicated browser extension. This allows forensic analysts to see exactly what the victim saw, even if the payload was delivered via a `blob:` URL or temporary DOM object.
+*   **Auto-Decoder Engine**: The agent now features a high-performance scanning module that identifies Base64, XORed, and otherwise obfuscated strings in real-time across all monitored telemetry.
 
 ## 5. Forensic Instrumentation (Sysmon)
 
