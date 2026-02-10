@@ -35,6 +35,14 @@ if (-not (Test-Path $ChromeExtKey)) { New-Item -Path $ChromeExtKey -Force | Out-
 Set-ItemProperty -Path $ChromeExtKey -Name "path" -Value $ExtensionPath
 Set-ItemProperty -Path $ChromeExtKey -Name "version" -Value "1.0"
 
+# 3. Force-Install Extension (Policy)
+$ChromeForceKey = "HKLM:\SOFTWARE\Policies\Google\Chrome\ExtensionInstallForcelist"
+if (-not (Test-Path $ChromeForceKey)) { New-Item -Path $ChromeForceKey -Force | Out-Null }
+# The format is "ExtensionId;UpdateUrl"
+# For local unpacked extensions, use the path or a placeholder if using External Extensions registry
+# Actually, for local unpacked via External Extensions registry, we just need it to be in the forcelist with a placeholder or the actual ID
+Set-ItemProperty -Path $ChromeForceKey -Name "1" -Value "$($ExtensionId);https://clients2.google.com/service/update2/crx"
+
 Write-Host "Configuring Edge Policies..." -ForegroundColor Cyan
 # 1. Allow Developer Mode
 $EdgePolicyKey = "HKLM:\SOFTWARE\Policies\Microsoft\Edge"
@@ -46,6 +54,11 @@ $EdgeExtKey = "HKLM:\SOFTWARE\Microsoft\Edge\Extensions\$ExtensionId"
 if (-not (Test-Path $EdgeExtKey)) { New-Item -Path $EdgeExtKey -Force | Out-Null }
 Set-ItemProperty -Path $EdgeExtKey -Name "path" -Value $ExtensionPath
 Set-ItemProperty -Path $EdgeExtKey -Name "version" -Value "1.0"
+
+# 3. Force-Install Extension (Policy)
+$EdgeForceKey = "HKLM:\SOFTWARE\Policies\Microsoft\Edge\ExtensionInstallForcelist"
+if (-not (Test-Path $EdgeForceKey)) { New-Item -Path $EdgeForceKey -Force | Out-Null }
+Set-ItemProperty -Path $EdgeForceKey -Name "1" -Value "$($ExtensionId);https://clients2.google.com/service/update2/crx"
 
 Write-Host "Extension Policy Applied." -ForegroundColor Green
 Write-Host "NOTE: You may need to restart the browser. In some environments, you must manually 'Enable' it once if it appears as 'Disabled (External Source)'." -ForegroundColor Yellow
