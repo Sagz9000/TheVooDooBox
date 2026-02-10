@@ -2256,7 +2256,7 @@ async fn init_db() -> Pool<Postgres> {
     println!("[DATABASE] Connection established. Creating tables...");
 
     sqlx::query(
-        \"CREATE TABLE IF NOT EXISTS events (
+        "CREATE TABLE IF NOT EXISTS events (
             id SERIAL PRIMARY KEY,
             event_type TEXT NOT NULL,
             process_id INTEGER NOT NULL,
@@ -2266,7 +2266,7 @@ async fn init_db() -> Pool<Postgres> {
             decoded_details TEXT,
             timestamp BIGINT NOT NULL,
             task_id TEXT
-        )\"
+        )"
     )
     .execute(&pool)
     .await
