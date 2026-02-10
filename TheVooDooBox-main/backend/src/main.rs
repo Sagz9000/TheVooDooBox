@@ -366,6 +366,7 @@ pub struct RawAgentEvent {
     pub parent_process_id: i32,
     pub process_name: String,
     pub details: String,
+    pub decoded_details: Option<String>,
     pub timestamp: i64,
     pub task_id: Option<String>,
 }
@@ -441,13 +442,14 @@ async fn start_tcp_listener(
 
                                     // 1. Insert into DB and capturing the generated ID
                                     let db_res = sqlx::query(
-                                        "INSERT INTO events (event_type, process_id, parent_process_id, process_name, details, timestamp, task_id, session_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id"
+                                        "INSERT INTO events (event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id, session_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id"
                                     )
                                     .bind(&evt.event_type)
                                     .bind(&evt.process_id)
                                     .bind(&evt.parent_process_id)
                                     .bind(&evt.process_name)
                                     .bind(&evt.details)
+                                    .bind(&evt.decoded_details)
                                     .bind(&evt.timestamp)
                                     .bind(&evt.task_id)
                                     .bind(&session_id)
@@ -1225,10 +1227,10 @@ async fn get_history(
     let events = if let Some(tid) = &query.task_id {
         if let Some(search) = &query.search {
             sqlx::query_as::<_, RawAgentEvent>(
-                "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
+                "SELECT id, event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id 
                  FROM events 
                  WHERE task_id = $1 
-                 AND to_tsvector('english', process_name || ' ' || details) @@ websearch_to_tsquery('english', $2)
+                 AND to_tsvector('english', process_name || ' ' || details || ' ' || COALESCE(decoded_details, '')) @@ websearch_to_tsquery('english', $2)
                  ORDER BY timestamp DESC LIMIT 2000"
             )
             .bind(tid)
@@ -1433,7 +1435,7 @@ async fn chat_handler(
 
     let telemetry_events = if let Some(tid) = &target_task_id {
         sqlx::query_as::<_, RawAgentEvent>(
-            "SELECT id, event_type, process_id, parent_process_id, process_name, details, timestamp, task_id 
+            "SELECT id, event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id 
              FROM events 
              WHERE task_id = $1 
              ORDER BY timestamp ASC LIMIT 500"
@@ -2254,16 +2256,17 @@ async fn init_db() -> Pool<Postgres> {
     println!("[DATABASE] Connection established. Creating tables...");
 
     sqlx::query(
-        "CREATE TABLE IF NOT EXISTS events (
+        \"CREATE TABLE IF NOT EXISTS events (
             id SERIAL PRIMARY KEY,
             event_type TEXT NOT NULL,
             process_id INTEGER NOT NULL,
             parent_process_id INTEGER NOT NULL,
             process_name TEXT NOT NULL,
             details TEXT NOT NULL,
+            decoded_details TEXT,
             timestamp BIGINT NOT NULL,
             task_id TEXT
-        )"
+        )\"
     )
     .execute(&pool)
     .await
@@ -2273,10 +2276,9 @@ async fn init_db() -> Pool<Postgres> {
 
     // Migration for existing events table
     let _ = sqlx::query("ALTER TABLE events ADD COLUMN IF NOT EXISTS task_id TEXT").execute(&pool).await;
-    // Migration for existing events table
-    let _ = sqlx::query("ALTER TABLE events ADD COLUMN IF NOT EXISTS task_id TEXT").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE events ADD COLUMN IF NOT EXISTS decoded_details TEXT").execute(&pool).await;
     let _ = sqlx::query("ALTER TABLE events ADD COLUMN IF NOT EXISTS session_id TEXT").execute(&pool).await;
-    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_events_search ON events USING GIN (to_tsvector('english', process_name || ' ' || details))").execute(&pool).await;
+    let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_events_search ON events USING GIN (to_tsvector('english', process_name || ' ' || details || ' ' || COALESCE(decoded_details, '')))").execute(&pool).await;
 
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS tasks (

@@ -1,5 +1,6 @@
 mod mem_utils;
 mod kernel_bridge;
+mod decoder;
 
 use sysinfo::{ProcessExt, System, SystemExt, PidExt};
 use tokio::net::TcpStream;
@@ -84,12 +85,18 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
             let cmd_line = get_sysmon_field(xml, "CommandLine");
             let user = get_sysmon_field(xml, "User");
             
+            let decodes = decoder::scan_and_decode(&cmd_line);
+            let decoded_details = if decodes.is_empty() { None } else {
+                Some(decodes.iter().map(|d| format!("[{}] {}", d.method, d.decoded)).collect::<Vec<_>>().join(" | "))
+            };
+
             Some(AgentEvent {
                 event_type: "PROCESS_CREATE".to_string(),
                 process_id: pid,
                 parent_process_id: ppid,
                 process_name: image,
                 details: format!("{}SYSMON: CMD: {} | User: {}", tag_prefix, cmd_line, user),
+                decoded_details,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
             })
@@ -107,6 +114,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 parent_process_id: 0,
                 process_name: image,
                 details: format!("{}SYSMON: Timestomp on {} (New: {} | Old: {})", tag_prefix, target, new_time, old_time),
+                decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
             })
@@ -125,6 +133,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 parent_process_id: 0,
                 process_name: image,
                 details: format!("{}SYSMON: {} {} -> {}:{}", tag_prefix, proto, src_ip, dst_ip, dst_port),
+                decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
             })
@@ -140,6 +149,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 parent_process_id: 0,
                 process_name: image,
                 details: format!("{}SYSMON: Dynamic Load: {}", tag_prefix, loaded_image),
+                decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
             })
@@ -156,6 +166,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 parent_process_id: 0,
                 process_name: src_image,
                 details: format!("{}SYSMON: Injection into {} (PID: {})", tag_prefix, tgt_image, tgt_pid),
+                decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
             })
@@ -172,6 +183,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 parent_process_id: 0,
                 process_name: src_image,
                 details: format!("{}SYSMON: Accessed {} | Rights: {}", tag_prefix, tgt_image, access_granted),
+                decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
             })
@@ -187,6 +199,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 parent_process_id: 0,
                 process_name: image,
                 details: format!("{}SYSMON: File Created: {}", tag_prefix, target),
+                decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
             })
@@ -202,6 +215,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 parent_process_id: 0,
                 process_name: image,
                 details: format!("{}SYSMON: Alternate Data Stream: {}", tag_prefix, target),
+                decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
             })
@@ -212,12 +226,27 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
             let query = get_sysmon_field(xml, "QueryName");
             let result = get_sysmon_field(xml, "QueryResults");
             
+            // Extract resolved IPs from QueryResults (e.g. "type: 1 142.250.217.68;...")
+            let mut resolved_ips = Vec::new();
+            for part in result.split(';') {
+                let trimmed = part.trim();
+                let segments: Vec<&str> = trimmed.split_whitespace().collect();
+                if segments.len() >= 2 {
+                    let last = segments.last().unwrap();
+                    if last.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                         resolved_ips.push(*last);
+                    }
+                }
+            }
+            let ip_details = if resolved_ips.is_empty() { "".to_string() } else { format!(" | IPs: {}", resolved_ips.join(", ")) };
+
             Some(AgentEvent {
                 event_type: "NETWORK_DNS".to_string(),
                 process_id: pid,
                 parent_process_id: 0,
                 process_name: image,
-                details: format!("{}SYSMON: DNS: {} -> {}", tag_prefix, query, result),
+                details: format!("{}SYSMON: DNS: {}{}", tag_prefix, query, ip_details),
+                decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
             })
@@ -233,6 +262,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 parent_process_id: 0,
                 process_name: image,
                 details: format!("{}SYSMON: Process Image Tampered! Type: {}", tag_prefix, type_),
+                decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
             })
@@ -294,6 +324,7 @@ unsafe fn monitor_sysmon(evt_tx: mpsc::UnboundedSender<AgentEvent>, hostname: St
                         parent_process_id: 0,
                         process_name: "AgentDebug".to_string(),
                         details: format!("Failed to parse Sysmon Event! Raw: {}", debug_xml),
+                        decoded_details: None,
                         timestamp: chrono::Utc::now().timestamp_millis(),
                         hostname: hostname.to_string(),
                     });
@@ -409,6 +440,7 @@ struct AgentEvent {
     parent_process_id: u32,
     process_name: String,
     details: String,
+    decoded_details: Option<String>,
     timestamp: i64,
     hostname: String,
 }
@@ -458,6 +490,51 @@ struct BrowserEvent {
     tab_id: Option<i32>,
 }
 
+async fn start_clipboard_monitor(evt_tx: mpsc::UnboundedSender<AgentEvent>, hostname: String) {
+    use winapi::um::winuser::*;
+    let mut last_clipboard_content = String::new();
+
+    loop {
+        tokio::time::sleep(Duration::from_secs(2)).await;
+        unsafe {
+            if OpenClipboard(std::ptr::null_mut()) != 0 {
+                let handle = GetClipboardData(CF_UNICODETEXT);
+                if !handle.is_null() {
+                    let ptr = GlobalLock(handle) as *const u16;
+                    if !ptr.is_null() {
+                        let mut len = 0;
+                        while *ptr.add(len) != 0 {
+                            len += 1;
+                        }
+                        let content = String::from_utf16_lossy(std::slice::from_raw_parts(ptr, len));
+                        GlobalUnlock(handle);
+
+                        if content != last_clipboard_content && !content.is_empty() {
+                            let decodes = decoder::scan_and_decode(&content);
+                            let decoded_details = if decodes.is_empty() { None } else {
+                                Some(decodes.iter().map(|d| format!("[{}] {}", d.method, d.decoded)).collect::<Vec<_>>().join(" | "))
+                            };
+
+                            let _ = evt_tx.send(AgentEvent {
+                                event_type: "CLIPBOARD_CAPTURE".to_string(),
+                                process_id: 0,
+                                parent_process_id: 0,
+                                process_name: "System".to_string(),
+                                details: format!("Clipboard Content: {}", if content.len() > 100 { format!("{}...", &content[..100]) } else { content.clone() }),
+                                decoded_details,
+                                timestamp: chrono::Utc::now().timestamp_millis(),
+                                hostname: hostname.clone(),
+                            });
+                            last_clipboard_content = content;
+                        }
+                    }
+                }
+                CloseClipboard();
+            }
+        }
+    }
+}
+
 async fn start_browser_listener(evt_tx: mpsc::UnboundedSender<AgentEvent>, hostname: String) {
     let listener = match tokio::net::TcpListener::bind("127.0.0.1:1337").await {
         Ok(l) => l,
@@ -497,12 +574,18 @@ async fn start_browser_listener(evt_tx: mpsc::UnboundedSender<AgentEvent>, hostn
                                     _ => format!("Unknown Browser Event: {:?}", browser_evt)
                                 };
 
+                                let decodes = decoder::scan_and_decode(&details);
+                                let decoded_details = if decodes.is_empty() { None } else {
+                                    Some(decodes.iter().map(|d| format!("[{}] {}", d.method, d.decoded)).collect::<Vec<_>>().join(" | "))
+                                };
+
                                 let _ = tx.send(AgentEvent {
                                     event_type: browser_evt.event_type,
                                     process_id: 0, 
                                     parent_process_id: 0,
                                     process_name: "chrome.exe".to_string(), // Assumed
                                     details,
+                                    decoded_details,
                                     timestamp: chrono::Utc::now().timestamp_millis(),
                                     hostname: h_name,
                                 });
@@ -556,6 +639,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         parent_process_id: 0,
         process_name: "mallab-agent".to_string(),
         details: format!("Agent initialized and ready. Computer: {}", hostname),
+        decoded_details: None,
         timestamp: chrono::Utc::now().timestamp_millis(),
         hostname: hostname.clone(),
     });
@@ -572,6 +656,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let hostname_browser = hostname.clone();
     tokio::spawn(async move {
         start_browser_listener(tx_browser, hostname_browser).await;
+    });
+
+    // 4. Clipboard Monitoring
+    let tx_cb = evt_tx.clone();
+    let hostname_cb = hostname.clone();
+    tokio::spawn(async move {
+        start_clipboard_monitor(tx_cb, hostname_cb).await;
     });
 
     // 1. File System Watcher with Hashing
@@ -600,6 +691,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         parent_process_id: 0,
                         process_name: "Explorer/System".to_string(),
                         details: format!("File Activity: {} (SHA256: {})", path.display(), hash),
+                        decoded_details: None,
                         timestamp: chrono::Utc::now().timestamp_millis(),
                         hostname: hostname_fs.clone(),
                     });
@@ -668,6 +760,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         parent_process_id: std::process::id(),
                                                         process_name: path,
                                                         details: "Binary execution started via remote command".to_string(),
+                                                        decoded_details: None,
                                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                                         hostname: hostname.clone(),
                                                     });
@@ -679,6 +772,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         parent_process_id: 0,
                                                         process_name: path,
                                                         details: format!("Failed to execute binary: {}", e),
+                                                        decoded_details: None,
                                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                                         hostname: hostname.clone(),
                                                     });
@@ -700,6 +794,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 parent_process_id: 0,
                                                 process_name: "Web Browser".to_string(),
                                                 details: format!("Opening URL: {}", url),
+                                                decoded_details: None,
                                                 timestamp: chrono::Utc::now().timestamp_millis(),
                                                 hostname: hostname.clone(),
                                             });
@@ -742,6 +837,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                         parent_process_id: 0,
                                                                         process_name: "Agent".to_string(),
                                                                         details: format!("Failed to write file: {}", e),
+                                                                        decoded_details: None,
                                                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                                                         hostname: hostname_dl.clone(),
                                                                     });
@@ -763,6 +859,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                     parent_process_id: 0,
                                                                     process_name: "Agent".to_string(),
                                                                     details: format!("Failed to create file: {}", e),
+                                                                    decoded_details: None,
                                                                     timestamp: chrono::Utc::now().timestamp_millis(),
                                                                     hostname: hostname_dl.clone(),
                                                                 });
@@ -778,6 +875,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             parent_process_id: 0,
                                                             process_name: "Agent".to_string(),
                                                             details: format!("Network Request Failed: {}", e),
+                                                            decoded_details: None,
                                                             timestamp: chrono::Utc::now().timestamp_millis(),
                                                             hostname: hostname_dl.clone(),
                                                         });
@@ -795,6 +893,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                     parent_process_id: 0,
                                                                     process_name: dest_path_clone.clone(),
                                                                     details: "INTEGRITY: File verified on disk. Starting detonation.".to_string(),
+                                                                    decoded_details: None,
                                                                     timestamp: chrono::Utc::now().timestamp_millis(),
                                                                     hostname: hostname_dl.clone(),
                                                                 });
@@ -905,6 +1004,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             parent_process_id: 0,
                             process_name: sys.process(sysinfo::Pid::from(pid as usize)).map(|p| p.name()).unwrap_or("Unknown").to_string(),
                             details: dump_msg,
+                            decoded_details: None,
                             timestamp: chrono::Utc::now().timestamp_millis(),
                             hostname: hostname.clone(),
                         });
@@ -920,6 +1020,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             parent_process_id: p.parent().map(|p| p.as_u32()).unwrap_or(0),
                             process_name: p.name().to_string(),
                             details: format!("New process: {} Cmd: {:?} (SHA256: {})", p.exe().display(), p.cmd(), calculate_sha256(p.exe())),
+                            decoded_details: None,
                             timestamp: chrono::Utc::now().timestamp_millis(),
                             hostname: hostname.clone(),
                         };
@@ -946,6 +1047,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             parent_process_id: 0,
                                             process_name: "Registry".to_string(),
                                             details: format!("Registry Modified: {}\\{} Value: '{}' New Data: '{}' (Old: '{}')", hive_name, subkey, name, data, old_data),
+                                            decoded_details: None,
                                             timestamp: chrono::Utc::now().timestamp_millis(),
                                             hostname: hostname.clone(),
                                         });
@@ -958,6 +1060,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         parent_process_id: 0,
                                         process_name: "Registry".to_string(),
                                         details: format!("Registry Added: {}\\{} Value: '{}' Data: '{}'", hive_name, subkey, name, data),
+                                        decoded_details: None,
                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                         hostname: hostname.clone(),
                                     });
@@ -972,6 +1075,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         parent_process_id: 0,
                                         process_name: "Registry".to_string(),
                                         details: format!("Registry Deleted: {}\\{} Value: '{}' (Was: '{}')", hive_name, subkey, name, old_data),
+                                        decoded_details: None,
                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                         hostname: hostname.clone(),
                                     });
@@ -1008,6 +1112,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     parent_process_id: 0,
                                     process_name: sys.process(sysinfo::Pid::from(pid as usize)).map(|p| p.name()).unwrap_or("Unknown").to_string(),
                                     details: format!("TCP {}:{} -> {}:{} {}", tcp_info.local_addr, tcp_info.local_port, remote_ip, remote_port, if is_lat_mov { "[CRITICAL HOP]" } else { "" }),
+                                    decoded_details: None,
                                     timestamp: chrono::Utc::now().timestamp_millis(),
                                     hostname: hostname.clone(),
                                 });
@@ -1027,6 +1132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             parent_process_id: 0,
                             process_name: "DNS".to_string(),
                             details: format!("DNS Query Resolved: {}", domain),
+                            decoded_details: None,
                             timestamp: chrono::Utc::now().timestamp_millis(),
                             hostname: hostname.clone(),
                         });
