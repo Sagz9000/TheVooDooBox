@@ -97,6 +97,16 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         }
     };
 
+    const scrollNav = (direction: 'left' | 'right') => {
+        if (navRef.current) {
+            const scrollAmount = 200;
+            navRef.current.scrollBy({
+                left: direction === 'left' ? -scrollAmount : scrollAmount,
+                behavior: 'smooth'
+            });
+        }
+    };
+
     useEffect(() => {
         const nav = navRef.current;
         if (nav) {
@@ -563,9 +573,12 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                     <div className="relative border-b border-white/10 bg-[#0a0a0a]">
                         {/* Left Gradient/Indicator */}
                         {canScrollLeft && (
-                            <div className="absolute left-0 top-0 bottom-0 w-12 z-20 pointer-events-none bg-gradient-to-r from-[#0a0a0a] to-transparent flex items-center pl-2">
-                                <ArrowLeft size={16} className="text-brand-500 animate-pulse" />
-                            </div>
+                            <button
+                                onClick={() => scrollNav('left')}
+                                className="absolute left-0 top-0 bottom-0 w-12 z-20 bg-gradient-to-r from-[#0a0a0a] to-transparent flex items-center pl-2 hover:from-brand-500/10 transition-colors group"
+                            >
+                                <ArrowLeft size={16} className="text-brand-500 group-hover:scale-125 transition-transform" />
+                            </button>
                         )}
 
                         <div
@@ -587,9 +600,12 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
 
                         {/* Right Gradient/Indicator */}
                         {canScrollRight && (
-                            <div className="absolute right-0 top-0 bottom-0 w-12 z-20 pointer-events-none bg-gradient-to-l from-[#0a0a0a] to-transparent flex items-center justify-end pr-2">
-                                <ChevronRight size={16} className="text-brand-500 animate-pulse" />
-                            </div>
+                            <button
+                                onClick={() => scrollNav('right')}
+                                className="absolute right-0 top-0 bottom-0 w-12 z-20 bg-gradient-to-l from-[#0a0a0a] to-transparent flex items-center justify-end pr-2 hover:from-brand-500/10 transition-colors group"
+                            >
+                                <ChevronRight size={16} className="text-brand-500 group-hover:scale-125 transition-transform" />
+                            </button>
                         )}
                     </div>
 
