@@ -135,6 +135,8 @@ pub struct ForensicReport {
     pub related_samples: Vec<crate::memory::BehavioralFingerprint>,
     #[serde(default)]
     pub recommended_actions: Vec<RecommendedAction>,
+    #[serde(default)]
+    pub digital_signature: Option<String>,
 }
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<i32, D::Error>
@@ -425,6 +427,28 @@ async fn fetch_ghidra_analysis(task_id: &String, pool: &Pool<Postgres>) -> Stati
     }
 }
 
+// Check Digital Signature via PowerShell
+async fn get_authenticode_signature(filepath: &str) -> String {
+    let output = std::process::Command::new("powershell")
+        .args(&[
+            "-Command",
+            &format!("(Get-AuthenticodeSignature '{}').SignerCertificate.Subject", filepath)
+        ])
+        .output();
+
+    match output {
+        Ok(out) => {
+            let signer = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            if signer.is_empty() {
+                "Unsigned / Invalid Signature".to_string()
+            } else {
+                format!("Signed by: {}", signer)
+            }
+        },
+        Err(_) => "Failed to check signature".to_string(),
+    }
+}
+
 pub async fn generate_ai_report(
     task_id: &String, 
     pool: &Pool<Postgres>,
@@ -502,6 +526,33 @@ pub async fn generate_ai_report(
         .map(|s| s.trim().to_string())
         .filter(|s| !s.is_empty())
         .collect();
+
+    // 2.5 Fetch Digital Signature (Enrichment)
+    // Construct full path assuming standard location or just check filename if path unknown
+    // Ideally we need the full path. For now, we'll try to guess based on standard malware dump
+    // or skip if we can't find it. 
+    // Actually, in Mallab, artifacts are usually in C:\Users\Public\ or C:\Windows\Temp.
+    // Let's assume the agent put it in C:\Users\Public\{filename} for now as a fallback check
+    // In a real scenario, we should track the dropped path in the `tasks` table.
+    // For this implementation, we will try to target "C:\\Users\\Public\\" + target_filename 
+    // IF we are running on the same host (which we likely aren't, this is backend container).
+    // WAIT: The backend is likely in a container/different VM than the malware.
+    // Use the `artifacts` table? No, we need to check the file *inside* the sandbox.
+    // We can't easily check the signature *from* the backend if the file is in the VM.
+    // ALTERNATIVE: Use the Static Analysis data. Does Ghidra provide it? 
+    // Or did we download the sample to the backend? 
+    // Yes, `tasks` table has `file_path` (local path on backend).
+    let local_file_path: String = sqlx::query_scalar("SELECT file_path FROM tasks WHERE id = $1")
+        .bind(task_id)
+        .fetch_one(pool)
+        .await
+        .unwrap_or_default();
+    
+    let digital_signature = if !local_file_path.is_empty() {
+        get_authenticode_signature(&local_file_path).await
+    } else {
+        "Unknown (File not found locally)".to_string()
+    };
 
     // 3. Aggregate Dynamic Data
     let mut context = aggregate_telemetry(task_id, rows, &target_filename, exclude_ips);
@@ -708,6 +759,10 @@ pub async fn generate_ai_report(
 OBJECTIVE: Technical correlation of code patterns and dynamic activity.
 DIAGNOSTIC VERDICTS: [Diagnostic Alpha], [Diagnostic Beta], [Diagnostic Gamma].
 
+DATA SOURCE 7: DIGITAL SIGNATURE (CONTEXT)
+- Signature Status: {signature}
+- RELEVANCE: Valid signatures from trusted vendors (Microsoft, Google, EA, Adobe) strongly suggest BENIGN behavior (installers/updates).
+
 DATA SOURCE 1: DYNAMIC TELEMETRY
 - Target: "{filename}" (PID {root_pid})
 - Observed PIDs: [{pid_list}]
@@ -729,8 +784,10 @@ INSTRUCTIONS:
 1. BRIDGE DATA: Correlate dynamic activity (Sysmon) with provided code patterns (Ghidra). 
    - e.g., "The network connection (PID 123) matches the 'InternetOpen' call in function 'init_c2'".
 2. STATIC ANALYSIS: Explicitly list findings from the code snippets in the "static_analysis_insights" section.
-3. THINKING PROCESS: Provide a deep technical chain-of-thought in your thinking section.
-4. BENIGN HYPOTHESIS TESTING: Explicitly state why this activity is NOT a standard software update or installation.
+3. ANTI-HALLUCINATION: Do NOT flag standard Windows APIs (HTTP, Cryptography) as malicious in isolation. They are standard in installers.
+   - If filename contains 'Install' or 'Setup' OR signature is valid, treat network activity as PRE-AUTHORIZED updates unless connecting to known bad IPs.
+4. THINKING PROCESS: Provide a deep technical chain-of-thought in your thinking section.
+5. BENIGN HYPOTHESIS TESTING: Explicitly state why this activity is NOT a standard software update or installation.
 
 OUTPUT SCHEMA (JSON ONLY):
 {{
@@ -770,13 +827,14 @@ OUTPUT SCHEMA (JSON ONLY):
         vt_section = vt_section,
         notes_section = notes_section,
         tags_section = tags_section,
-        hive_section = hive_section
+        hive_section = hive_section,
+        signature = digital_signature
     );
 
     // 7. Call AI Provider via Manager
-    let system_prompt_str = "You are a Digital Forensics Expert. Your goal is to provide an OBJECTIVE assessment. \
-        You MUST evaluate the possibility of benign behavior (software updates, installers, administration). \
-        If evidence is circumstantial, favor a lower threat score. Output strictly follows the JSON schema.".to_string();
+    let system_prompt_str = "You are a Senior Malware Researcher. Output strictly follows the JSON schema. \
+        Avoid preamble, avoid markdown fences if possible, just output the JSON object. \
+        Correlate telemetry to code patterns.".to_string();
 
     let history = vec![crate::ai::provider::ChatMessage {
         role: "user".to_string(),
@@ -978,6 +1036,7 @@ OUTPUT SCHEMA (JSON ONLY):
                 virustotal: None,
                 related_samples: vec![],
                 recommended_actions: vec![],
+                digital_signature: Some(digital_signature.clone()),
             }
         }
     };

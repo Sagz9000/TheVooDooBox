@@ -38,6 +38,7 @@ export interface ForensicReport {
     virustotal?: VirusTotalData;
     related_samples?: RelatedSample[];
     recommended_actions?: RecommendedAction[];
+    digital_signature?: string;
 }
 
 export interface RecommendedAction {

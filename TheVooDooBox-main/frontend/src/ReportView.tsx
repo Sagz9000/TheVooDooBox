@@ -25,7 +25,8 @@ import {
     EyeOff,
     Tag as TagIcon,
     Fingerprint,
-    ExternalLink
+    ExternalLink,
+    Share2
 } from 'lucide-react';
 import { AgentEvent, voodooApi, ForensicReport, Tag } from './voodooApi';
 import AIInsightPanel from './AIInsightPanel';
@@ -492,27 +493,41 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                         <span className="hidden sm:flex items-center gap-2"><Cpu size={12} /> {stats.count} Events</span>
                     </div>
                     {taskId && (
-                        <button
-                            onClick={() => {
-                                if (aiReport) {
-                                    voodooApi.downloadPdf(taskId, aiReport);
-                                } else {
-                                    // Switch to intelligence tab and explain
-                                    setActiveTab('intelligence');
-                                    alert("AI Analysis is required before downloading the PDF report. Please click 'RUN ANALYTICS'.");
-                                }
-                            }}
-                            className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] ${aiReport
-                                ? 'bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 shadow-brand-500/40'
-                                : 'bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300'
-                                }`}
-                            title={aiReport ? "Download PDF Report" : "Analysis Required"}
-                        >
-                            <Download size={14} />
-                            <span className="hidden xs:inline">PDF</span>
-                        </button>
+                        <>
+                            <button
+                                onClick={() => {
+                                    const url = `${window.location.origin}/?task=${taskId}`;
+                                    navigator.clipboard.writeText(url);
+                                    alert("Analysis Link Copied to Clipboard!");
+                                }}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300"
+                                title="Share Analysis Link"
+                            >
+                                <Share2 size={14} />
+                                <span className="hidden xs:inline">SHARE</span>
+                            </button>
+
+                            <button
+                                onClick={() => {
+                                    if (aiReport) {
+                                        voodooApi.downloadPdf(taskId, aiReport);
+                                    } else {
+                                        // Switch to intelligence tab and explain
+                                        setActiveTab('intelligence');
+                                        alert("AI Analysis is required before downloading the PDF report. Please click 'RUN ANALYTICS'.");
+                                    }
+                                }}
+                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] ${aiReport
+                                    ? 'bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 shadow-brand-500/40'
+                                    : 'bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300'
+                                    }`}
+                                title={aiReport ? "Download PDF Report" : "Analysis Required"}
+                            >
+                                <Download size={14} />
+                                <span className="hidden xs:inline">PDF</span>
+                            </button>
                     )}
-                </div>
+                        </div>
             </header>
 
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">

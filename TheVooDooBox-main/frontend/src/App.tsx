@@ -69,6 +69,19 @@ export default function App() {
         return () => ws.close();
     }, []);
 
+    // Deep Linking Handler
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const taskId = params.get('task');
+        if (taskId) {
+            console.log(`[App] Deep link found for task: ${taskId}`);
+            // Clear the query param to avoid sticking to it on refresh if desired, 
+            // but keeping it allows sharing the URL as is.
+            setSelectedTaskId(taskId);
+            setView('report');
+        }
+    }, []);
+
     const refreshVms = async () => {
         try {
             const data = await voodooApi.fetchVms();

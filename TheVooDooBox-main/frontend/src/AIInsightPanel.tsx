@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Brain, ShieldAlert, Clock, FileText, Globe, Terminal, Sparkles, Loader2, ChevronDown, ChevronRight, Share2, Zap } from 'lucide-react';
+import { Brain, ShieldAlert, Clock, FileText, Globe, Terminal, Sparkles, Loader2, ChevronDown, ChevronRight, Share2, Zap, ShieldCheck } from 'lucide-react';
 import { voodooApi, ForensicReport, TimelineEvent, Artifacts, RelatedSample, RecommendedAction } from './voodooApi';
 
 import VirusTotalCard from './VirusTotalCard';
@@ -127,9 +127,14 @@ const AIInsightPanel = ({ report, loading, onAnalyze, taskId, onSelectPid }: AII
                                 <div className={`inline-flex px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest border-2 w-full sm:w-auto justify-center ${getVerdictColor(report.verdict)}`}>
                                     {report.verdict}
                                 </div>
-                                {report.malware_family && (
-                                    <div className="mt-3 sm:mt-2 text-xs text-slate-400">
-                                        Family: <span className="text-white font-mono break-all">{report.malware_family}</span>
+                                <div className="mt-3 sm:mt-2 text-xs text-slate-400">
+                                    Family: <span className="text-white font-mono break-all">{report.malware_family}</span>
+                                </div>
+                                )}
+                                {report.digital_signature && (
+                                    <div className="mt-2 text-xs text-slate-400 flex items-center gap-2">
+                                        <ShieldCheck size={12} className={report.digital_signature.includes("Signed by") ? "text-green-400" : "text-slate-500"} />
+                                        Signature: <span className={`font-mono break-all ${report.digital_signature.includes("Signed by") ? "text-green-400" : "text-slate-500"}`}>{report.digital_signature}</span>
                                     </div>
                                 )}
                             </div>

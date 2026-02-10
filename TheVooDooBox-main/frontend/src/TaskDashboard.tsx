@@ -16,7 +16,8 @@ import {
     Brain,
     Filter,
     Clock,
-    Download
+    Download,
+    Search
 } from 'lucide-react';
 import { voodooApi, AgentEvent, BASE_URL } from './voodooApi';
 import GhidraConsole from './GhidraConsole';
@@ -61,6 +62,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
     const [tasks, setTasks] = useState<AnalysisTask[]>([]);
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('All');
+    const [searchTerm, setSearchTerm] = useState("");
 
     // Expansion State
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -191,6 +193,20 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                 </div>
 
                 <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+                    {/* Search Bar */}
+                    <div className="relative group">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <Search size={12} className="text-security-muted group-focus-within:text-brand-500 transition-colors" />
+                        </div>
+                        <input
+                            type="text"
+                            placeholder="SEARCH INTEL..."
+                            value={searchTerm}
+                            onChange={(e) => setSearchTerm(e.target.value)}
+                            className="bg-security-panel border border-security-border rounded pl-9 pr-3 py-2 text-[10px] md:text-xs text-white outline-none focus:border-brand-500/50 w-full sm:w-48 transition-all font-mono placeholder:text-security-muted/50"
+                        />
+                    </div>
+
                     <button
                         onClick={onOpenSubmission}
                         className="btn-primary h-9 md:h-10 px-4 md:px-6 flex items-center gap-2 group shadow-[0_0_15px_rgba(57,255,20,0.2)] hover:bg-voodoo-toxic-green hover:text-black transition-all flex-1 sm:flex-initial justify-center"
@@ -242,7 +258,16 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                         <div className="divide-y divide-security-border/40">
                             {tasks
                                 .filter((task: AnalysisTask) => {
-                                    return statusFilter === 'All' || task.status.toLowerCase().includes(statusFilter.toLowerCase());
+                                    const matchesStatus = statusFilter === 'All' || task.status.toLowerCase().includes(statusFilter.toLowerCase());
+                                    const term = searchTerm.toLowerCase();
+                                    const matchesSearch = !term ||
+                                        task.id.toLowerCase().includes(term) ||
+                                        (task.filename && task.filename.toLowerCase().includes(term)) ||
+                                        (task.original_filename && task.original_filename.toLowerCase().includes(term)) ||
+                                        (task.file_hash && task.file_hash.toLowerCase().includes(term)) ||
+                                        (task.verdict && task.verdict.toLowerCase().includes(term));
+
+                                    return matchesStatus && matchesSearch;
                                 })
                                 .map((task: AnalysisTask) => {
                                     const isUrl = task.filename.startsWith('URL:');
