@@ -7,6 +7,9 @@ use serde::de::{self, Deserializer};
 use std::fs::File;
 use std::io::Write;
 use regex::Regex;
+use crate::AgentManager;
+use crate::action_manager::ActionManager;
+use std::sync::Arc;
 
 // --- Raw DB Event ---
 #[derive(sqlx::FromRow, Serialize, Deserialize, Debug, Clone)]
@@ -97,10 +100,12 @@ pub struct AIReport {
     pub recommendations: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Default)]
-pub struct RelatedSample {
-    pub name: String,
-    pub similarity: f32,
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct RecommendedAction {
+    pub action: String, // e.g., "FETCH_URL", "MEM_DUMP", "TAG_EVENT"
+    pub params: HashMap<String, String>,
+    pub reasoning: String,
 }
 
 // --- LLM Response Schema (Forensic) ---
@@ -121,6 +126,8 @@ pub struct ForensicReport {
     pub virustotal: Option<crate::virustotal::VirusTotalData>,
     #[serde(default)]
     pub related_samples: Vec<crate::memory::BehavioralFingerprint>,
+    #[serde(default)]
+    pub recommended_actions: Vec<RecommendedAction>,
 }
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<i32, D::Error>
@@ -150,7 +157,6 @@ where
     deserialize_number(deserializer)
 }
 
-fn default_threat_score() -> i32 { 0 }
 
 /// Robustly attempts to repair truncated JSON by closing unclosed objects/arrays.
 fn recover_truncated_json(input: &str) -> String {
@@ -391,7 +397,8 @@ async fn fetch_ghidra_analysis(task_id: &String, pool: &Pool<Postgres>) -> Stati
 pub async fn generate_ai_report(
     task_id: &String, 
     pool: &Pool<Postgres>,
-    ai_manager: &crate::ai::manager::AIManager
+    ai_manager: &crate::ai::manager::AIManager,
+    agent_manager: Arc<AgentManager>
 ) -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Wait for Ghidra analysis if it's currently running
@@ -708,7 +715,14 @@ OUTPUT SCHEMA (JSON ONLY):
             "related_pid": 123
         }}
     ],
-    "artifacts": {{ "dropped_files": [], "c2_domains": [], "mutual_exclusions": [], "command_lines": [] }},
+    "artifacts": {{ "dropped_files": [], "c2_ips": [], "c2_domains": [], "mutual_exclusions": [], "command_lines": [] }},
+    "recommended_actions": [
+        {{
+            "action": "FETCH_URL",
+            "params": {{ "url": "http://example.com/malware" }},
+            "reasoning": "Detected suspicious DGA-like domain in telemetry."
+        }}
+    ],
     "thinking": "Your internal technical reasoning/chain-of-thought goes here."
 }}
 "# , 
@@ -905,6 +919,7 @@ OUTPUT SCHEMA (JSON ONLY):
                 static_analysis_insights: vec![],
                 virustotal: None,
                 related_samples: vec![],
+                recommended_actions: vec![],
             }
         }
     };
@@ -993,6 +1008,18 @@ OUTPUT SCHEMA (JSON ONLY):
     }
 
     println!("[AI] Forensic Analysis Complete. Score: {}", report.threat_score);
+
+    // 9.5 Execute AI Recommended Actions (Auto-Response)
+    let actions = report.recommended_actions.clone();
+    if !actions.is_empty() {
+        let task_id_clone = task_id.clone();
+        let agent_manager_clone = agent_manager.clone();
+        let pool_clone = pool.clone();
+        
+        tokio::spawn(async move {
+            ActionManager::execute_actions(&task_id_clone, actions, agent_manager_clone, &pool_clone).await;
+        });
+    }
 
     // 10. Store Fingerprint in The Hive Mind (Async, don't block heavily but wait for result)
     // We reuse the behavioral_text generated earlier for the embedding
@@ -1207,7 +1234,7 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
                 // Parse details - format depends on Agent implementation
                 // Agent sends: "URL: ... | Title: ..." OR "REDIRECT: ... -> ..." OR "DOM SNAPSHOT: ... (Preview: ...)"
                 let mut url = "unknown".to_string();
-                let mut info = evt.details.clone();
+                let info = evt.details.clone();
 
                 if evt.details.starts_with("URL: ") {
                      url = evt.details.split("|").next().unwrap_or("").replace("URL: ", "").trim().to_string();

@@ -17,6 +17,7 @@ mod reports;
 mod virustotal; // Registered
 mod notes;
 mod memory;
+mod action_manager;
 use ai_analysis::{AnalysisRequest, AIReport};
 use ai::manager::{AIManager, ProviderType};
 use ai::provider::{ChatMessage};
@@ -32,11 +33,6 @@ pub struct ChatRequest {
     pub page_context: Option<String>,
 }
 
-#[derive(serde::Serialize)]
-struct ChatResponse {
-    response: String,
-    provider: String,
-}
 
 // ConfigRequest moved down to line ~1350 for better grouping with its handlers
 
@@ -272,15 +268,15 @@ use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
 use std::collections::HashMap;
 
-struct AgentSession {
-    tx: mpsc::UnboundedSender<String>,
-    active_task_id: Option<String>,
-    hostname: Option<String>,
-    connected_at: std::time::Instant,
+pub struct AgentSession {
+    pub tx: mpsc::UnboundedSender<String>,
+    pub active_task_id: Option<String>,
+    pub hostname: Option<String>,
+    pub connected_at: std::time::Instant,
 }
 
-struct AgentManager {
-    sessions: Mutex<HashMap<String, AgentSession>>,
+pub struct AgentManager {
+    pub sessions: Mutex<HashMap<String, AgentSession>>,
 }
 
 impl AgentManager {
@@ -902,7 +898,7 @@ async fn orchestrate_sandbox(
 
     // 8. Generate AI Report (can take up to 10 minutes - VM is already stopped)
     println!("[ORCHESTRATOR] Step 7: Generating AI Analysis Report...");
-    if let Err(e) = ai_analysis::generate_ai_report(&task_id, &pool, &ai_manager).await {
+    if let Err(e) = ai_analysis::generate_ai_report(&task_id, &pool, &ai_manager, manager.clone()).await {
         println!("[ORCHESTRATOR] Failed to generate AI report: {}", e);
     } else {
         println!("[ORCHESTRATOR] AI Analysis Report generated successfully.");
@@ -2122,12 +2118,13 @@ async fn get_ai_report(
 async fn trigger_task_analysis(
     path: web::Path<String>,
     ai_manager: web::Data<AIManager>,
+    manager: web::Data<Arc<AgentManager>>,
     pool: web::Data<Pool<Postgres>>
 ) -> impl Responder {
     let task_id = path.into_inner();
     println!("[AI] Manual analysis trigger for task: {}", task_id);
     
-    match ai_analysis::generate_ai_report(&task_id, pool.get_ref(), &ai_manager).await {
+    match ai_analysis::generate_ai_report(&task_id, pool.get_ref(), &ai_manager, manager.get_ref().clone()).await {
         Ok(_) => {
             // After generation, fetch the full forensic report JSON
             let res = sqlx::query("SELECT forensic_report_json FROM analysis_reports WHERE task_id = $1")
