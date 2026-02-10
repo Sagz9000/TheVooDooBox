@@ -89,6 +89,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(false);
 
+    const scrollInterval = React.useRef<any>(null);
+
     const checkScroll = () => {
         if (navRef.current) {
             const { scrollLeft, scrollWidth, clientWidth } = navRef.current;
@@ -97,9 +99,26 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         }
     };
 
+    const startAutoScroll = (direction: 'left' | 'right') => {
+        if (scrollInterval.current) return;
+        scrollInterval.current = setInterval(() => {
+            if (navRef.current) {
+                const scrollAmount = direction === 'left' ? -10 : 10;
+                navRef.current.scrollBy({ left: scrollAmount });
+            }
+        }, 16); // ~60fps
+    };
+
+    const stopAutoScroll = () => {
+        if (scrollInterval.current) {
+            clearInterval(scrollInterval.current);
+            scrollInterval.current = null;
+        }
+    };
+
     const scrollNav = (direction: 'left' | 'right') => {
         if (navRef.current) {
-            const scrollAmount = 200;
+            const scrollAmount = 250;
             navRef.current.scrollBy({
                 left: direction === 'left' ? -scrollAmount : scrollAmount,
                 behavior: 'smooth'
@@ -116,6 +135,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
             return () => {
                 nav.removeEventListener('scroll', checkScroll);
                 window.removeEventListener('resize', checkScroll);
+                stopAutoScroll();
             };
         }
     }, [activeTab]); // Also re-check when tab changes in case it scrolls automatically
@@ -575,9 +595,11 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                         {canScrollLeft && (
                             <button
                                 onClick={() => scrollNav('left')}
-                                className="absolute left-0 top-0 bottom-0 w-12 z-20 bg-gradient-to-r from-[#0a0a0a] to-transparent flex items-center pl-2 hover:from-brand-500/10 transition-colors group"
+                                onMouseEnter={() => startAutoScroll('left')}
+                                onMouseLeave={stopAutoScroll}
+                                className="absolute left-0 top-0 bottom-0 w-16 z-30 bg-gradient-to-r from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent flex items-center pl-3 hover:from-brand-500/20 transition-colors group"
                             >
-                                <ArrowLeft size={16} className="text-brand-500 group-hover:scale-125 transition-transform" />
+                                <ArrowLeft size={20} className="text-brand-500 group-hover:scale-125 transition-transform drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                             </button>
                         )}
 
@@ -602,9 +624,11 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                         {canScrollRight && (
                             <button
                                 onClick={() => scrollNav('right')}
-                                className="absolute right-0 top-0 bottom-0 w-12 z-20 bg-gradient-to-l from-[#0a0a0a] to-transparent flex items-center justify-end pr-2 hover:from-brand-500/10 transition-colors group"
+                                onMouseEnter={() => startAutoScroll('right')}
+                                onMouseLeave={stopAutoScroll}
+                                className="absolute right-0 top-0 bottom-0 w-16 z-30 bg-gradient-to-l from-[#0a0a0a] via-[#0a0a0a]/80 to-transparent flex items-center justify-end pr-3 hover:from-brand-500/20 transition-colors group"
                             >
-                                <ChevronRight size={16} className="text-brand-500 group-hover:scale-125 transition-transform" />
+                                <ChevronRight size={20} className="text-brand-500 group-hover:scale-125 transition-transform drop-shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
                             </button>
                         )}
                     </div>
