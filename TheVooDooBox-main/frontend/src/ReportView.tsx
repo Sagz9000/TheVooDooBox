@@ -526,8 +526,9 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                 <Download size={14} />
                                 <span className="hidden xs:inline">PDF</span>
                             </button>
+                        </>
                     )}
-                        </div>
+                </div>
             </header>
 
             <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
