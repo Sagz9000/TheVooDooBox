@@ -24,7 +24,8 @@ import {
     CheckCircle,
     EyeOff,
     Tag as TagIcon,
-    Fingerprint
+    Fingerprint,
+    ExternalLink
 } from 'lucide-react';
 import { AgentEvent, voodooApi, ForensicReport, Tag } from './voodooApi';
 import AIInsightPanel from './AIInsightPanel';
@@ -710,7 +711,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             </div>
                         )}
                         {activeTab === 'web' && (
-                            <EventTable events={webEvents} type="web" tags={tags} onTag={onEventContextMenu} />
+                            <WebView events={webEvents} taskId={taskId || undefined} />
                         )}
                         {activeTab === 'decoder' && (
                             <DecoderView />
@@ -1081,15 +1082,28 @@ const TimelineView = ({ events, tags, onTag }: { events: AgentEvent[], tags: Tag
                                 )}
                             </div>
                         </div>
-                        <div className="p-3 rounded bg-[#111] border border-white/5 text-xs text-zinc-400 font-mono break-all group-hover:border-white/10 transition-colors shadow-sm relative flex justify-between gap-4">
-                            <span>{e.details}</span>
-                            <button
-                                onClick={(evt) => onTag(evt, e.id)}
-                                className="self-start p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-brand-500 opacity-20 group-hover:opacity-100 transition-opacity flex-shrink-0"
-                                title="Tag Event"
-                            >
-                                <Fingerprint size={12} />
-                            </button>
+                        <div className="p-3 rounded bg-[#111] border border-white/5 text-xs text-zinc-400 font-mono break-all group-hover:border-white/10 transition-colors shadow-sm relative flex flex-col gap-2">
+                            <div className="flex justify-between gap-4">
+                                <span>{e.details}</span>
+                                <button
+                                    onClick={(evt) => onTag(evt, e.id)}
+                                    className="self-start p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-brand-500 opacity-20 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                                    title="Tag Event"
+                                >
+                                    <Fingerprint size={12} />
+                                </button>
+                            </div>
+                            {e.decoded_details && (
+                                <div className="mt-2 p-2 bg-brand-500/5 border border-brand-500/20 rounded-md animate-in slide-in-from-left duration-500">
+                                    <div className="flex items-center gap-2 mb-1">
+                                        <div className="w-1.5 h-1.5 rounded-full bg-brand-500 animate-pulse"></div>
+                                        <span className="text-[9px] font-black text-brand-500 uppercase tracking-widest">Decoded Analysis</span>
+                                    </div>
+                                    <div className="text-brand-300/90 whitespace-pre-wrap font-mono text-[10px]">
+                                        {e.decoded_details}
+                                    </div>
+                                </div>
+                            )}
                         </div>
                         {e.event_type === 'DOWNLOAD_DETECTED' && (
                             <button
@@ -1164,15 +1178,30 @@ const EventTable = ({ events, type, tags, onTag }: { events: AgentEvent[], type:
                                 </div>
                             </td>
                             <td className="p-3 text-zinc-400 align-top">
-                                <div className="flex justify-between items-start gap-4">
-                                    <span className="break-all leading-relaxed">{evt.details}</span>
-                                    <button
-                                        onClick={(e) => onTag(e, evt.id)}
-                                        className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-brand-500 opacity-20 group-hover:opacity-100 transition-opacity shrink-0"
-                                        title="Tag Event"
-                                    >
-                                        <Fingerprint size={12} />
-                                    </button>
+                                <div className="flex flex-col gap-2">
+                                    <div className="flex justify-between items-start gap-4">
+                                        <span className="break-all leading-relaxed">{evt.details}</span>
+                                        <div className="flex items-center gap-2 shrink-0">
+                                            {evt.decoded_details && (
+                                                <div className="flex items-center gap-1.5 px-1.5 py-0.5 rounded bg-brand-500/20 border border-brand-500/30 text-brand-400 animate-pulse" title="Decoded Data Available">
+                                                    <Sparkles size={10} />
+                                                    <span className="text-[8px] font-black uppercase tracking-tighter">DECODED</span>
+                                                </div>
+                                            )}
+                                            <button
+                                                onClick={(e) => onTag(e, evt.id)}
+                                                className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-brand-500 opacity-20 group-hover:opacity-100 transition-opacity"
+                                                title="Tag Event"
+                                            >
+                                                <Fingerprint size={12} />
+                                            </button>
+                                        </div>
+                                    </div>
+                                    {evt.decoded_details && (
+                                        <div className="p-2 bg-brand-500/5 border border-white/5 rounded italic text-[10px] text-brand-300 font-mono whitespace-pre-wrap">
+                                            {evt.decoded_details}
+                                        </div>
+                                    )}
                                 </div>
                             </td>
                         </tr>
@@ -1189,6 +1218,86 @@ const EmptyState = ({ msg }: { msg: string }) => (
         <span className="text-xs font-bold uppercase tracking-widest">{msg}</span>
     </div>
 );
+
+const WebView = ({ events }: { events: AgentEvent[], taskId?: string }) => {
+    if (events.length === 0) return <EmptyState msg="No web activity detected" />;
+
+    return (
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6 bg-[#080808]">
+            <div className="max-w-5xl mx-auto space-y-8">
+                {events.map((e, i) => {
+                    const isUrl = e.event_type === 'BROWSER_URL';
+                    const isDownload = e.event_type === 'BROWSER_DOWNLOAD';
+
+                    return (
+                        <div key={i} className="group bg-[#0c0c0c] border border-white/5 rounded-xl overflow-hidden hover:border-brand-500/30 transition-all shadow-xl">
+                            {/* Header */}
+                            <div className="px-4 py-3 bg-[#111] border-b border-white/5 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <div className={`p-1.5 rounded-lg ${isDownload ? 'bg-amber-500/10 text-amber-500' : 'bg-brand-500/10 text-brand-500'}`}>
+                                        {isDownload ? <Download size={14} /> : <Globe size={14} />}
+                                    </div>
+                                    <div>
+                                        <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500">{e.event_type}</div>
+                                        <div className="text-[9px] font-mono text-zinc-600">{new Date(e.timestamp).toLocaleString()}</div>
+                                    </div>
+                                </div>
+                                <div className="px-2 py-0.5 rounded bg-zinc-900 border border-white/5 text-[9px] font-mono text-zinc-400">
+                                    PID {e.process_id}
+                                </div>
+                            </div>
+
+                            {/* Content */}
+                            <div className="p-4 flex gap-6">
+                                <div className="flex-1 space-y-3">
+                                    <div className="flex items-start gap-3">
+                                        <div className="mt-1 text-zinc-500"><Terminal size={14} /></div>
+                                        <div className="text-xs text-zinc-300 font-mono break-all leading-relaxed">
+                                            {e.details}
+                                        </div>
+                                    </div>
+
+                                    {/* Sub-details for specific types */}
+                                    {isUrl && e.details.includes('URL: ') && (
+                                        <div className="mt-4 p-3 bg-black/40 rounded-lg border border-white/5 flex items-center justify-between gap-4">
+                                            <div className="flex-1 min-w-0">
+                                                <div className="text-[9px] font-black uppercase text-brand-500 mb-1">Target Resource</div>
+                                                <div className="text-xs text-zinc-400 truncate font-mono">
+                                                    {e.details.split('URL: ')[1]}
+                                                </div>
+                                            </div>
+                                            <a
+                                                href={e.details.split('URL: ')[1]}
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="p-2 bg-white/5 hover:bg-brand-500/20 rounded-lg text-zinc-400 hover:text-brand-400 transition-all border border-white/5"
+                                            >
+                                                <ExternalLink size={14} />
+                                            </a>
+                                        </div>
+                                    )}
+                                </div>
+
+                                {/* Right Side: Visual Evidence or Context */}
+                                {e.decoded_details && (
+                                    <div className="w-1/3 shrink-0 p-3 bg-brand-500/5 border border-brand-500/20 rounded-lg animate-in fade-in duration-500">
+                                        <div className="flex items-center gap-2 mb-2">
+                                            <Sparkles size={12} className="text-brand-500" />
+                                            <span className="text-[9px] font-black text-brand-500 uppercase tracking-widest">Web Decoded</span>
+                                        </div>
+                                        <div className="text-brand-300/80 font-mono text-[10px] whitespace-pre-wrap leading-relaxed">
+                                            {e.decoded_details}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+        </div>
+    );
+};
 
 const GhidraFindingsView = ({ findings }: { findings: any[] }) => {
     const [selected, setSelected] = useState<any>(findings[0] || null);

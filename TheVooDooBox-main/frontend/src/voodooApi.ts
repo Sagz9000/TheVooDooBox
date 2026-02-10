@@ -5,6 +5,7 @@ export interface AgentEvent {
     parent_process_id: number;
     process_name: string;
     details: string;
+    decoded_details?: string;
     timestamp: number;
     task_id?: string;
 }
