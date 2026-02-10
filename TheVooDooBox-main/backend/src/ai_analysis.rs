@@ -797,6 +797,26 @@ OUTPUT SCHEMA (JSON ONLY):
     }
     
     response_text = response_text.trim().to_string();
+
+    // STEP C: Markdown Fence Strip (Robust)
+    if let Some(start_idx) = response_text.find("```json") {
+        let content_after = &response_text[start_idx + 7..];
+        if let Some(end_idx) = content_after.find("```") {
+            response_text = content_after[..end_idx].trim().to_string();
+            println!("[AI] Extracted JSON from markdown block.");
+        }
+    } else if let Some(start_idx) = response_text.find("```") {
+        // Just generic code block, might be it
+         let content_after = &response_text[start_idx + 3..];
+        if let Some(end_idx) = content_after.find("```") {
+            let candidate = content_after[..end_idx].trim();
+            if candidate.starts_with('{') {
+                response_text = candidate.to_string();
+                println!("[AI] Extracted JSON from generic code block.");
+            }
+        }
+    }
+
     // --- ROBUST JSON PARSING PIPELINE ---
     let mut current_json = response_text.clone();
     let mut report_result: Option<ForensicReport> = None;
