@@ -5,7 +5,9 @@
 The VoodooBox is a comprehensive forensic environment that combines:
 - **Dynamic Analysis**: Secure Windows Sandbox execution with Kernel-level telemetry.
 - **Static Analysis**: Automated Ghidra decompilation and function triage.
-- **AI Synthesis**: Powered by **llama.cpp** (DeepSeek-R1 / Llama-3), this engine performs "Deep Thinking" reasoning to correlate findings and produce actionable forensic reports with full chain-of-thought transparency.
+- **AI Synthesis & Orchestration**: Powered by **llama.cpp** (DeepSeek-R1 / Llama-3), this engine performs "Deep Thinking" reasoning to correlate findings.
+- **Agentic Automation**: The AI doesn't just report; it moves into action. It can autonomously trigger **Automated Responses** such as payload fetching (`FETCH_URL`), memory forensics (`MEM_DUMP`), and intelligent telemetry tagging (`TAG_EVENT`) to accelerate the investigation.
+- **Interactive Intelligence**: A unified dashboard with real-time AI insights, toggleable auto-response modes, and detailed behavioral timelines.
 
 ## Documentation
 
