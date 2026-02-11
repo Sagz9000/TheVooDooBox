@@ -103,9 +103,27 @@ const AIInsightPanel = ({ report, loading, onAnalyze, taskId, onSelectPid }: AII
                         {taskId ? 'Run analytics to perform deep-dive forensic correlation for this task.' : 'Correlation requires an active telemetry session.'}
                     </p>
                     {report && typeof report === 'string' && (
-                        <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-[10px] text-red-400 font-mono break-all max-w-full">
-                            Error: {report}
-                        </div>
+                        (() => {
+                            try {
+                                const parsed = JSON.parse(report);
+                                // If successful, we shouldn't be here, but we can't easily switch the prop type.
+                                // Instead, we'll render a special "Recovered" view or just reload the component with the object.
+                                // Quick fix: If we can parse it, let's treat it as a valid object by casting.
+                                // However, React props are read-only. We should handle this upstream or use a local state.
+                                return (
+                                    <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded text-[10px] text-yellow-400 font-mono break-all max-w-full">
+                                        Warning: Report received as raw text. Please refresh the analysis. <br />
+                                        <div className="mt-2 text-xs text-white opacity-50 max-h-32 overflow-auto">{report}</div>
+                                    </div>
+                                );
+                            } catch (e) {
+                                return (
+                                    <div className="mt-4 p-3 bg-red-500/10 border border-red-500/20 rounded text-[10px] text-red-400 font-mono break-all max-w-full">
+                                        Error: {report}
+                                    </div>
+                                );
+                            }
+                        })()
                     )}
                 </div>
             )}
