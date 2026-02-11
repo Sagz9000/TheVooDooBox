@@ -575,14 +575,22 @@ pub async fn generate_ai_report(
     let mut context = aggregate_telemetry(task_id, rows, &target_filename, exclude_ips);
 
     // If local check failed (e.g. Linux backend), try to extract from Agent telemetry via Patient Zero Lineage
-    if digital_signature.contains("Signature check failed") || digital_signature.contains("Unknown") {
+    if digital_signature.contains("Signature check failed") || digital_signature.contains("Unknown") || digital_signature == "Unsigned" {
         // Try to find the signature from the Patient Zero process first
         let root_pid = context.patient_zero_pid.parse::<i32>().unwrap_or(0);
         
         if let Some(proc) = context.processes.iter().find(|p| p.pid == root_pid) {
             if let Some(sig) = &proc.digital_signature {
-                 println!("[AI] Recovered signature from Patient Zero (PID {}): {}", root_pid, sig);
-                 digital_signature = format!("Signed by: {}", sig);
+                // IMPORTANT: Only recover if the agent actually found a SIG (not "Unsigned")
+                if !sig.is_empty() && sig != "Unsigned" && sig != "Unknown" && sig != "N/A" {
+                     println!("[AI] Recovered VALID signature from Agent Telemetry (PID {}): {}", root_pid, sig);
+                     digital_signature = format!("Signed by: {}", sig);
+                } else {
+                     println!("[AI] Agent telemetry confirmed process {} is {}", root_pid, sig);
+                     if sig == "Unsigned" {
+                        digital_signature = "Unsigned (Verified by Agent)".to_string();
+                     }
+                }
             }
         }
     }

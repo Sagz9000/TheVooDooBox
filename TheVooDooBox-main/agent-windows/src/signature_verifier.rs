@@ -4,6 +4,7 @@ use winapi::um::handleapi::INVALID_HANDLE_VALUE;
 use std::ffi::OsStr;
 use std::os::windows::ffi::OsStrExt;
 use std::ptr;
+use chrono;
 
 // Re-defining TRUST_E_PROVIDER_UNKNOWN as it might be missing in some winapi versions or requires specific feature
 const TRUST_E_PROVIDER_UNKNOWN: i32 = -2146762495; // 0x800B0001 as i32
@@ -61,6 +62,12 @@ pub fn verify_signature(file_path: &str) -> String {
             &mut win_trust_data as *mut _ as *mut std::ffi::c_void,
         )
     };
+
+    // DEBUG LOGGING
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("C:\\voodoobox_debug.log") {
+        use std::io::Write;
+        let _ = writeln!(file, "[{}] Checking: {} | Status: {:#x}", chrono::Local::now(), file_path, status);
+    }
 
     // Clean up handle (though for WTD_STATEACTION_VERIFY it might not be strictly needed as we didn't open state)
     // If we used WTD_STATEACTION_VERIFY, we should technically call it again with WTD_STATEACTION_CLOSE

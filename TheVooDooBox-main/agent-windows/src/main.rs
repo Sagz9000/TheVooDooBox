@@ -105,7 +105,11 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                     // Fallback to Native Check if Sysmon failed to get signature
                     if sig.is_empty() || sig == "-" || sig == "Unsigned" {
                         let native = signature_verifier::verify_signature(&image);
-                        if native.starts_with("Signed") {
+                        // Always use native result if it's better than Sysmon's "Unsigned" or empty
+                        if !native.is_empty() && (native.starts_with("Signed") || native.contains("Error Code")) {
+                            sig = native;
+                        } else if sig.is_empty() || sig == "-" {
+                            // Fallback if Sysmon was totally empty
                             sig = native;
                         }
                     }
