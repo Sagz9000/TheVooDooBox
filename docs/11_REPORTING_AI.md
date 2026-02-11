@@ -20,6 +20,9 @@ To avoid overwhelming the AI, we use a specialized aggregation logic:
 *   **Process Lineage Tracing**: We identify "Patient Zero" (the initial malware process) and recursively track every child process spawned during the session.
 *   **High-Value Filtering**: Aggressively drops noise events. Only critical Sysmon IDs (1, 3, 8, 11) from descending lineages are preserved, reducing log volume by ~95%.
 *   **PID Menu Generation**: The backend extracts all valid PIDs from the telemetry and injects them as a "Factual Cheat Sheet" into the AI prompt. This ensures the AI never hallucinates process IDs.
+*   **Cross-Platform Signature Fallback**: Validating digital signatures on a Linux backend is technically limited. To solve this, the system uses a **Hybrid Fallback**:
+    1.  **Local Check**: Backend attempts to check the local sample via PowerShell (if path is accessible).
+    2.  **Telemetry Recovery**: If the local check fails or the platform is incompatible, the backend scans the incoming agent telemetry for that specific task. Since the Windows Agent extracts signatures in real-time, the backend "recovers" this data and injects it into the AI's context.
 
 ## 3. The AI Forensic Triage (Paranoid Mode)
 

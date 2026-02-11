@@ -12,7 +12,7 @@ It provides a real-time window into the malware's execution, allowing analysts t
 *   **Interact** with the malware (click dialogs, solve CAPTCHAs, traverse file systems).
 *   **Observe** kernel-level events (process creation, file modification, registry connection) as they happen, with millisecond latency.
 *   **Agentic AI Response**: The AI doesn't just watch; it **reacts**. It can autonomously trigger actions (e.g., `FETCH_URL`) based on its forensic findings.
-*   **Digital Verification**: Real-time validation of digital signatures for every executing binary, highlighting trust capability immediately.
+*   **Digital Verification**: Cross-platform validation of digital signatures for every executing binary. Even when the backend runs on Linux, it leverages Agent-side telemetry to verify the trust status of all sandbox activity.
 *   **Collaborate**: Deep-link support for specific analysis reports, enabling seamless sharing of forensic results among team members.
 
 
