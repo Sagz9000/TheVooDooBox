@@ -64,7 +64,10 @@ pub fn verify_signature(file_path: &str) -> String {
     };
 
     // DEBUG LOGGING
-    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("C:\\voodoobox_debug.log") {
+    let log_folder = "C:\\Mallab";
+    let log_path = "C:\\Mallab\\voodoobox_debug.log";
+    let _ = std::fs::create_dir_all(log_folder);
+    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(log_path) {
         use std::io::Write;
         let _ = writeln!(file, "[{}] Checking: {} | Status: {:#x}", chrono::Local::now(), file_path, status);
     }

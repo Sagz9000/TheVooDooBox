@@ -34,27 +34,36 @@ if (!(Test-Path $AgentDir)) {
     New-Item -ItemType Directory -Path $AgentDir -Force | Out-Null
 }
 
-# 4. Deploy Agent File
-Write-Host "[*] Deploying agent.pyw..."
+# 4. Deploy Agent Binary
+Write-Host "[*] Deploying mallab-agent-windows.exe..."
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$SourceAgent = Join-Path $ScriptDir "agent.pyw"
+$SourceAgent = Join-Path $ScriptDir "mallab-agent-windows.exe"
+
+# Fallback check in Releases folder if not in sandbox_scripts
+if (-not (Test-Path $SourceAgent)) {
+    $SourceAgent = Join-Path $PSScriptRoot "..\releases\mallab-agent-windows.exe"
+}
 
 if (Test-Path $SourceAgent) {
-    Copy-Item -Path $SourceAgent -Destination "$AgentDir\agent.pyw" -Force
+    Copy-Item -Path $SourceAgent -Destination "$AgentDir\mallab-agent-windows.exe" -Force
 }
 else {
-    Write-Error "Source agent.pyw not found at $SourceAgent"
+    Write-Error "Source agent executable not found at $SourceAgent"
     Stop-Transcript
     exit 1
 }
 
-# 5. Add to Startup
-Write-Host "[*] Configuring auto-start..."
-$startupKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
-$pythonwPath = (Get-Command pythonw).Source
-$cmdValue = "`"$pythonwPath`" `"$AgentDir\agent.pyw`""
-Set-ItemProperty -Path $startupKey -Name "VoodooBoxAgent" -Value $cmdValue
+# 5. Add to Startup (Scheduled Task for Persistence)
+Write-Host "[*] Configuring persistence (Scheduled Task)..."
+$Action = New-ScheduledTaskAction -Execute "$AgentDir\mallab-agent-windows.exe" -WorkingDirectory $AgentDir
+$Trigger = New-ScheduledTaskTrigger -AtStartup
+$Settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -Priority 4
+$Principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -LogonType ServiceAccount -RunLevel Highest
+
+$TaskName = "VoodooBoxAgent"
+Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false -ErrorAction SilentlyContinue
+Register-ScheduledTask -TaskName $TaskName -Action $Action -Trigger $Trigger -Principal $Principal -Settings $Settings | Out-Null
 
 Write-Host "`nAgent deployment complete." -ForegroundColor Green
-Write-Host "The agent will run silently in the background on next logon."
+Write-Host "The Rust agent is installed and configured for persistence."
 Stop-Transcript
