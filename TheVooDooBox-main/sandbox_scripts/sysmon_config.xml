@@ -1,9 +1,15 @@
-<Sysmon schemaversion="4.30">
-  <HashAlgorithms>sha256</HashAlgorithms>
+<Sysmon schemaversion="4.82">
+  <HashAlgorithms>sha256,md5</HashAlgorithms>
+  <CheckRevocation /> 
   <EventFiltering>
     <!-- Event ID 1: Process Creation -->
     <RuleGroup name="" groupRelation="or">
-      <ProcessCreate onmatch="exclude" />
+      <ProcessCreate onmatch="exclude">
+        <!-- Noise Reduction -->
+        <Image condition="is">C:\Windows\System32\smss.exe</Image>
+        <Image condition="is">C:\Windows\System32\csrss.exe</Image>
+        <Image condition="is">C:\Windows\System32\wininit.exe</Image>
+      </ProcessCreate>
     </RuleGroup>
 
     <!-- Event ID 2: File Creation Time Changed (Timestomping) -->
