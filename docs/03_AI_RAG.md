@@ -37,6 +37,19 @@ sequenceDiagram
     LlamaServer-->>Backend: JSON Report (Verdict, Timeline, IOCs)
     Backend->>Postgres: Save Report
     Backend-->>User: Display Report
+    
+## Agentic Auto-Response
+
+The AI Analyst is no longer a passive observer. It supports an **"Auto-Response"** mode where it can autonomously trigger actions based on high-confidence findings.
+
+### Supported Actions
+*   **`FETCH_URL`**: If the AI detects a dropped URL or a C2 beacon, it can request the backend to fetch the payload for further analysis.
+
+### Safety Rails
+To prevent "runaway AI," all actions are gated by:
+1.  **Confidence Threshold**: The AI must express high confidence in its finding.
+2.  **Whitelist**: Only specific domains or action types are permitted.
+3.  **Human-in-the-Loop**: A UI toggle allows analysts to enable or disable this autonomous behavior globally.
 ```
 
 ## Prompt Engineering & Reducing Hallucinations

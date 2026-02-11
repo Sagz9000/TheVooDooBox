@@ -103,21 +103,4 @@ Our configuration is optimized for malware analysis:
 *   **Remote Threads**: Monitored to detect process injection (e.g., hollowing).
 *   **File Deletion**: Monitored to catch self-deletion attempts.
 
-## 6. Future Roadmap: Path to Kernel Independence
 
-Currently, TheVooDooBox uses a "Hybrid" approach (Path A):
-*   **Sysmon**: Telemetry
-*   **Custom Driver**: Self-Protection
-
-Our long-term goal is **Path B**: A fully custom Kernel Driver that handles *both* protection and telemetry via native callbacks (`PsSetCreateProcessNotifyRoutineEx`, `ObRegisterCallbacks`).
-*   **Why**: To remove the dependency on Sysmon, which sophisticated malware can fingerprint and evade.
-*   **Goal**: "God Mode" visibility with zero user-mode dependencies.
-
-### Telemetry Strategy Comparison
-
-| Feature | **Path A: Keep Current (Sysmon)** | **Path B: Build Custom (Kernel Callbacks)** |
-| :--- | :--- | :--- |
-| **Development** | **Already working.** Robust and stable. | **Extremely Hard.** Writing `unsafe` Rust kernel code is prone to Blue Screens (BSOD). |
-| **Stability** | High. Sysmon is a Microsoft-signed driver. | Moderate/Low. A bug in our driver crashes the whole VM. |
-| **Stealth** | Lower. Malware knows how to look for Sysmon. | Higher. A custom driver is harder to fingerprint. |
-| **Complexity** | User-Mode Agent parses logs (Easy). | Driver must manage memory buffers and IRQL levels (Hard). |

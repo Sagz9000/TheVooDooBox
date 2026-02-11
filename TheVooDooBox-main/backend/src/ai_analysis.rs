@@ -352,6 +352,7 @@ pub struct AnalysisContext {
     pub analyst_notes: Vec<AnalystNote>,
     pub manual_tags: Vec<TelemetryTag>,
     pub related_samples: Vec<crate::memory::BehavioralFingerprint>,
+    pub digital_signature: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -559,6 +560,7 @@ pub async fn generate_ai_report(
     context.virustotal = vt_data;
     context.analyst_notes = analyst_notes;
     context.manual_tags = manual_tags;
+    context.digital_signature = Some(digital_signature.clone());
 
     // 4. Fetch Static Data (Ghidra)
     let mut static_data = fetch_ghidra_analysis(task_id, pool).await;
@@ -816,6 +818,7 @@ OUTPUT SCHEMA (JSON ONLY):
             "reasoning": "Detected suspicious DGA-like domain in telemetry."
         }}
     ],
+    "digital_signature": "String (e.g., 'Signed by Microsoft' or 'Unsigned')",
     "thinking": "Your internal technical reasoning/chain-of-thought goes here."
 }}
 "# , 
@@ -1395,5 +1398,6 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
         analyst_notes: vec![],
         manual_tags: vec![],
         related_samples: vec![],
+        digital_signature: None,
     }
 }

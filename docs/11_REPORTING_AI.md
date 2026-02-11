@@ -36,9 +36,10 @@ Reasoning is capped with a "Thinking Budget" to avoid loops, ensuring reports ar
 
 ### AI Output Structure
 The AI is instructed to return a JSON object with:
-*   **Verdict**: Malicious, Suspicious, or Benign (based on behavior, not signatures).
+*   **Verdict**: Malicious, Suspicious, Benign, or **Diagnostic** (for low-confidence/incomplete traces).
 *   **Malware Family**: Identified threat actor or tool.
 *   **Executive Summary**: A high-level technical narrative explaining the attack.
+*   **Recommended Actions**: A list of automated or manual response steps (e.g., `FETCH_URL`).
 *   **Behavioral Timeline**: A chronological reconstruction of significant events with exact PID mappings.
 *   **Extracted IOCs**: C2 IPs, domains, and paths of dropped files.
 

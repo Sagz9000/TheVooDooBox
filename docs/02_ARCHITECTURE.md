@@ -19,7 +19,7 @@
 - **Key Modules**:
     - `ai_analysis.rs`: Handles prompt construction, JSON salvage, and thinking extraction.
     - `main.rs`: Core API routes and websocket handling.
-    - `db.rs`: PostgreSQL and Qdrant interactions.
+    - `db.rs`: PostgreSQL and ChromaDB interactions.
 
 ### Frontend (The Face)
 - **Language**: TypeScript (React + Vite)

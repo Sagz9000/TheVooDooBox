@@ -19,12 +19,15 @@ The "Executive View." It provides an overview of the entire laboratory infrastru
 *   **VM Carousel**: Real-time power status and thumbnail previews of all Proxmox nodes.
 *   **Task History**: A filterable list of recent analysis sessions with their AI-generated verdicts.
 *   **Sample Submission**: A centralized portal to upload binaries or URLs for detonation.
+*   **Deep Search**: Integrated search bar allows analysts to find sessions by hash, filename, or verdict.
+*   **Deep Linking**: Every analysis session has a unique, shareable URL, facilitating instant collaboration.
 
 ### 2. Analysis Arena (`AnalysisArena.tsx`)
 The core workspace for an active malware dissection.
 *   **Live Stream**: The VNC/SPICE console allowing direct interaction with the malware.
 *   **Telemetry Feed**: A high-speed scrolling list of kernel events (Processes, Files, Network).
 *   **Process Tree**: A dynamic visualization of the process lineage (Parent -> Child relationships).
+*   **Digital Signatures**: Real-time validation of executable signatures displayed directly in the process tree (Green shield for valid, Grey for unsigned).
 *   **MCP Console**: Interface to trigger manual lab actions like snapshot rollbacks.
 
 ![Analysis Arena Telemetry](../TheVooDooBox-main/pictures/telemetry.png)

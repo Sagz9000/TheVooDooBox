@@ -50,7 +50,7 @@ To use this server with your local Gemini or Claude Desktop app for "human-in-th
 1.  **Add to Config**: Edit `%APPDATA%\Claude\claude_desktop_config.json`:
     ```json
     "mcpServers": {
-      "MallabInvestigator": {
+      "Mallab-V3-Investigator": {
         "command": "docker",
         "args": [
           "exec",
