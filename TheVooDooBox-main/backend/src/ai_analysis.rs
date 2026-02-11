@@ -45,6 +45,7 @@ pub struct ProcessSummary {
     pub registry_mods: Vec<RegistryOp>,
     pub web_activity: Vec<WebOp>,
     pub behavior_tags: Vec<String>,
+    pub digital_signature: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone)]
@@ -570,21 +571,22 @@ pub async fn generate_ai_report(
         "Unknown (File not found locally)".to_string()
     };
 
-    // If local check failed (e.g. Linux backend), try to extract from Agent telemetry
+    // 3. Aggregate Dynamic Data
+    let mut context = aggregate_telemetry(task_id, rows, &target_filename, exclude_ips);
+
+    // If local check failed (e.g. Linux backend), try to extract from Agent telemetry via Patient Zero Lineage
     if digital_signature.contains("Signature check failed") || digital_signature.contains("Unknown") {
-        for row in &rows {
-            if let Some(ref sig) = row.digital_signature {
-                if !sig.is_empty() && sig != "N/A" && sig != "Unknown" && row.process_name.to_lowercase().contains(&target_filename.to_lowercase()) {
-                    println!("[AI] Recovered signature from Agent telemetry: {}", sig);
-                    digital_signature = format!("Signed by: {}", sig);
-                    break;
-                }
+        // Try to find the signature from the Patient Zero process first
+        let root_pid = context.patient_zero_pid.parse::<i32>().unwrap_or(0);
+        
+        if let Some(proc) = context.processes.iter().find(|p| p.pid == root_pid) {
+            if let Some(sig) = &proc.digital_signature {
+                 println!("[AI] Recovered signature from Patient Zero (PID {}): {}", root_pid, sig);
+                 digital_signature = format!("Signed by: {}", sig);
             }
         }
     }
 
-    // 3. Aggregate Dynamic Data
-    let mut context = aggregate_telemetry(task_id, rows, &target_filename, exclude_ips);
     context.virustotal = vt_data;
     context.analyst_notes = analyst_notes;
     context.manual_tags = manual_tags;
@@ -1290,9 +1292,17 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
             registry_mods: Vec::new(),
             web_activity: Vec::new(),
             behavior_tags: Vec::new(),
+            digital_signature: None,
         });
 
         let proc = process_map.get_mut(&evt.process_id).unwrap();
+
+        // Capture Digital Signature from Process Start events
+        if let Some(sig) = &evt.digital_signature {
+            if !sig.is_empty() && sig != "N/A" && sig != "Unknown" && proc.digital_signature.is_none() {
+                proc.digital_signature = Some(sig.clone());
+            }
+        }
 
         match evt.event_type.as_str() {
             "PROCESS_CREATE" => {

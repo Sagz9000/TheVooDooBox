@@ -20,7 +20,6 @@ use winapi::um::winnt::{KEY_READ, REG_SZ, REG_EXPAND_SZ};
 use winapi::shared::minwindef::{HKEY, DWORD};
 use winapi::um::winevt::*;
 use winapi::um::winbase::{GlobalLock, GlobalUnlock};
-use winapi::shared::winerror::ERROR_SUCCESS;
 
 fn wide_string(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -96,11 +95,10 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 event_type: "PROCESS_CREATE".to_string(),
                 process_id: pid,
                 parent_process_id: ppid,
-                process_name: image,
+                process_name: image.clone(),
                 details: format!("{}SYSMON: CMD: {} | User: {}", tag_prefix, cmd_line, user),
                 decoded_details,
                 timestamp: chrono::Utc::now().timestamp_millis(),
-                hostname: hostname.to_string(),
                 hostname: hostname.to_string(),
                 digital_signature: {
                     let mut sig = get_sysmon_field(xml, "Signature");

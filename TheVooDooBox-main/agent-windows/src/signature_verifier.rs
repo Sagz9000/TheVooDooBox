@@ -12,6 +12,7 @@ const TRUST_E_SUBJECT_FORM_UNKNOWN: i32 = -2146762493; // 0x800B0003
 const TRUST_E_SUBJECT_NOT_TRUSTED: i32 = -2146762492; // 0x800B0004
 const DIG_SIG_TRUST_E_EXPLICIT_NO_ICA: i32 = -2146762484; // 0x800B000C (Not exact name but close, error for no signature?)
 const TRUST_E_NOSIGNATURE: i32 = -2146762496; // 0x800B0100
+const CERT_E_CHAINING: i32 = -2146762486; // 0x800B010A
 
 pub fn verify_signature(file_path: &str) -> String {
     let wide_path: Vec<u16> = OsStr::new(file_path).encode_wide().chain(std::iter::once(0)).collect();
@@ -74,17 +75,16 @@ pub fn verify_signature(file_path: &str) -> String {
         );
     };
 
-
     match status {
         0 => "Signed (Verified)".to_string(), // ERROR_SUCCESS
         _ => {
-            // Map common errors
-            // We need to cast status (i32 mostly) to match constants
             let err = status as i32;
             if err == TRUST_E_NOSIGNATURE {
                 "Unsigned".to_string()
             } else if err == TRUST_E_SUBJECT_NOT_TRUSTED {
-                "Signed (Unix/Untrusted Root)".to_string() 
+                "Signed (Untrusted Root)".to_string() 
+            } else if err == CERT_E_CHAINING {
+                "Signed (Untrusted Root - Chain Issue)".to_string()
             } else if err == TRUST_E_PROVIDER_UNKNOWN {
                 "Unsigned (Unknown Provider)".to_string()
             } else {
