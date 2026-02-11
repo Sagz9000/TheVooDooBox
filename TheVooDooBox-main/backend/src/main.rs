@@ -641,8 +641,10 @@ async fn submit_sample(
     let created_at = Utc::now().timestamp_millis();
     let task_id = created_at.to_string();
     
+    let filepath = format!("{}/{}", "./uploads", filename);
+    
     let _ = sqlx::query(
-        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at, sandbox_id) VALUES ($1, $2, $3, $4, 'Queued', $5, $6)"
+        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at, sandbox_id, file_path) VALUES ($1, $2, $3, $4, 'Queued', $5, $6, $7)"
     )
     .bind(&task_id)
     .bind(&filename)
@@ -650,6 +652,7 @@ async fn submit_sample(
     .bind(&sha256_hash)
     .bind(created_at)
     .bind(target_vmid.map(|id| id.to_string()))
+    .bind(&filepath)
     .execute(pool.get_ref())
     .await;
     
@@ -1021,15 +1024,18 @@ pub async fn pivot_upload(
     let download_url = format!("http://{}:8080/uploads/{}", host_ip, filename);
     let task_id = Utc::now().timestamp_millis().to_string();
 
+    let filepath = format!("{}/{}", "./uploads", filename);
+
     // Insert task
     let _ = sqlx::query(
-        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at) VALUES ($1, $2, $3, $4, 'Queued', $5)"
+        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at, file_path) VALUES ($1, $2, $3, $4, 'Queued', $5, $6)"
     )
     .bind(&task_id)
     .bind(&filename)
     .bind(&original_filename)
     .bind(&sha256_hash)
     .bind(Utc::now().timestamp_millis())
+    .bind(&filepath)
     .execute(pool.get_ref())
     .await;
 
@@ -2309,6 +2315,7 @@ async fn init_db() -> Pool<Postgres> {
 
     // Migrations
     let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS sandbox_id TEXT").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS file_path TEXT").execute(&pool).await;
 
     println!("[DATABASE] Tasks table ready.");
 

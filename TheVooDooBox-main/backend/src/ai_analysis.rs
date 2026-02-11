@@ -430,8 +430,15 @@ async fn fetch_ghidra_analysis(task_id: &String, pool: &Pool<Postgres>) -> Stati
 
 // Check Digital Signature via PowerShell
 async fn get_authenticode_signature(filepath: &str) -> String {
+    // 1. Check if file exists on this host (Backend)
+    if !std::path::Path::new(filepath).exists() {
+        return format!("Unknown (File not found at: {})", filepath);
+    }
+
+    // 2. Attempt PowerShell check (Works only on Windows hosts)
     let output = std::process::Command::new("powershell")
         .args(&[
+            "-NoProfile",
             "-Command",
             &format!("(Get-AuthenticodeSignature '{}').SignerCertificate.Subject", filepath)
         ])
@@ -446,7 +453,14 @@ async fn get_authenticode_signature(filepath: &str) -> String {
                 format!("Signed by: {}", signer)
             }
         },
-        Err(_) => "Failed to check signature".to_string(),
+        Err(e) => {
+            // Check if powershell is even present (Linux Docker check)
+            if e.kind() == std::io::ErrorKind::NotFound {
+                 "Signature check failed (Backend is Linux - requires Windows or osslsigncode)".to_string()
+            } else {
+                 format!("Failed to execute signature check: {}", e)
+            }
+        },
     }
 }
 
