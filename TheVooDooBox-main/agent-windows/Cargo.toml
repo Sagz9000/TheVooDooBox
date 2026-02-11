@@ -11,7 +11,7 @@ sysinfo = "0.29"
 chrono = "0.4"
 netstat2 = "0.9"
 notify = "6.1"
-winapi = { version = "0.3", features = ["winuser", "processthreadsapi", "memoryapi", "winbase", "handleapi", "psapi", "winioctl", "winreg", "winevt", "errhandlingapi"] }
+winapi = { version = "0.3", features = ["winuser", "processthreadsapi", "memoryapi", "winbase", "handleapi", "psapi", "winioctl", "winreg", "winevt", "errhandlingapi", "wintrust", "softpub", "mscat", "mssip"] }
 reqwest = { version = "0.13.1", features = ["blocking", "json", "multipart"] }
 sha2 = "0.10"
 hex = "0.4"

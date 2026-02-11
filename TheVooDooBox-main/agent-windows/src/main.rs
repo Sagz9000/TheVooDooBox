@@ -1,6 +1,7 @@
 mod mem_utils;
 mod kernel_bridge;
 mod decoder;
+mod signature_verifier;
 
 use sysinfo::{ProcessExt, System, SystemExt, PidExt};
 use tokio::net::TcpStream;
@@ -100,7 +101,18 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 decoded_details,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
-                digital_signature: Some(get_sysmon_field(xml, "Signature")),
+                hostname: hostname.to_string(),
+                digital_signature: {
+                    let mut sig = get_sysmon_field(xml, "Signature");
+                    // Fallback to Native Check if Sysmon failed to get signature
+                    if sig.is_empty() || sig == "-" || sig == "Unsigned" {
+                        let native = signature_verifier::verify_signature(&image);
+                        if native.starts_with("Signed") {
+                            sig = native;
+                        }
+                    }
+                    Some(sig)
+                },
             })
         },
         "2" => { // File Creation Time Changed
