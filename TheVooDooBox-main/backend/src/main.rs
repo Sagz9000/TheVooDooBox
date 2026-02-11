@@ -365,6 +365,7 @@ pub struct RawAgentEvent {
     pub decoded_details: Option<String>,
     pub timestamp: i64,
     pub task_id: Option<String>,
+    pub digital_signature: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, sqlx::FromRow)]
@@ -436,9 +437,8 @@ async fn start_tcp_listener(
                                         println!("[TELEMETRY] Captured global event (No Task ID): {} ({})", evt.event_type, evt.process_name);
                                     }
 
-                                    // 1. Insert into DB and capturing the generated ID
                                     let db_res = sqlx::query(
-                                        "INSERT INTO events (event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id, session_id) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING id"
+                                        "INSERT INTO events (event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id, session_id, digital_signature) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING id"
                                     )
                                     .bind(&evt.event_type)
                                     .bind(&evt.process_id)
@@ -449,6 +449,7 @@ async fn start_tcp_listener(
                                     .bind(&evt.timestamp)
                                     .bind(&evt.task_id)
                                     .bind(&session_id)
+                                    .bind(&evt.digital_signature)
                                     .fetch_one(&pool)
                                     .await;
 
@@ -2291,6 +2292,7 @@ async fn init_db() -> Pool<Postgres> {
     let _ = sqlx::query("ALTER TABLE events ADD COLUMN IF NOT EXISTS task_id TEXT").execute(&pool).await;
     let _ = sqlx::query("ALTER TABLE events ADD COLUMN IF NOT EXISTS decoded_details TEXT").execute(&pool).await;
     let _ = sqlx::query("ALTER TABLE events ADD COLUMN IF NOT EXISTS session_id TEXT").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE events ADD COLUMN IF NOT EXISTS digital_signature TEXT").execute(&pool).await;
     let _ = sqlx::query("CREATE INDEX IF NOT EXISTS idx_events_search ON events USING GIN (to_tsvector('english', process_name || ' ' || details || ' ' || COALESCE(decoded_details, '')))").execute(&pool).await;
 
     sqlx::query(

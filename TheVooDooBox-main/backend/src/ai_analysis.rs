@@ -21,6 +21,7 @@ pub struct RawEvent {
     pub details: String,
     pub decoded_details: Option<String>,
     pub timestamp: i64,
+    pub digital_signature: Option<String>,
 }
 
 // --- Structured Analysis Context for LLM ---
@@ -507,7 +508,7 @@ pub async fn generate_ai_report(
 
     // 2. Fetch Raw Telemetry (Dynamic)
     let rows = sqlx::query_as::<_, RawEvent>(
-        "SELECT event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp 
+        "SELECT event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, digital_signature 
          FROM events WHERE task_id = $1 ORDER BY timestamp ASC"
     )
     .bind(task_id)
@@ -563,11 +564,24 @@ pub async fn generate_ai_report(
         .await
         .unwrap_or_default();
     
-    let digital_signature = if !local_file_path.is_empty() {
+    let mut digital_signature = if !local_file_path.is_empty() {
         get_authenticode_signature(&local_file_path).await
     } else {
         "Unknown (File not found locally)".to_string()
     };
+
+    // If local check failed (e.g. Linux backend), try to extract from Agent telemetry
+    if digital_signature.contains("Signature check failed") || digital_signature.contains("Unknown") {
+        for row in &rows {
+            if let Some(ref sig) = row.digital_signature {
+                if !sig.is_empty() && sig != "N/A" && sig != "Unknown" && row.process_name.to_lowercase().contains(&target_filename.to_lowercase()) {
+                    println!("[AI] Recovered signature from Agent telemetry: {}", sig);
+                    digital_signature = format!("Signed by: {}", sig);
+                    break;
+                }
+            }
+        }
+    }
 
     // 3. Aggregate Dynamic Data
     let mut context = aggregate_telemetry(task_id, rows, &target_filename, exclude_ips);

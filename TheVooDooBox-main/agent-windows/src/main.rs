@@ -18,6 +18,7 @@ use winapi::um::winreg::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, RegOpenKeyExA, R
 use winapi::um::winnt::{KEY_READ, REG_SZ, REG_EXPAND_SZ};
 use winapi::shared::minwindef::{HKEY, DWORD};
 use winapi::um::winevt::*;
+use winapi::um::winbase::{GlobalLock, GlobalUnlock};
 use winapi::shared::winerror::ERROR_SUCCESS;
 
 fn wide_string(s: &str) -> Vec<u16> {
@@ -99,6 +100,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 decoded_details,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
+                digital_signature: Some(get_sysmon_field(xml, "Signature")),
             })
         },
         "2" => { // File Creation Time Changed
@@ -117,6 +119,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
+                digital_signature: None,
             })
         },
         "3" => { // Network Connection
@@ -136,6 +139,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
+                digital_signature: None,
             })
         },
         "7" => { // Image Load
@@ -152,6 +156,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
+                digital_signature: None,
             })
         },
         "8" => { // CreateRemoteThread
@@ -169,6 +174,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
+                digital_signature: None,
             })
         },
         "10" => { // Process Access (LSASS)
@@ -186,6 +192,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
+                digital_signature: None,
             })
         },
         "11" => { // File Create
@@ -202,6 +209,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
+                digital_signature: None,
             })
         },
         "15" => { // FileCreateStreamHash (ADS)
@@ -218,6 +226,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
+                digital_signature: None,
             })
         },
         "22" => { // DNS Query
@@ -249,6 +258,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
+                digital_signature: None,
             })
         },
         "25" => { // Process Tampering
@@ -265,6 +275,7 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 decoded_details: None,
                 timestamp: chrono::Utc::now().timestamp_millis(),
                 hostname: hostname.to_string(),
+                digital_signature: None,
             })
         },
         _ => None
@@ -327,6 +338,7 @@ unsafe fn monitor_sysmon(evt_tx: mpsc::UnboundedSender<AgentEvent>, hostname: St
                         decoded_details: None,
                         timestamp: chrono::Utc::now().timestamp_millis(),
                         hostname: hostname.to_string(),
+                        digital_signature: None,
                     });
                 }
             }
@@ -443,6 +455,7 @@ struct AgentEvent {
     decoded_details: Option<String>,
     timestamp: i64,
     hostname: String,
+    pub digital_signature: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -524,6 +537,7 @@ async fn start_clipboard_monitor(evt_tx: mpsc::UnboundedSender<AgentEvent>, host
                                 decoded_details,
                                 timestamp: chrono::Utc::now().timestamp_millis(),
                                 hostname: hostname.clone(),
+                                digital_signature: None,
                             });
                             last_clipboard_content = content;
                         }
@@ -611,6 +625,7 @@ async fn start_browser_listener(evt_tx: mpsc::UnboundedSender<AgentEvent>, hostn
                                     decoded_details,
                                     timestamp: chrono::Utc::now().timestamp_millis(),
                                     hostname: h_name,
+                                    digital_signature: None,
                                 });
 
                                 // Send 200 OK
@@ -665,6 +680,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         decoded_details: None,
         timestamp: chrono::Utc::now().timestamp_millis(),
         hostname: hostname.clone(),
+        digital_signature: None,
     });
 
     // 2. Sysmon Telemetry (Enhanced)
@@ -717,6 +733,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         decoded_details: None,
                         timestamp: chrono::Utc::now().timestamp_millis(),
                         hostname: hostname_fs.clone(),
+                        digital_signature: None,
                     });
                 }
             }
@@ -786,6 +803,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         decoded_details: None,
                                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                                         hostname: hostname.clone(),
+                                                        digital_signature: None,
                                                     });
                                                 }
                                                 Err(e) => {
@@ -798,6 +816,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         decoded_details: None,
                                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                                         hostname: hostname.clone(),
+                                                        digital_signature: None,
                                                     });
                                                 }
                                             }
@@ -820,6 +839,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                 decoded_details: None,
                                                 timestamp: chrono::Utc::now().timestamp_millis(),
                                                 hostname: hostname.clone(),
+                                                digital_signature: None,
                                             });
                                         }
                                     },
@@ -863,6 +883,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                         decoded_details: None,
                                                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                                                         hostname: hostname_dl.clone(),
+                                                                        digital_signature: None,
                                                                     });
                                                                     false
                                                                 } else {
@@ -885,6 +906,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                     decoded_details: None,
                                                                     timestamp: chrono::Utc::now().timestamp_millis(),
                                                                     hostname: hostname_dl.clone(),
+                                                                    digital_signature: None,
                                                                 });
                                                                 false
                                                             }
@@ -901,6 +923,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             decoded_details: None,
                                                             timestamp: chrono::Utc::now().timestamp_millis(),
                                                             hostname: hostname_dl.clone(),
+                                                            digital_signature: None,
                                                         });
                                                         false
                                                     }
@@ -919,6 +942,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                     decoded_details: None,
                                                                     timestamp: chrono::Utc::now().timestamp_millis(),
                                                                     hostname: hostname_dl.clone(),
+                                                                    digital_signature: None,
                                                                 });
 
                                                                 // 3. Detonate with Multi-Stage Logic
@@ -938,6 +962,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                                 details: format!("Binary executed via Strategy A (Direct) - attempt {}", attempt + 1),
                                                                                 timestamp: chrono::Utc::now().timestamp_millis(),
                                                                                 hostname: hostname_dl.clone(),
+                                                                                decoded_details: None,
+                                                                                digital_signature: None,
                                                                             });
                                                                             success = true;
                                                                             break;
@@ -968,6 +994,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                                 details: "Binary executed via Strategy B (CMD Wrapper)".to_string(),
                                                                                 timestamp: chrono::Utc::now().timestamp_millis(),
                                                                                 hostname: hostname_dl.clone(),
+                                                                                decoded_details: None,
+                                                                                digital_signature: None,
                                                                             });
                                                                             success = true;
                                                                         },
@@ -981,6 +1009,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                                 details: format!("Failed all execution strategies. Last error: {}", e),
                                                                                 timestamp: chrono::Utc::now().timestamp_millis(),
                                                                                 hostname: hostname_dl.clone(),
+                                                                                decoded_details: None,
+                                                                                digital_signature: None,
                                                                             });
                                                                         }
                                                                     }
@@ -1030,6 +1060,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             decoded_details: None,
                             timestamp: chrono::Utc::now().timestamp_millis(),
                             hostname: hostname.clone(),
+                            digital_signature: None,
                         });
                     }
                 }
@@ -1046,6 +1077,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             decoded_details: None,
                             timestamp: chrono::Utc::now().timestamp_millis(),
                             hostname: hostname.clone(),
+                            digital_signature: None,
                         };
                         let _ = evt_tx.send(event);
                     }
@@ -1073,6 +1105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             decoded_details: None,
                                             timestamp: chrono::Utc::now().timestamp_millis(),
                                             hostname: hostname.clone(),
+                                            digital_signature: None,
                                         });
                                     }
                                 } else {
@@ -1086,6 +1119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         decoded_details: None,
                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                         hostname: hostname.clone(),
+                                        digital_signature: None,
                                     });
                                 }
                             }
@@ -1101,6 +1135,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                         decoded_details: None,
                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                         hostname: hostname.clone(),
+                                        digital_signature: None,
                                     });
                                 }
                              }
@@ -1138,6 +1173,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     decoded_details: None,
                                     timestamp: chrono::Utc::now().timestamp_millis(),
                                     hostname: hostname.clone(),
+                                    digital_signature: None,
                                 });
                             }
                         }
@@ -1158,6 +1194,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             decoded_details: None,
                             timestamp: chrono::Utc::now().timestamp_millis(),
                             hostname: hostname.clone(),
+                            digital_signature: None,
                         });
                     }
                 }
