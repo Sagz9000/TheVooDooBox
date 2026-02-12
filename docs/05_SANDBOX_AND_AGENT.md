@@ -84,7 +84,7 @@ While Sysmon handles high-volume event tracing, the Agent performs specialized f
 *   **DNS Snapshots**: Captures the state of the Windows DNS Cache to identify domains that may have been queried before monitoring started.
 *   **Deep Browser Instrumentation**: A specialized module that captures full DOM snapshots from Edge/Chrome via a dedicated browser extension. This allows forensic analysts to see exactly what the victim saw, even if the payload was delivered via a `blob:` URL or temporary DOM object.
 *   **Auto-Decoder Engine**: The agent now features a high-performance scanning module that identifies Base64, XORed, and otherwise obfuscated strings in real-time across all monitored telemetry.
-*   **Digital Signature Collection**: The Agent natively extracts digital signature information from every process creation event via Sysmon. This ensures that even when the backend is running on a non-Windows host (like Linux Docker), the forensic report can still accurately display the binary's trust status by leveraging the Agent's local point-of-view.
+*   **Digital Signature Collection**: The Agent natively extracts digital signature information from **process creation** AND **file creation** events. This ensures that even when the backend is running on a non-Windows host (like Linux Docker), the forensic report can still accurately display the binary's trust status by leveraging the Agent's local point-of-view.
 
 ## 5. Forensic Instrumentation (Sysmon)
 

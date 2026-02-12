@@ -186,10 +186,10 @@ The agent streams the following event types:
 
 | Event Type | Description |
 |------------|-------------|
-| `PROCESS_CREATE` | New process started |
+| `PROCESS_CREATE` | New process started (captured with Signature) |
 | `PROCESS_TERMINATE` | Process killed (manual or remote) |
-| `FILE_CREATE` | File created in watched directory |
-| `FILE_MODIFY` | File modified |
+| `FILE_CREATE` | File created (captured with Signature if executable) |
+| `FILE_MODIFY` | File modified (captured with Signature if executable) |
 | `FILE_DELETE` | File deleted |
 | `NETWORK_CONNECT` | TCP connection established |
 | `LATERAL_MOVEMENT` | Connection to RDP/SMB/WinRM ports |
