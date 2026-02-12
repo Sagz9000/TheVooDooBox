@@ -33,7 +33,7 @@ pub fn verify_signature(file_path: &str) -> String {
         fdwRevocationChecks: WTD_REVOKE_NONE,
         dwUnionChoice: WTD_CHOICE_FILE,
         u: unsafe { std::mem::zeroed() }, // Union initialization
-        dwStateAction: WTD_STATEACTION_VERIFY,
+        dwStateAction: 0, // WTD_STATEACTION_IGNORE (0) - Let Windows handle state cleanup automatically
         hWVTStateData: INVALID_HANDLE_VALUE,
         pwszURLReference: ptr::null_mut(),
         dwProvFlags: WTD_DISABLE_MD2_MD4, 
@@ -78,18 +78,8 @@ pub fn verify_signature(file_path: &str) -> String {
         println!("[VERIFIER] Failed to write to log file: {}", log_path);
     }
 
-    // Clean up handle (though for WTD_STATEACTION_VERIFY it might not be strictly needed as we didn't open state)
-    // If we used WTD_STATEACTION_VERIFY, we should technically call it again with WTD_STATEACTION_CLOSE
-    // But WinVerifyTrust often handles this locally for simple verification. 
-    // Best practice: Close it.
-    win_trust_data.dwStateAction = winapi::um::wintrust::WTD_STATEACTION_CLOSE;
-     unsafe {
-        WinVerifyTrust(
-            ptr::null_mut(),
-            &mut action_guid,
-            &mut win_trust_data as *mut _ as *mut std::ffi::c_void,
-        );
-    };
+    // REMOVED MANUAL CLOSE: WTD_STATEACTION_IGNORE handles cleanup.
+    // Manual Close on invalid handles was likely causing the 0xC0000005 AV.
 
     match status {
         0 => "Signed (Verified)".to_string(), // ERROR_SUCCESS
