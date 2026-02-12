@@ -349,5 +349,3 @@ export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSel
         </>
     );
 }
-    );
-}
