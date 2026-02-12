@@ -575,26 +575,43 @@ pub async fn generate_ai_report(
     let mut context = aggregate_telemetry(task_id, rows, &target_filename, exclude_ips);
 
     // 3. If local check failed (e.g. Linux backend), try to extract from Agent telemetry via Patient Zero Lineage
+    // 3. If local check failed (e.g. Linux backend), try to extract from Agent telemetry via Patient Zero Lineage
     if digital_signature.contains("Signature check failed") || digital_signature.contains("Unknown") || digital_signature.contains("Unsigned") {
-        // Try to find the signature from the Patient Zero process first
-        let root_pid = context.patient_zero_pid.parse::<i32>().unwrap_or(0);
+        // IMPROVED RECOVERY: Scan ALL processes in the context for a valid signature, not just Patient Zero
+        // We prioritize the Patient Zero if it exists, but accept ANY valid signature linked to this task
         
+        let mut found_sig = String::new();
+        
+        // First pass: Check Patient Zero
+        let root_pid = context.patient_zero_pid.parse::<i32>().unwrap_or(0);
         if let Some(proc) = context.processes.iter().find(|p| p.pid == root_pid) {
-            if let Some(sig) = &proc.digital_signature {
-                // IMPORTANT: Only recover if the agent actually found a SIG or a detailed error
-                if !sig.is_empty() && sig != "Unknown" && sig != "N/A" {
-                    // Check if it's a known "Verified" signed string
-                    if sig.contains("Signed") {
-                         digital_signature = sig.clone();
-                    } else if sig.contains("Unsigned") {
-                         // Keep the agent's specific unsigned message (likely includes error code now)
-                         digital_signature = sig.clone();
-                    } else {
-                         // Raw certificate subject sent by older agents
-                         digital_signature = format!("Signed by: {}", sig);
+             if let Some(sig) = &proc.digital_signature {
+                 if !sig.is_empty() && sig != "Unknown" && sig != "N/A" {
+                     found_sig = sig.clone();
+                 }
+             }
+        }
+
+        // Second pass: If not found, check ANY process (e.g. if Patient Zero PID logic failed but we have other traces)
+        if found_sig.is_empty() {
+            for proc in &context.processes {
+                if let Some(sig) = &proc.digital_signature {
+                    if !sig.is_empty() && sig != "Unknown" && sig != "N/A" {
+                        found_sig = sig.clone();
+                        break; // Stop at first valid signature
                     }
                 }
             }
+        }
+
+        if !found_sig.is_empty() {
+             if found_sig.contains("Signed") {
+                  digital_signature = found_sig;
+             } else if found_sig.contains("Unsigned") {
+                  digital_signature = found_sig;
+             } else {
+                  digital_signature = format!("Signed by: {}", found_sig);
+             }
         }
     }
 

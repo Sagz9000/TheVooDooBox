@@ -756,6 +756,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         format!("FILE_{:?}", event.kind).to_uppercase()
                     };
 
+                    let sig = if is_executable {
+                        signature_verifier::verify_signature(&path_str)
+                    } else {
+                        "N/A".to_string()
+                    };
+
                     let _ = tx_fs.send(AgentEvent {
                         event_type,
                         process_id: 0,
@@ -765,7 +771,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         decoded_details: None,
                         timestamp: chrono::Utc::now().timestamp_millis(),
                         hostname: hostname_fs.clone(),
-                        digital_signature: None,
+                        digital_signature: Some(sig),
                     });
                 }
             }
