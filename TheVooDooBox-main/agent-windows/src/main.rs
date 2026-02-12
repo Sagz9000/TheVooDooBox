@@ -662,8 +662,20 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Mallab Windows Agent (Active Eye) - v3.0.0");
     
     let addr = std::env::var("AGENT_SERVER_ADDR").unwrap_or_else(|_| "192.168.50.11:9001".to_string());
-    let mut stream = TcpStream::connect(&addr).await?;
-    println!("Connected to Hyper-Bridge @ {}", addr);
+    
+    // Connection Retry Loop
+    let mut stream = loop {
+        match TcpStream::connect(&addr).await {
+            Ok(s) => {
+                 println!("Connected to Hyper-Bridge @ {}", addr);
+                 break s;
+            },
+            Err(e) => {
+                println!("[AGENT] Failed to connect to {}: {}. Retrying in 5 seconds...", addr, e);
+                tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+            }
+        }
+    };
 
     let host_ip = addr.split(':').next().unwrap_or("192.168.50.11");
     let backend_url = format!("http://{}:8080", host_ip);
