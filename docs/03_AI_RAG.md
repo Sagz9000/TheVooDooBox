@@ -23,20 +23,43 @@ Traditional RAG often retrieves random chunks of text. Our approach is structure
 ```mermaid
 sequenceDiagram
     participant User
+    participant Frontend
     participant Backend
     participant Postgres
+    participant VectorDB
     participant Ghidra
     participant LlamaServer
 
-    User->>Backend: Request AI Analysis (Task ID)
-    Backend->>Postgres: Fetch 2000+ Raw Events (Dynamic)
-    Backend->>Backend: Aggregate & Deduplicate (Lineage Tracing)
-    Backend->>Ghidra: Fetch Decompiled Functions (Static)
-    Backend->>Backend: Construct JSON Context
-    Backend->>LlamaServer: Send "Forensic Triage" Prompt
-    LlamaServer-->>Backend: JSON Report (Verdict, Timeline, IOCs)
-    Backend->>Postgres: Save Report
-    Backend-->>User: Display Report
+    User->>Frontend: Request AI Analysis (Task ID)
+    Frontend->>Backend: POST /vms/actions/analyze
+    
+    par Data Collection
+        Backend->>Postgres: SELECT * FROM events WHERE task_id = $1 (Limit 2000)
+        Postgres-->>Backend: [Raw Telemetry Stream]
+        Backend->>Ghidra: GET /analysis/{task_id}
+        Ghidra-->>Backend: [Decompiled Functions & Strings]
+        Backend->>VectorDB: Query(BehaviorTags)
+        VectorDB-->>Backend: [MITRE ATT&CK Context]
+    end
+
+    Backend->>Backend: Deduplicate & Build "Forensic Context" JSON
+    
+    note right of Backend
+        Context includes:
+        - Patient Zero Lineage
+        - Static Capabilities
+        - Similar Malware Families (VectorDB)
+    end note
+
+    Backend->>LlamaServer: Send "Forensic Triage" System Prompt + Context
+    activate LlamaServer
+    LlamaServer-->>LlamaServer: <think> Chain of Thought </think>
+    LlamaServer-->>Backend: Stream JSON Token by Token
+    deactivate LlamaServer
+
+    Backend->>Postgres: UPDATE analysis_reports SET json = $2
+    Backend-->>Frontend: WebSocket: Analysis Complete
+    Frontend-->>User: Display Report & Timeline
 ```
 
 ## Agentic Auto-Response
