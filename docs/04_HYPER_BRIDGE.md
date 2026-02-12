@@ -55,21 +55,37 @@ The `mcp-server` service translates AI intent into Hyper-Bridge actions:
 ## 📐 Architecture Flow
 
 ```mermaid
-graph LR
-    subgraph "AI Environment"
-        A[AI Analyst/Agent] -- "(MCP)" --> MS[MCP Server]
+graph TD
+    subgraph "External AI (Client)"
+        AI[Claude/Gemini/GPT]
+        Params[User Prompts] --> AI
     end
 
-    subgraph "Hyper-Bridge Core"
-        MS -- "(REST)" --> HB[hyper-bridge]
-        HB -- "Control" --> P[Proxmox API]
-        HB -- "Telemetry" --> DB[(Postgres)]
-        HB -- "Static" --> GE[Ghidra Engine]
+    subgraph "MCP Server (FastAPI)"
+        MS[Python MCP Host]
+        T1[Tool: list_lab_vms]
+        T2[Tool: rollback_vm]
+        T3[Tool: get_vm_telemetry]
+        T4[Tool: trigger_ghidra_analysis]
+        T5[Tool: query_static_functions]
+        
+        AI <-->|SSE / Stdio| MS
+        MS --- T1 & T2 & T3 & T4 & T5
     end
 
-    subgraph "Sandboxes"
-        P -- "Rollback/Power" --> V[Windows VM]
-        V -- "VirtIO Serial" --> HB
+    subgraph "Hyper-Bridge (Backend)"
+        API[REST API :8080]
+        T1 -->|GET /vms| API
+        T2 -->|POST /revert| API
+        T3 -->|GET /history| API
+        
+        T4 -->|POST /analyze| Ghidra[Ghidra Docker :8000]
+        T5 -->|GET /functions| Ghidra
+    end
+
+    subgraph "Infrastructure"
+        API --> Proxmox[Proxmox Cluster]
+        API --> Postgres[(PostgreSQL)]
     end
 ```
 

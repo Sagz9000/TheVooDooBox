@@ -11,18 +11,34 @@ The connection process follows a three-step handshake between the Frontend, the 
 
 ```mermaid
 sequenceDiagram
-    participant Analyst as Frontend (UI)
-    participant Bridge as Hyper-Bridge (Rust)
-    participant PVE as Proxmox API (8006)
+    participant Browser as Frontend (SpiceHTML5)
+    participant Relay as SpiceRelay (Rust Actor)
+    participant PVE_Proxy as Proxmox Proxy (Port 3128)
+    participant VM as QEMU/UpdateServer (Port 61000)
 
-    Analyst->>Bridge: Request Console (VNC/SPICE)
-    Bridge->>PVE: POST /qemu/{vmid}/spiceproxy
-    PVE-->>Bridge: Ticket & Proxy Details
-    Bridge-->>Analyst: WebSocket Tunnel URL + Credentials
-    Analyst->>Bridge: WS Connection (SpiceRelay)
-    Bridge->>PVE: TCP Bridge (HTTP CONNECT)
-    PVE-->>Bridge: Tunnel Established
-    Bridge-->>Analyst: Bi-directional Stream Active
+    Note over Browser, Relay: Phase 1: Authentication
+    Browser->>Relay: WebSocket Connect (ws://hyper-bridge/vms/.../spice)
+    Relay->>PVE_Proxy: TCP Connect (Host IP)
+    Relay->>PVE_Proxy: CONNECT {TargetNode}:61000 HTTP/1.1
+    PVE_Proxy-->>Relay: HTTP/1.1 200 Connection Established
+
+    Note over Relay, VM: Phase 2: Secure Tunnel
+    Relay->>VM: Start TLS Handshake (Native-TLS)
+    VM-->>Relay: TLS Server Hello / Cert
+    Relay-->>VM: TLS Client Finish
+    
+    Note over Browser, VM: Phase 3: Protocol Sync
+    Browser->>Relay: SPICE Link Header (First Bytes)
+    Relay->>VM: Forward Decrypted Bytes
+    VM-->>Relay: SPICE Link Reply
+    Relay-->>Browser: Forward Binary Event
+    
+    loop Live Stream
+        Browser->>Relay: Mouse/Keyboard Input
+        Relay->>VM: Input Event
+        VM-->>Relay: Framebuffer Update
+        Relay-->>Browser: Canvas Draw
+    end
 ```
 
 ![Raw Console Stream](../TheVooDooBox-main/pictures/consolestream.png)

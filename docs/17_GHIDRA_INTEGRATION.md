@@ -22,15 +22,33 @@ Once analysis is complete, the `ai_analysis` module:
 sequenceDiagram
     participant UI as Analyst Interface
     participant HB as Hyper-Bridge (Backend)
-    participant GE as Ghidra Engine
+    participant GE as Ghidra Engine (Docker)
+    participant script as AnalyzeAndIngest.py
     participant DB as PostgreSQL
 
-    UI->>HB: Submit File
-    HB->>GE: POST /upload & /analyze
-    GE->>GE: Headless Script: Decompile & Extract
-    GE->>HB: POST /ghidra/ingest
-    HB->>DB: Store in ghidra_findings
-    HB-->>UI: Mark "Analysis Complete"
+    UI->>HB: POST /vms/actions/analyze (File + Duration)
+    HB->>DB: Create Task (Status: QUEUED)
+    
+    par Dynamic Analysis
+        HB->>HB: Start VM & Agent
+    and Static Analysis
+        HB->>GE: POST /analyze (Binary Payload)
+        activate GE
+        GE->>GE: Create Project (Headless)
+        GE->>script: Run Script
+        activate script
+        script->>script: Import File
+        script->>script: AutoAnalysis (X86/X64)
+        script->>script: FunctionExport.java (Extract JSON)
+        script->>HB: POST /ghidra/ingest (Functions + Strings)
+        deactivate script
+        GE-->>HB: Analysis Artifacts (JSON)
+        deactivate GE
+    end
+
+    HB->>DB: INSERT INTO ghidra_findings
+    HB->>DB: UPDATE tasks SET ghidra_status = 'COMPLETED'
+    HB-->>UI: WebSocket: "Static Analysis Ready"
 ```
 
 ![Headless Ghidra Decompiler](../TheVooDooBox-main/pictures/ghidra.png)
