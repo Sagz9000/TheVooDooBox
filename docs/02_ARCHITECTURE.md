@@ -2,119 +2,146 @@
 
 ## 1. High-Level Design
 
-TheVooDooBox is a **hybrid forensic platform** that combines traditional sandbox isolation with modern AI-driven analysis. It is designed to be **modular**, **self-hosted**, and **privacy-centric**.
+TheVooDooBox is a **hybrid forensic platform** that acts as an orchestration layer between a secure, isolated sandbox environment and a modern AI analysis engine. It is built to be **self-hosted**, **offline-capable**, and **modular**.
+
+### System Context Diagram
 
 ```mermaid
-graph TD
-    User[Analyst / User] -->|Web UI (React)| Frontend[Frontend Dashboard]
+C4Context
+    title System Context Diagram for TheVooDooBox
+
+    Person(analyst, "Security Analyst", "Uploads malware, reviews reports, interacts with AI.")
     
-    subgraph "Host Environment (Docker)"
-        Frontend -->|REST / WebSocket| Backend[Hyper-Bridge Backend]
-        Backend -->|SQL| DB[(PostgreSQL)]
-        Backend -->|Vector Search| VectorDB[(ChromaDB)]
-        Backend -->|Inference| Llama[Llama.cpp Server]
-        Backend -->|Static Analysis| Ghidra[Ghidra Headless]
-    end
-    
-    subgraph "Isolation Zone (Proxmox / KVM)"
-        Backend -->|VirtIO Serial / TCP| Agent[Windows Agent]
-        Agent -->|Telemetry Stream| Backend
-        
-        subgraph "Guest VM"
-            Agent
-            Sysmon[Sysmon Driver]
-            Kernel[VoodooBox Kernel Driver]
-        end
-    end
+    System_Boundary(host, "Host Environment (Docker)") {
+        System(frontend, "Frontend Dashboard", "React/Vite app for visualization and control.")
+        System(backend, "Hyper-Bridge", "Rust API server. Orchestrates VMs, ingests telemetry, manages AI.")
+        System(db, "Persistence Layer", "PostgreSQL (Relational) + ChromaDB (Vector).")
+        System(ai, "AI Engine", "Llama.cpp (Inference) + Python Bindings.")
+    }
+
+    System_Boundary(isolation, "Isolation Zone (Proxmox/KVM)") {
+        System(vm, "Sandbox VM", "Windows 10/11 Guest. Isolated Network.")
+        System(agent, "TheVooDooBox Agent", "Rust binary running inside VM. Captures Kernel events.")
+    }
+
+    Rel(analyst, frontend, "Uses")
+    Rel(frontend, backend, "HTTPS / WSS")
+    Rel(backend, db, "SQL / Vector Query")
+    Rel(backend, ai, "Prompt / Inference")
+    Rel(backend, vm, "VirtIO Serial / TCP", "Control & Telemetry")
 ```
 
 ---
 
-## 2. Core Components
+## 2. Container Architecture
 
-### A. The Hyper-Bridge (Backend)
-**Role**: The central nervous system. It orchestrates VMs, manages the analysis queue, and synthesizes reports.
-- **Technology**: Rust (Actix-Web)
-- **Key Responsibilities**:
-    - **VM Control**: Communicates with Proxmox API to revert/start/stop snapshots.
-    - **Data Aggregation**: Ingests high-speed telemetry from the Agent (TCP/9001).
-    - **AI Orchestration**: Constructs prompts for `llama.cpp` using a RAG (Retrieval-Augmented Generation) pipeline.
-    - **State Management**: Persists all task data to PostgreSQL.
-- **Why Rust?**: Memory safety and concurrency are critical when handling potentially malicious streams and managing heavy IO.
+The system runs as a multi-container Docker application (`docker-compose.yaml`).
 
-### B. The Eye (Windows Agent)
-**Role**: The "boots on the ground" observer inside the malware sandbox.
-- **Technology**: Rust (Systems Programming)
-- **Key Modes**:
-    1.  **Passive Monitor**: Streams `Sysmon` events (Process, Network, File) to the backend.
-    2.  **Active Hunter**:
-        - **Signature Scans**: Real-time `WinVerifyTrust` checks on every file drop and execution.
-        - **Memory Forensics**: Scans for process hollowing/injection.
-        - **Browser Hooks**: Captures DOM state from web browsers.
-    3.  **Enforcer**: Can kill processes or block network traffic if instructed by the Auto-Response system.
-
-### C. The Brain (AI Analysis Engine)
-**Role**: Replaces the Tier-1 Security Analyst.
-- **Technology**: Python (Llama.cpp / GGUF Models)
-- **Models**: Optimized for `DeepSeek-R1-Distill-Llama-8B` or similar reasoning models.
-- **Workflow**:
-    1.  **Ingest**: Takes raw JSON logs from the Agent.
-    2.  **Enrich**: Adds static analysis data (Ghidra) and knowledge base context (VectorDB).
-    3.  **Think**: Uses `<think>` tags to reason through the attack chain.
-    4.  **Report**: Outputs a structured JSON verdict (Malicious/Benign) + Timeline.
-
-### D. The Face (Frontend Dashboard)
-**Role**: The command center for the human analyst.
-- **Technology**: React + TypeScript + Vite
-- **Visuals**: "Cyber-Nostalgia" aesthetic (Neon, Terminal fonts) backed by modern UX.
-- **Features**:
-    - **Live Arena**: Watch the malware detonate in real-time (VNC + Event Stream).
-    - **Execution Graph**: Interactive node-link diagram of the process tree.
-    - **Chat with Malware**: Conversational interface to query the AI about specific events.
+| Service | Image/Build | Port | Description |
+| :--- | :--- | :--- | :--- |
+| **hyper-bridge** | `./backend` | `8080` (API), `9001` (Agent) | Core logic. Rust-based Actix server. |
+| **frontend** | `./frontend` | `3000` | React web application. |
+| **db** | `postgres:15-alpine` | `5432` | Stores Tasks, Events, and Reports. |
+| **chromadb** | `chromadb/chroma` | `8002` | Stores embeddings for RAG (Retrieval Augmented Generation). |
+| **ghidra** | `./ghidra` | `8005` | Headless Ghidra server for static analysis. |
+| **mcp-server** | `./mcp-server` | `8001` | Model Context Protocol server for IDE integration. |
 
 ---
 
-## 3. Data Flow Architecture
+## 3. Database Schema
 
-### The "Detonation Loop"
+The persistence layer uses **PostgreSQL**. Key tables include:
 
-1.  **Submission**: User uploads `invoice.exe` via the Dashboard.
-2.  **Queuing**: Backend hashes the file (SHA256) and creates a `Task`.
-3.  **Prep**:
-    - Backend instructs Proxmox to **Revert** VM to "Gold Image".
-    - Backend **Uploads** the sample to the VM via internal API.
-4.  **Detonation**:
-    - Agent receives `EXECUTE` command.
-    - Agent launches sample and begins streaming events.
-    - **Simultaneously**: Backend triggers Ghidra for static analysis.
-5.  **Synthesis**:
-    - After X minutes (or termination), Agent sends "End of Report".
-    - Backend combines (Agent Stream + Ghidra Output + Vector Knowledge).
-    - AI generates the final verdict.
-6.  **Storage**: Artifacts, logs, and report are saved to disk/DB.
+### `tasks`
+Tracks the lifecycle of a submitted sample.
+- `id` (UUID): Unique Task ID.
+- `filename` (Text): Name of submitted file.
+- `file_hash` (Text): SHA256 hash.
+- `status` (Text): `QUEUED`, `RUNNING`, `ANALYZING`, `COMPLETED`.
+- `verdict` (Text): AI-determined verdict (`MALICIOUS`, `BENIGN`).
+- `risk_score` (Int): 0-100 score.
+- `sandbox_id` (Text): ID of the specific VM used.
+
+### `events`
+Stores raw telemetry streamed from the Agent.
+- `id` (Serial): Primary Key.
+- `task_id` (UUID): Link to parent Task.
+- `event_type` (Text): `PROCESS_CREATE`, `network_connect`, `file_create`, etc.
+- `timestamp` (BigInt): Unix epoch.
+- `process_id` (Int): PID of the actor.
+- `details` (JSON): Context-specific data (IPs, Paths, Registry Keys).
+- `digital_signature` (Text): status of the binary (e.g., `Signed by Microsoft`).
+
+### `analysis_reports`
+Stores the final AI-generated output.
+- `task_id` (UUID): Unique Link.
+- `report_text` (Text): Full markdown report.
+- `forensic_report_json` (JSONB): Structured findings (Timeline, IOCs).
+- `generated_at` (Timestamp).
+
+### `virustotal_cache`
+Caches external intelligence to save API quota.
+- `hash` (Text PK): SHA256.
+- `data` (JSONB): Full VT Report.
+- `scanned_at` (Timestamp).
 
 ---
 
-## 4. Security Model
+## 4. API Reference (Hyper-Bridge)
 
-### Isolation
--   **No Shared Network**: The Sandbox VM is on an isolated VLAN (Host-Only).
--   **No Internet**: By default, the VM has no outbound internet to prevent C2 leaks (configurable).
--   **Air-Gapped AI**: The AI model runs locally; no data leaves the server.
+The backend exposes a REST API on port `8080`.
 
-### Integrity
--   **Immutable Infrastructure**: VMs are reverted to a clean snapshot *before* every analysis.
--   **Agent Hardening**: The Agent runs as a System Service and (optionally) is protected by a Kernel Driver to prevent termination by malware.
+### VM Management
+- `GET /vms`: List all Proxmox VMs and their status.
+- `POST /vms/{node}/{vmid}/status`: Start, Stop, or Reset a VM.
+- `POST /vms/{node}/{vmid}/revert`: Rollback VM to "Gold Image".
+- `POST /vms/{node}/{vmid}/vnc`: Get a VNC WebSocket ticket.
+
+### Analysis Actions
+- `POST /vms/actions/submit`: Upload a file for detonation.
+    - **Multipart Form**: `file`, `analysis_duration` (seconds).
+- `POST /vms/actions/terminate`: Kill a process in the active VM.
+- `POST /vms/actions/exec`: Run a command/URL in the active VM.
+
+### Reporting
+- `GET /reports/{task_id}`: Retrieve the full forensic report.
+- `GET /reports/{task_id}/events`: Stream raw events for the timeline UI.
 
 ---
 
-## 5. Technology Stack Summary
+## 5. Security & Isolation
 
-| Layer | Technology |
-| :--- | :--- |
-| **Frontend** | React, TypeScript, Tailwind, Lucide Icons |
-| **Backend API** | Rust (Actix-Web), SQLx, Tokio |
-| **Database** | PostgreSQL (Relational), ChromaDB (Vector) |
-| **AI Inference** | Llama.cpp (GGUF), Python Bindings |
-| **Sandbox** | QEMU/KVM (Proxmox), Windows 10/11 Guest |
-| **Agent** | Rust (Windows API, Sysmon Integration) |
+### Network Segregation
+- **Host-Only Network**: The Sandbox VMs live on a dedicated virtual network (e.g., `vmbr1`) with no routing to the host's LAN.
+- **Strict Firewall**: The Guest VM can *only* talk to the Hyper-Bridge on port `9001` (Telemetry) and `8080` (Artifact Uploads).
+- **No Internet (Default)**: Outbound internet is blocked by default to prevent C2 callbacks from reaching real threat actors. (Configurable for honey-potting).
+
+### The "Eye" (Kernel Driver)
+The Agent is protected by a custom Kernel Driver (`voodoobox_eye.sys`).
+- **Anti-Tamper**: Strips `PROCESS_TERMINATE` rights from any process attempting to open a handle to the Agent.
+- **Callback Registration**: Uses `PsSetCreateProcessNotifyRoutine` to capture process execution at the kernel level, ensuring no user-mode rootkit can hide execution.
+
+---
+
+## 6. AI & RAG Pipeline
+
+For a detailed breakdown of the Artificial Intelligence architecture, including Prompt Engineering, Vector Embeddings, and the Hallucination Control Protocol, please see [03_AI_RAG.md](03_AI_RAG.md).
+
+---
+
+## 7. Build & Deployment
+
+### Backend (Rust/Actix)
+```bash
+cd backend
+cargo build --release
+```
+
+### Agent (Rust/Windows)
+The agent is cross-compiled from Linux using MinGW or built natively on Windows.
+```bash
+# Cross-compile
+cargo build --target x86_64-pc-windows-gnu --release
+```
+
+For full deployment instructions, see [13_AGENT_DEPLOYMENT.md](13_AGENT_DEPLOYMENT.md).
