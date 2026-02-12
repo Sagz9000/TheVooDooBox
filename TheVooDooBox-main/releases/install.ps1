@@ -33,8 +33,14 @@ if (!(Test-Path $InstallDir)) {
 
 # 2. Copy Executable
 Write-Host "[*] Copying agent binary..."
-if (Test-Path $AgentExe) {
-    Copy-Item -Path $AgentExe -Destination "$InstallDir\$AgentExe" -Force
+$SourcePath = Resolve-Path $AgentExe
+$DestPath = "$InstallDir\$AgentExe"
+    
+if ($SourcePath.Path -eq $DestPath) {
+    Write-Host "[*] Source and Destination are the same. Skipping copy."
+}
+else {
+    Copy-Item -Path $AgentExe -Destination $DestPath -Force
 }
 else {
     Write-Error "Could not find $AgentExe in current directory. Please run this script from the same folder as the agent binary."
