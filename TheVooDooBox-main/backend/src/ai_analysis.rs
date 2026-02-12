@@ -1133,8 +1133,18 @@ OUTPUT SCHEMA (JSON ONLY):
 
             let summary = re_summary.captures(&response_text)
                 .and_then(|c| c.get(1))
-                .map(|m| m.as_str().trim())
-                .unwrap_or(&response_text); // Fallback to full text if summary not found
+                .map(|m| m.as_str().trim().to_string())
+                .unwrap_or_else(|| {
+                    // Truncate raw response to avoid dumping a wall of JSON into the UI
+                    let raw = response_text.trim();
+                    if raw.starts_with('{') || raw.starts_with('"') {
+                        format!("[AI Parse Error] The model returned a malformed response ({} chars). Try re-running the analysis.", raw.len())
+                    } else if raw.len() > 500 {
+                        format!("{}...", &raw[..500])
+                    } else {
+                        raw.to_string()
+                    }
+                });
 
             let verdict_enum = match verdict_str.to_lowercase().as_str() {
                 s if s.contains("benign") || s.contains("alpha") => Verdict::Benign,

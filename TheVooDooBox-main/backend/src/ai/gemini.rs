@@ -58,7 +58,10 @@ impl AIProvider for GeminiProvider {
         }
 
         let payload = json!({
-            "contents": contents
+            "contents": contents,
+            "generationConfig": {
+                "maxOutputTokens": 65536
+            }
         });
 
         let resp = self.client.post(&url)

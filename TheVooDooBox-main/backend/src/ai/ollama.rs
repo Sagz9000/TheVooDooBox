@@ -59,7 +59,7 @@ impl AIProvider for OllamaProvider {
             "model": self.model,
             "messages": messages,
             "stream": false,
-            "max_tokens": 4096
+            "max_tokens": 64000
         });
 
         let resp = self.client.post(&url)
