@@ -830,12 +830,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                         event_type: "EXEC_SUCCESS".to_string(),
                                                         process_id: child.id(),
                                                         parent_process_id: std::process::id(),
-                                                        process_name: path,
+                                                        process_name: path.clone(),
                                                         details: "Binary execution started via remote command".to_string(),
                                                         decoded_details: None,
                                                         timestamp: chrono::Utc::now().timestamp_millis(),
                                                         hostname: hostname.clone(),
-                                                        digital_signature: None,
+                                                        digital_signature: Some(signature_verifier::verify_signature(&path)),
                                                     });
                                                 }
                                                 Err(e) => {
@@ -1010,7 +1010,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                                 timestamp: chrono::Utc::now().timestamp_millis(),
                                                                                 hostname: hostname_dl.clone(),
                                                                                 decoded_details: None,
-                                                                                digital_signature: None,
+                                                                                digital_signature: Some(signature_verifier::verify_signature(&dest_path_clone)),
                                                                             });
                                                                             success = true;
                                                                             break;
@@ -1042,7 +1042,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                                                 timestamp: chrono::Utc::now().timestamp_millis(),
                                                                                 hostname: hostname_dl.clone(),
                                                                                 decoded_details: None,
-                                                                                digital_signature: None,
+                                                                                digital_signature: Some(signature_verifier::verify_signature(&dest_path_clone)),
                                                                             });
                                                                             success = true;
                                                                         },
@@ -1115,6 +1115,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 // 2. Process Lifecycle
                 for &pid in current_pids.difference(&known_pids) {
                     if let Some(p) = sys.process(sysinfo::Pid::from(pid as usize)) {
+                        // Capture Signature
+                        let exe_path = p.exe().to_string_lossy().to_string();
+                        let sig = if !exe_path.is_empty() {
+                            signature_verifier::verify_signature(&exe_path)
+                        } else {
+                            "Unknown (No Path)".to_string()
+                        };
+
                         let event = AgentEvent {
                             event_type: "PROCESS_CREATE".to_string(),
                             process_id: pid,
@@ -1124,7 +1132,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             decoded_details: None,
                             timestamp: chrono::Utc::now().timestamp_millis(),
                             hostname: hostname.clone(),
-                            digital_signature: None,
+                            digital_signature: Some(sig),
                         };
                         let _ = evt_tx.send(event);
                     }
