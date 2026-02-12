@@ -379,7 +379,7 @@ pub async fn query_telemetry_rag(task_id: &String, query_text: &str, n_results: 
     
     let col_uuid = match get_collection_id(&client, &chroma_url, collection_name).await {
         Ok(id) => id,
-        Err(e) => return Ok(vec![]) // Fail safe
+        Err(_e) => return Ok(vec![]) // Fail safe
     };
 
     let embedding = get_embedding(query_text).await?;

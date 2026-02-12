@@ -2148,7 +2148,8 @@ async fn trigger_task_analysis(
     let auto_response = req.auto_response.unwrap_or(true); // Default to true if not specified, or false? Let's say true for now.
     println!("[AI] Manual analysis trigger for task: {} (Auto-Response: {})", task_id, auto_response);
     
-    match ai_analysis::generate_ai_report(&task_id, pool.get_ref(), &ai_manager, manager.get_ref().clone(), auto_response).await {
+    let mode = req.mode.clone().unwrap_or_else(|| "quick".to_string());
+    match ai_analysis::generate_ai_report(&task_id, pool.get_ref(), &ai_manager, manager.get_ref().clone(), auto_response, &mode).await {
         Ok(_) => {
             // After generation, fetch the full forensic report JSON
             let res = sqlx::query("SELECT forensic_report_json FROM analysis_reports WHERE task_id = $1")

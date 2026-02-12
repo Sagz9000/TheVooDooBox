@@ -80,7 +80,7 @@ pub struct RegistryOp {
 // --- Legacy Types for main.rs compatibility ---
 #[derive(Deserialize)]
 pub struct ManualAnalysisRequest {
-    pub _mode: Option<String>,
+    pub mode: Option<String>,
     pub auto_response: Option<bool>,
 }
 
@@ -1170,6 +1170,7 @@ OUTPUT SCHEMA (JSON ONLY):
                 related_samples: vec![],
                 recommended_actions: vec![],
                 digital_signature: Some(digital_signature.clone()),
+                mitre_matrix: HashMap::new(),
             }
         }
     };
