@@ -681,6 +681,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let hostname = std::env::var("COMPUTERNAME").unwrap_or_else(|_| "unknown-vm".to_string());
     println!("[AGENT] Identity: {}", hostname);
+    
+    // Run Signature Verifier Self-Test on Startup
+    signature_verifier::test_verifier();
 
     let (evt_tx, mut evt_rx) = mpsc::unbounded_channel::<AgentEvent>();
 

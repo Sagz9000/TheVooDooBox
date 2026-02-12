@@ -67,9 +67,15 @@ pub fn verify_signature(file_path: &str) -> String {
     let log_folder = "C:\\Mallab";
     let log_path = "C:\\Mallab\\voodoobox_debug.log";
     let _ = std::fs::create_dir_all(log_folder);
+    
+    // Also print to Stdout for immediate feedback if run interactively
+    println!("[VERIFIER] Checking: {} | Status: {:#x}", file_path, status);
+
     if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open(log_path) {
         use std::io::Write;
-        let _ = writeln!(file, "[{}] Checking: {} | Status: {:#x}", chrono::Local::now(), file_path, status);
+        let _ = writeln!(file, "[{}] [VERIFIER] Checking: {} | Status: {:#x}", chrono::Local::now(), file_path, status);
+    } else {
+        println!("[VERIFIER] Failed to write to log file: {}", log_path);
     }
 
     // Clean up handle (though for WTD_STATEACTION_VERIFY it might not be strictly needed as we didn't open state)
@@ -89,7 +95,7 @@ pub fn verify_signature(file_path: &str) -> String {
         0 => "Signed (Verified)".to_string(), // ERROR_SUCCESS
         _ => {
             let err = status as i32;
-            if err == TRUST_E_NOSIGNATURE {
+            let msg = if err == TRUST_E_NOSIGNATURE {
                 "Unsigned".to_string()
             } else if err == TRUST_E_SUBJECT_NOT_TRUSTED {
                 "Signed (Untrusted Root)".to_string() 
@@ -99,7 +105,31 @@ pub fn verify_signature(file_path: &str) -> String {
                 "Unsigned (Unknown Provider)".to_string()
             } else {
                  format!("Unsigned (Error Code: {:#x})", status)
+            };
+            
+            // Log failure reason
+             if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("C:\\Mallab\\voodoobox_debug.log") {
+                use std::io::Write;
+                let _ = writeln!(file, "[{}] [VERIFIER] Result for {}: {}", chrono::Local::now(), file_path, msg);
             }
+            msg
         }
+    }
+}
+
+pub fn test_verifier() {
+    println!("[VERIFIER] Running Self-Test...");
+    let target = "C:\\Windows\\System32\\notepad.exe";
+    if std::path::Path::new(target).exists() {
+        let result = verify_signature(target);
+        println!("[VERIFIER] Self-Test Result for {}: {}", target, result);
+        
+        // Log to file explicitly for self-test
+        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("C:\\Mallab\\voodoobox_debug.log") {
+            use std::io::Write;
+            let _ = writeln!(file, "[{}] [SELF-TEST] Notepad.exe signature check: {}", chrono::Local::now(), result);
+        }
+    } else {
+        println!("[VERIFIER] Self-Test Skipped: notepad.exe not found.");
     }
 }

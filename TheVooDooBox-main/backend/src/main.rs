@@ -1438,7 +1438,7 @@ async fn chat_handler(
 
     let telemetry_events = if let Some(tid) = &target_task_id {
         sqlx::query_as::<_, RawAgentEvent>(
-            "SELECT id, event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id 
+            "SELECT id, event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id, digital_signature 
              FROM events 
              WHERE task_id = $1 
              ORDER BY timestamp ASC LIMIT 500"
@@ -1454,7 +1454,7 @@ async fn chat_handler(
     // Fallback: Global search also needs decoded_details
     let telemetry_events = if telemetry_events.is_empty() && target_task_id.is_none() {
         sqlx::query_as::<_, RawAgentEvent>(
-            "SELECT id, event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id FROM events ORDER BY timestamp DESC LIMIT 200"
+            "SELECT id, event_type, process_id, parent_process_id, process_name, details, decoded_details, timestamp, task_id, digital_signature FROM events ORDER BY timestamp DESC LIMIT 200"
         )
         .fetch_all(pool.get_ref())
         .await
