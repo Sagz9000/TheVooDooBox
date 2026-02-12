@@ -53,10 +53,22 @@
 ## 4. Configuring the Sandbox (Windows VM)
 
 1.  **Create VM**: In Proxmox, create a Windows 10/11 VM.
-2.  **Install Agent**: Compile `agent-windows` and copy `agent-windows.exe` to the VM.
+2.  **Install Agent**: Compile `agent-windows` on your dev machine and copy `mallab-agent-windows.exe` to the VM.
 3.  **Run Agent**: Execute the agent with the server IP:
     ```powershell
-    .\agent-windows.exe --server <HOST_IP>:9001
+    .\mallab-agent-windows.exe --server <HOST_IP>:9001
     ```
 4.  **Snapshot**: Take a snapshot named `GOLD_IMAGE` while the agent is running and waiting for commands.
 5.  **Update Config**: Ensure the `.env` file reflects the VM ID and Snapshot Name.
+
+---
+
+## 5. Deployment Matrix (Summary)
+
+For the latest updates (e.g., signature verification fixes), follow this matrix:
+
+| Component | Target OS | Deployment Method |
+| :--- | :--- | :--- |
+| **Agent** | Windows (Sandbox VM) | Recompile `agent-windows` on dev machine. Copy `.exe` to VM. |
+| **Backend** | Linux (Server) | `git pull` on server, then `docker-compose up --build -d`. |
+| **Frontend** | Linux (Server) | (Bundled with Backend Docker Compose) |

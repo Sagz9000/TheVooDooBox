@@ -49,8 +49,15 @@ For those familiar with the stack:
 
 1.  **Clone**: `git clone https://github.com/Sagz9000/TheVooDooBox.git`
 2.  **Config**: `cp .env.example .env` (⚠️ Check `DATABASE_URL` user is `voodoobox`!)
-3.  **Run**: `docker-compose up -d --build`
-4.  **Analysis**: Access UI at `http://localhost:3000`
+3.  **Redeploy Backend (Linux)**:
+    ```bash
+    git pull
+    docker-compose up -d --build
+    ```
+4.  **Update Agent (Windows)**:
+    - Compile `agent-windows` on your dev machine.
+    - Copy the resulting `.exe` to your Sandbox VM.
+5.  **Analysis**: Access UI at `http://localhost:3000`
 
 ## 📺 Streaming vs. Logging
 
