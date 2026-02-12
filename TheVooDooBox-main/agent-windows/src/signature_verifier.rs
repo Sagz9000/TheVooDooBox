@@ -96,15 +96,15 @@ pub fn verify_signature(file_path: &str) -> String {
         _ => {
             let err = status as i32;
             let msg = if err == TRUST_E_NOSIGNATURE {
-                "Unsigned".to_string()
+                format!("Unsigned (0x{:X})", status)
             } else if err == TRUST_E_SUBJECT_NOT_TRUSTED {
-                "Signed (Untrusted Root)".to_string() 
+                format!("Signed (Untrusted Root: 0x{:X})", status)
             } else if err == CERT_E_CHAINING {
-                "Signed (Untrusted Root - Chain Issue)".to_string()
+                format!("Signed (Chain Issue: 0x{:X})", status)
             } else if err == TRUST_E_PROVIDER_UNKNOWN {
-                "Unsigned (Unknown Provider)".to_string()
+                format!("Unsigned (Unknown Provider: 0x{:X})", status)
             } else {
-                 format!("Unsigned (Error Code: {:#x})", status)
+                 format!("Unsigned (Error: 0x{:X})", status)
             };
             
             // Log failure reason
