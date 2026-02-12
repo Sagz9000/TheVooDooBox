@@ -44,12 +44,7 @@ sequenceDiagram
 
     Backend->>Backend: Deduplicate & Build "Forensic Context" JSON
     
-    note right of Backend
-        Context includes:
-        - Patient Zero Lineage
-        - Static Capabilities
-        - Similar Malware Families (VectorDB)
-    end note
+    note right of Backend: Context includes:<br/>- Patient Zero Lineage<br/>- Static Capabilities<br/>- Similar Malware Families (VectorDB)
 
     Backend->>LlamaServer: Send "Forensic Triage" System Prompt + Context
     activate LlamaServer
