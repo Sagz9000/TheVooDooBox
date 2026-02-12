@@ -26,7 +26,8 @@ import {
     Tag as TagIcon,
     Fingerprint,
     ExternalLink,
-    Share2
+    Share2,
+    Target
 } from 'lucide-react';
 import { AgentEvent, voodooApi, ForensicReport, Tag } from './voodooApi';
 import AIInsightPanel from './AIInsightPanel';
@@ -74,7 +75,7 @@ const NOISE_FILTER_PROCESSES = [
 
 export default function ReportView({ taskId, events: globalEvents, onBack }: Props) {
     const [selectedPid, setSelectedPid] = useState<number | null>(null);
-    const [activeTab, setActiveTab] = useState<'timeline' | 'network' | 'web' | 'files' | 'registry' | 'console' | 'ghidra' | 'intelligence' | 'screenshots' | 'notes' | 'decoder'>('timeline');
+    const [activeTab, setActiveTab] = useState<'timeline' | 'network' | 'web' | 'files' | 'registry' | 'console' | 'ghidra' | 'tactics' | 'intelligence' | 'screenshots' | 'notes' | 'decoder'>('timeline');
     const [localEvents, setLocalEvents] = useState<AgentEvent[]>([]);
     const [ghidraFindings, setGhidraFindings] = useState<any[]>([]);
     const [screenshots, setScreenshots] = useState<string[]>([]);
@@ -631,6 +632,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<FileText size={14} />} label="Files" count={fileEvents.length} />
                             <TabButton active={activeTab === 'registry'} onClick={() => setActiveTab('registry')} icon={<Server size={14} />} label="Registry" count={registryEvents.length} />
                             <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Static Findings" count={ghidraFindings.length} />
+                            <TabButton active={activeTab === 'tactics'} onClick={() => setActiveTab('tactics')} icon={<Target size={14} />} label="MITRE Matrix" />
                             <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} icon={<Sparkles size={14} />} label="Intelligence" />
                             <TabButton active={activeTab === 'notes'} onClick={() => setActiveTab('notes')} icon={<Pencil size={14} />} label="Notes" />
                             <TabButton active={activeTab === 'decoder'} onClick={() => setActiveTab('decoder')} icon={<Binary size={14} />} label="Decoder" />
@@ -703,6 +705,84 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                         )}
                         {activeTab === 'ghidra' && (
                             <GhidraFindingsView findings={ghidraFindings} />
+                        )}
+                        {activeTab === 'tactics' && (
+                            <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6 bg-[#080808]">
+                                <div className="max-w-7xl mx-auto">
+                                    <div className="mb-8 flex items-center justify-between">
+                                        <div>
+                                            <h2 className="text-2xl font-black text-white tracking-tight uppercase mb-1 flex items-center gap-3">
+                                                <Target className="text-brand-500" />
+                                                MITRE ATT&CK Matrix
+                                            </h2>
+                                            <p className="text-zinc-500 text-sm font-mono">Tactic & Technique mapping from forensic analysis.</p>
+                                        </div>
+                                        {!aiReport?.mitre_matrix && (
+                                            <div className="px-4 py-2 rounded bg-zinc-900 border border-zinc-800 text-zinc-500 text-xs font-mono flex items-center gap-2">
+                                                <Sparkles size={12} />
+                                                Run "Deep Dive" analysis to populate
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {aiReport?.mitre_matrix ? (
+                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                                            {Object.entries(aiReport.mitre_matrix).map(([tactic, techniques]) => (
+                                                <div key={tactic} className="bg-[#0c0c0c] border border-white/5 rounded-lg overflow-hidden flex flex-col hover:border-brand-500/30 transition-colors group">
+                                                    <div className="p-3 border-b border-white/5 bg-white/5 flex items-center justify-between group-hover:bg-brand-500/5 transition-colors">
+                                                        <h3 className="text-xs font-black text-zinc-300 uppercase tracking-wider">
+                                                            {tactic.replace(/_/g, ' ')}
+                                                        </h3>
+                                                        <span className="text-[10px] font-mono text-zinc-600 bg-black/50 px-1.5 py-0.5 rounded">
+                                                            {techniques.length}
+                                                        </span>
+                                                    </div>
+                                                    <div className="p-3 space-y-3">
+                                                        {(techniques as any[]).map((tech: any, i: number) => (
+                                                            <div key={i} className="bg-black/30 rounded-md p-2.5 border border-white/5 hover:border-brand-500/20 transition-colors">
+                                                                <div className="flex items-center gap-2 mb-1">
+                                                                    <span className="text-[9px] font-mono text-brand-400 bg-brand-500/10 px-1.5 py-0.5 rounded border border-brand-500/20">
+                                                                        {tech.id || 'N/A'}
+                                                                    </span>
+                                                                    <span className="text-[11px] font-bold text-zinc-300 leading-tight">{tech.name || tech}</span>
+                                                                </div>
+                                                                {tech.evidence && tech.evidence.length > 0 && (
+                                                                    <div className="mt-1.5 space-y-1 pl-2 border-l border-white/5">
+                                                                        {tech.evidence.map((ev: string, j: number) => (
+                                                                            <div key={j} className="text-[10px] text-zinc-500 font-mono leading-relaxed">
+                                                                                • {ev}
+                                                                            </div>
+                                                                        ))}
+                                                                    </div>
+                                                                )}
+                                                                {tech.status && (
+                                                                    <div className={`mt-1 text-[9px] font-bold uppercase tracking-wider ${tech.status === 'confirmed' ? 'text-red-400' :
+                                                                            tech.status === 'suspected' ? 'text-yellow-400' :
+                                                                                'text-zinc-500'
+                                                                        }`}>
+                                                                        {tech.status}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col items-center justify-center py-20 text-zinc-600 space-y-4 border border-dashed border-white/10 rounded-xl bg-white/5">
+                                            <Target size={48} className="opacity-20" />
+                                            <p className="text-sm font-bold uppercase tracking-widest text-zinc-500">No MITRE ATT&CK Data Available</p>
+                                            <button
+                                                onClick={() => handleAIAnalysis('deep')}
+                                                className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded text-xs font-bold uppercase tracking-wider transition-colors shadow-lg shadow-brand-500/20"
+                                            >
+                                                Run Deep Dive Analysis
+                                            </button>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
                         )}
                         {activeTab === 'intelligence' && (
                             <div className="absolute inset-0 bg-security-bg overflow-hidden shadow-2xl">

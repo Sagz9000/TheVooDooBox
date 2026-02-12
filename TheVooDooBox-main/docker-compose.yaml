@@ -14,26 +14,26 @@ services:
       - OLLAMA_URL=http://192.168.50.98:11434
       - OLLAMA_MODEL=llama-server
       - EMBEDDING_MODEL=llama-server
-      - CHROMADB_URL=http://chromadb:8000
+      - CHROMADB_URL=http://192.168.50.98:8001
       - DATABASE_URL=postgres://voodoobox:${POSTGRES_PASSWORD}@db:5432/voodoobox_telemetry
       - RUST_LOG=debug
       - HOST_IP=${HOST_IP}
     depends_on:
       - db
-      - chromadb
     volumes:
       - ./backend/uploads:/app/uploads
       - ./backend/screenshots:/app/screenshots
       - ./backend/reports:/app/reports
     restart: unless-stopped
 
-  chromadb:
-    image: chromadb/chroma:latest
-    ports:
-      - "8002:8000"
-    volumes:
-      - ./chroma_data:/chroma/chroma
-    restart: unless-stopped
+  # ChromaDB moved to AI Server (192.168.50.98) - see deploy-ai/
+  #  chromadb:
+  #    image: chromadb/chroma:latest
+  #    ports:
+  #      - "8002:8000"
+  #    volumes:
+  #      - ./chroma_data:/chroma/chroma
+  #    restart: unless-stopped
 
   db:
     image: postgres:15-alpine

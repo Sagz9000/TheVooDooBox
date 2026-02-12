@@ -39,12 +39,20 @@ export interface ForensicReport {
     related_samples?: RelatedSample[];
     recommended_actions?: RecommendedAction[];
     digital_signature?: string;
+    mitre_matrix?: Record<string, MitreTechnique[]>;
 }
 
 export interface RecommendedAction {
     action: string;
     params: Record<string, string>;
     reasoning: string;
+}
+
+export interface MitreTechnique {
+    id: string;
+    name: string;
+    evidence: string[];
+    status: string;
 }
 
 export interface RelatedSample {

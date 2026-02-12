@@ -187,6 +187,73 @@ pub fn generate_pdf_file(_task_id: &String, report: &ForensicReport, context: &A
         doc.push(elements::Break::new(2.0));
     }
 
+    // --- MITRE ATT&CK MATRIX ---
+    if !report.mitre_matrix.is_empty() {
+        doc.push(elements::Paragraph::new("MITRE ATT&CK Matrix").styled(summary_style));
+        doc.push(elements::Paragraph::new("Tactics and techniques identified during analysis, mapped to the MITRE framework.").styled(style::Style::new().italic().with_font_size(10).with_color(style::Color::Rgb(100, 100, 100))));
+        doc.push(elements::Break::new(0.5));
+
+        // Define standard tactic order for display
+        let tactic_order = vec![
+            "Reconnaissance", "Resource Development", "Initial Access", "Execution", 
+            "Persistence", "Privilege Escalation", "Defense Evasion", "Credential Access", 
+            "Discovery", "Lateral Movement", "Collection", "Command and Control", 
+            "Exfiltration", "Impact"
+        ];
+
+        // Create a table for the matrix
+        let mut matrix_table = elements::TableLayout::new(vec![3, 8]);
+        matrix_table.set_cell_decorator(elements::FrameCellDecorator::new(true, true, false));
+        
+        // Header
+        let _ = matrix_table.push_row(vec![
+            Box::new(elements::Paragraph::new("Tactic").styled(style::Style::new().bold())),
+            Box::new(elements::Paragraph::new("Techniques & Evidence").styled(style::Style::new().bold())),
+        ]);
+
+        // Iterate through sorted tactics first, then any others
+        let mut keys: Vec<&String> = report.mitre_matrix.keys().collect();
+        // Custom sort: if in tactic_order, use index, else put at end
+        keys.sort_by(|a, b| {
+            let pos_a = tactic_order.iter().position(|&x| x.eq_ignore_ascii_case(a.replace("_", " ").as_str())).unwrap_or(999);
+            let pos_b = tactic_order.iter().position(|&x| x.eq_ignore_ascii_case(b.replace("_", " ").as_str())).unwrap_or(999);
+            pos_a.cmp(&pos_b)
+        });
+
+        for tactic in keys {
+            if let Some(techniques) = report.mitre_matrix.get(tactic) {
+                if techniques.is_empty() { continue; }
+                
+                let display_tactic = tactic.replace("_", " ").to_uppercase();
+                let tactic_title = elements::Paragraph::new(display_tactic).styled(style::Style::new().bold().with_font_size(9));
+                
+                // Format techniques: "Name (ID): Evidence"
+                let mut tech_content = elements::LinearLayout::vertical();
+                for tech in techniques {
+                    let header = format!("{} ({})", tech.name, tech.id);
+                    tech_content.push(elements::Paragraph::new(header).styled(style::Style::new().bold().with_font_size(9)));
+                    
+                    if !tech.evidence.is_empty() {
+                         for ev in &tech.evidence {
+                              tech_content.push(elements::Paragraph::new(format!("- {}", ev)).styled(style::Style::new().italic().with_font_size(8).with_color(style::Color::Rgb(80, 80, 80))));
+                         }
+                    } else {
+                         tech_content.push(elements::Paragraph::new("- No specific evidence cited.").styled(style::Style::new().italic().with_font_size(8).with_color(style::Color::Rgb(150, 150, 150))));
+                    }
+                    tech_content.push(elements::Break::new(0.5));
+                }
+                
+                let _ = matrix_table.push_row(vec![
+                    Box::new(tactic_title),
+                    Box::new(tech_content),
+                ]);
+            }
+        }
+        
+        doc.push(matrix_table);
+        doc.push(elements::Break::new(2.0));
+    }
+
     // --- PROCESS TREE ---
     doc.push(elements::Paragraph::new("Process Execution Tree").styled(summary_style));
     doc.push(elements::Paragraph::new("Hierarchical view of spawned processes during detonation.").styled(style::Style::new().italic().with_font_size(10).with_color(style::Color::Rgb(100,100,100))));

@@ -1,0 +1,32 @@
+version: '3.9'
+
+# ============================================================
+# VooDooBox - AI Node Deployment (192.168.50.98)
+# ============================================================
+# This compose file runs ChromaDB on the AI server alongside
+# the existing llama.cpp / DeepCoder instance.
+#
+# Usage:
+#   1. Copy this folder to the AI server (192.168.50.98)
+#   2. Run: docker compose up -d
+#   3. Verify: curl http://localhost:8000/api/v1/heartbeat
+# ============================================================
+
+services:
+  chromadb:
+    image: chromadb/chroma:latest
+    container_name: voodoobox-chromadb
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./chroma_data:/chroma/chroma
+    environment:
+      - IS_PERSISTENT=TRUE
+      - ANONYMIZED_TELEMETRY=FALSE
+    restart: unless-stopped
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/v1/heartbeat" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s

@@ -139,6 +139,16 @@ pub struct ForensicReport {
     pub recommended_actions: Vec<RecommendedAction>,
     #[serde(default)]
     pub digital_signature: Option<String>,
+    #[serde(default)]
+    pub mitre_matrix: HashMap<String, Vec<MitreTechnique>>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone)]
+pub struct MitreTechnique {
+    pub id: String,
+    pub name: String,
+    pub evidence: Vec<String>,
+    pub status: String,
 }
 
 fn deserialize_number<'de, D>(deserializer: D) -> Result<i32, D::Error>
@@ -471,7 +481,8 @@ pub async fn generate_ai_report(
     pool: &Pool<Postgres>,
     ai_manager: &crate::ai::manager::AIManager,
     agent_manager: Arc<AgentManager>,
-    auto_response: bool
+    auto_response: bool,
+    analysis_mode: &str // "quick" or "deep"
 ) -> Result<(), Box<dyn std::error::Error>> {
 
     // 1. Wait for Ghidra analysis if it's currently running
@@ -662,12 +673,48 @@ pub async fn generate_ai_report(
     }
     context.related_samples = related_samples;
 
-    // 6. Construct Hybrid Prompt
-    // Extract valid PIDs for the "Menu" technique
-    let valid_pids: Vec<String> = context.processes.iter().map(|p| p.pid.to_string()).collect();
-    let pid_list_str = valid_pids.join(", ");
+    // 6. RAG / Deep Dive Logic
+    let mut rag_context = String::new();
+    if analysis_mode == "deep" {
+        println!("[AI] Deep Dive Mode: Ingesting telemetry into Vector DB...");
+        // Ingest
+        if let Err(e) = crate::memory::ingest_telemetry(task_id, &context.processes).await {
+             println!("[AI] Warning: RAG Ingestion failed: {}", e);
+             rag_context.push_str("\n[System Error: Vector Ingestion Failed. Falling back to standard analysis.]\n");
+        } else {
+            println!("[AI] Deep Dive: Executing Hunter Loop (MITRE queries)...");
+            
+            rag_context.push_str("\n\n### DEEP DIVE INTELLIGENCE (Vector Retrieval)\n");
+            rag_context.push_str("The system has actively hunted for specific threats using Vector Search. Use this evidence to populate the MITRE Matrix.\n\n");
 
-    // Aggressive Truncation for <8k Context Window
+            let tactics = vec![
+                ("Persistence", "registry run keys, startup folder, scheduled tasks, service creation, wmi subscription"),
+                ("Defense Evasion", "disable av, powershell -w hidden, delete shadow copies, clear logs, obfuscated command"),
+                ("C2 & Exfiltration", "beaconing, http request, dns tunnel, non-standard port, sensitive data upload"),
+                ("Impact", "encrypt files, ransom note, overwrite mbr, system shutdown")
+            ];
+
+            for (tactic, query) in tactics {
+                match crate::memory::query_telemetry_rag(task_id, query, 5).await {
+                     Ok(docs) => {
+                         if !docs.is_empty() {
+                             rag_context.push_str(&format!("#### TACTIC: {}\n", tactic));
+                             for (i, doc) in docs.iter().enumerate() {
+                                 rag_context.push_str(&format!("- Evidence {}: {}\n", i+1, doc));
+                             }
+                             rag_context.push_str("\n");
+                         } else {
+                             rag_context.push_str(&format!("#### TACTIC: {}\n- No direct evidence found in top 5 vector matches.\n\n", tactic));
+                         }
+                     },
+                     Err(e) => println!("[AI] Vector Query failed for {}: {}", tactic, e)
+                }
+            }
+        }
+    }
+
+    // 6. Construct Hybrid Prompt
+    // Prepare initial sort for truncation
     let mut truncated_processes = context.processes.clone();
     
     // Sort by Relevance to keep interesting processes
@@ -702,10 +749,15 @@ pub async fn generate_ai_report(
         get_score(b).cmp(&get_score(a))
     });
 
-    // Moderate limit: 10 processes to save tokens
-    if truncated_processes.len() > 10 {
-        truncated_processes.truncate(10);
+    // Moderate limit: 12 processes to save tokens (bumped from 10)
+    if truncated_processes.len() > 12 {
+        truncated_processes.truncate(12);
     }
+
+    // Extract valid PIDs for the "Menu" technique ONLY from the truncated list to save tokens
+    let valid_pids: Vec<String> = truncated_processes.iter().map(|p| p.pid.to_string()).collect();
+    let total_process_count = context.processes.len();
+    let pid_list_str = format!("{} (showing top {} of {} total processes)", valid_pids.join(", "), valid_pids.len(), total_process_count);
     for proc in &mut truncated_processes {
         // Network: External IPs first
         proc.network_activity.sort_by(|a, b| {
@@ -768,6 +820,16 @@ pub async fn generate_ai_report(
             func.pseudocode.push_str("\n...[TRUNCATED]");
         }
     }
+    
+    // Add RAG Context to prompt
+    let rag_section = if !rag_context.is_empty() {
+        rag_context
+    } else {
+        match analysis_mode {
+            "deep" => "\n[Deep Dive Note: No specific vector evidence found or ingestion failed]\n".to_string(),
+             _ => "".to_string()
+        }
+    };
 
     let sysmon_json = serde_json::to_string_pretty(&truncated_processes).unwrap_or_default();
     let ghidra_json = serde_json::to_string_pretty(&truncated_ghidra.functions).unwrap_or_default();
@@ -877,6 +939,16 @@ OUTPUT SCHEMA (JSON ONLY):
         }}
     ],
     "digital_signature": "String (e.g., 'Signed by Microsoft' or 'Unsigned')",
+    "mitre_matrix": {{
+        "Tactic Name (e.g. Execution, Persistence, Defense Evasion)": [
+            {{
+                "id": "TXXXX.XXX",
+                "name": "Technique Name",
+                "evidence": ["Specific telemetry or code evidence"],
+                "status": "confirmed or suspected"
+            }}
+        ]
+    }},
     "thinking": "Your internal technical reasoning/chain-of-thought goes here."
 }}
 "# , 

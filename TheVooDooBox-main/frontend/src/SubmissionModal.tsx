@@ -15,6 +15,7 @@ export interface SubmissionData {
     file?: File;
     url?: string;
     duration: number; // in minutes
+    mode: 'quick' | 'deep';
 }
 
 export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSelected }: SubmissionModalProps) {
@@ -22,6 +23,7 @@ export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSel
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [urlInput, setUrlInput] = useState('');
     const [duration, setDuration] = useState(5);
+    const [analysisMode, setAnalysisMode] = useState<'quick' | 'deep'>('quick');
     const [selectedVm, setSelectedVm] = useState<{ node: string, vmid: number } | null>(null);
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -77,6 +79,7 @@ export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSel
             file: selectedFile || undefined,
             url: urlInput || undefined,
             duration,
+            mode: analysisMode,
             vmid: selectedVm?.vmid,
             node: selectedVm?.node
         });
@@ -235,6 +238,35 @@ export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSel
                                 </div>
                             </div>
                         </div>
+                        {/* Analysis Mode Toggle */}
+                        <div className="space-y-4">
+                            <label className="text-[9px] md:text-[10px] text-security-muted font-black uppercase tracking-widest block flex items-center justify-between">
+                                <span className="flex items-center gap-2">
+                                    <Zap size={12} className={analysisMode === 'deep' ? 'text-brand-500' : 'text-slate-500'} />
+                                    Forensic Depth
+                                </span>
+                                <span className="text-brand-500 font-mono text-xs md:text-sm uppercase">{analysisMode}</span>
+                            </label>
+                            <div className="flex bg-black/40 p-1 rounded-lg border border-security-border">
+                                <button
+                                    onClick={() => setAnalysisMode('quick')}
+                                    className={`flex-1 py-2 rounded-md text-[10px] font-black uppercase transition-all ${analysisMode === 'quick' ? 'bg-brand-500 text-white shadow-lg' : 'text-security-muted hover:text-white'}`}
+                                >
+                                    Quick Scan
+                                </button>
+                                <button
+                                    onClick={() => setAnalysisMode('deep')}
+                                    className={`flex-1 py-2 rounded-md text-[10px] font-black uppercase transition-all ${analysisMode === 'deep' ? 'bg-purple-600 text-white shadow-lg' : 'text-security-muted hover:text-white'}`}
+                                >
+                                    Deep Dive (RAG)
+                                </button>
+                            </div>
+                            <div className="text-[9px] text-security-muted leading-relaxed px-1">
+                                {analysisMode === 'quick'
+                                    ? "Standard heuristic analysis. Fast (1-2 mins). Good for initial triage."
+                                    : "Full Vector Search & MITRE Mapping. Slower (5-10 mins). Best for complex threats."}
+                            </div>
+                        </div>
 
                         {/* Sandbox Selection */}
                         <div className="space-y-3">
@@ -295,24 +327,24 @@ export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSel
                         </div>
                     </div>
                 </div>
-
-                {/* Footer */}
-                <div className="flex items-center justify-between p-4 md:p-6 border-t border-security-border bg-security-bg/50 shrink-0 gap-4">
-                    <button
-                        onClick={onClose}
-                        className="px-4 py-2 rounded-lg border border-security-border bg-security-panel text-[11px] text-white font-black uppercase tracking-widest hover:bg-security-surface transition-colors"
-                    >
-                        Cancel
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        className="btn-primary px-6 py-2 shadow-lg shadow-brand-500/20 text-[11px]"
-                    >
-                        <Upload size={14} strokeWidth={3} className="mr-2" />
-                        <span className="font-black">Initiate Detonation</span>
-                    </button>
-                </div>
+            </div>
+            {/* Footer */}
+            <div className="flex items-center justify-between p-4 md:p-6 border-t border-security-border bg-security-bg/50 shrink-0 gap-4">
+                <button
+                    onClick={onClose}
+                    className="px-4 py-2 rounded-lg border border-security-border bg-security-panel text-[11px] text-white font-black uppercase tracking-widest hover:bg-security-surface transition-colors"
+                >
+                    Cancel
+                </button>
+                <button
+                    onClick={handleSubmit}
+                    className="btn-primary px-6 py-2 shadow-lg shadow-brand-500/20 text-[11px]"
+                >
+                    <Upload size={14} strokeWidth={3} className="mr-2" />
+                    <span className="font-black">Initiate Detonation</span>
+                </button>
             </div>
         </div>
+    </div >
     );
 }

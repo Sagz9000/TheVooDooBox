@@ -555,6 +555,7 @@ async fn submit_sample(
     let mut analysis_duration_seconds = 300; // Default 5 minutes
     let mut target_vmid: Option<u64> = None;
     let mut target_node: Option<String> = None;
+    let mut analysis_mode = "quick".to_string(); // Default to quick
     
     // Iterate over multipart stream
     while let Ok(Some(mut field)) = TryStreamExt::try_next(&mut payload).await {
@@ -622,8 +623,19 @@ async fn submit_sample(
             }
             if let Ok(value_str) = String::from_utf8(value_bytes) {
                 let node = value_str.trim().to_string();
-                println!("[SUBMISSION] Received node field: '{}'", node);
                 target_node = Some(node);
+            }
+        } else if field_name == "analysis_mode" {
+            let mut value_bytes = Vec::new();
+            while let Ok(Some(chunk)) = TryStreamExt::try_next(&mut field).await {
+                value_bytes.extend_from_slice(&chunk);
+            }
+            if let Ok(value_str) = String::from_utf8(value_bytes) {
+                let mode = value_str.trim().to_lowercase();
+                if mode == "deep" {
+                    analysis_mode = "deep".to_string();
+                }
+                println!("[SUBMISSION] Received analysis_mode field: '{}'", mode);
             }
         }
     }
@@ -683,15 +695,17 @@ async fn submit_sample(
     let ai_manager = ai_manager.get_ref().clone();
     let url_clone = download_url.clone();
     let task_id_clone = task_id.clone();
+    let mode_clone = analysis_mode.clone();
     
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), analysis_duration_seconds, target_vmid, target_node, false).await;
+        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), analysis_duration_seconds, target_vmid, target_node, false, mode_clone).await;
     });
     
     Ok(HttpResponse::Ok().json(serde_json::json!({
         "status": "analysis_queued",
         "task_id": task_id,
         "filename": filename,
+        "mode": analysis_mode,
         "url": download_url,
         "message": "Orchestration started: Reverting VM -> Starting -> Detonating"
     })))
@@ -708,7 +722,8 @@ async fn orchestrate_sandbox(
     duration_seconds: u64,
     manual_vmid: Option<u64>,
     manual_node: Option<String>,
-    is_url_task: bool
+    is_url_task: bool,
+    analysis_mode: String
 ) {
 
     // 1. Identify Sandbox VM
@@ -901,8 +916,8 @@ async fn orchestrate_sandbox(
 
 
     // 8. Generate AI Report (can take up to 10 minutes - VM is already stopped)
-    println!("[ORCHESTRATOR] Step 7: Generating AI Analysis Report...");
-    if let Err(e) = ai_analysis::generate_ai_report(&task_id, &pool, &ai_manager, manager.clone(), true).await {
+    println!("[ORCHESTRATOR] Step 7: Generating AI Analysis Report (Mode: {})...", analysis_mode);
+    if let Err(e) = ai_analysis::generate_ai_report(&task_id, &pool, &ai_manager, manager.clone(), true, &analysis_mode).await {
         println!("[ORCHESTRATOR] Failed to generate AI report: {}", e);
     } else {
         println!("[ORCHESTRATOR] AI Analysis Report generated successfully.");
@@ -1049,7 +1064,7 @@ pub async fn pivot_upload(
     let task_id_clone = task_id.clone();
     
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), 300, None, None, false).await; // Pivot uses default 300s
+        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), 300, None, None, false, "quick".to_string()).await; // Pivot uses default 300s, quick mode
     });
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "pivoted", "task_id": task_id })))
@@ -1101,7 +1116,7 @@ async fn exec_url(
     let node = req.node.clone();
     
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client_clone, manager_clone, pool_clone, ai_manager, task_id_clone, url, "URL_Detonation".to_string(), duration, vmid, node, true).await;
+        orchestrate_sandbox(client_clone, manager_clone, pool_clone, ai_manager, task_id_clone, url, "URL_Detonation".to_string(), duration, vmid, node, true, "quick".to_string()).await;
     });
 
     HttpResponse::Ok().json(serde_json::json!({ 
