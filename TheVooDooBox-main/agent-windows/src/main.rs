@@ -683,7 +683,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("[AGENT] Identity: {}", hostname);
     
     // Run Signature Verifier Self-Test on Startup
-    signature_verifier::test_verifier();
+    // Run Signature Verifier Self-Test on Startup (Non-blocking)
+    std::thread::spawn(|| {
+        signature_verifier::test_verifier();
+    });
 
     let (evt_tx, mut evt_rx) = mpsc::unbounded_channel::<AgentEvent>();
 
@@ -891,6 +894,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             Ok(mut file) => {
                                                                 if let Err(e) = response.copy_to(&mut file) {
                                                                     println!("[AGENT] ERROR: Failed to write download content: {}", e);
+                                                                    // Log to debug file
+                                                                    if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("C:\\Mallab\\voodoobox_debug.log") {
+                                                                        use std::io::Write;
+                                                                        let _ = writeln!(file, "[{}] [DOWNLOAD_ERROR] Failed to write {}: {}", chrono::Local::now(), dest_path_clone, e);
+                                                                    }
                                                                     let _ = tx_dl.send(AgentEvent {
                                                                         event_type: "DOWNLOAD_ERROR".to_string(),
                                                                         process_id: 0,
@@ -914,6 +922,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                             },
                                                             Err(e) => {
                                                                 println!("[AGENT] ERROR: Failed to create file at {}: {}", dest_path_clone, e);
+                                                                // Log to debug file
+                                                                if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("C:\\Mallab\\voodoobox_debug.log") {
+                                                                    use std::io::Write;
+                                                                    let _ = writeln!(file, "[{}] [DOWNLOAD_ERROR] Failed to create {}: {}", chrono::Local::now(), dest_path_clone, e);
+                                                                }
                                                                 let _ = tx_dl.send(AgentEvent {
                                                                     event_type: "DOWNLOAD_ERROR".to_string(),
                                                                     process_id: 0,
@@ -931,6 +944,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     },
                                                     Err(e) => {
                                                         println!("[AGENT] ERROR: Network request failed for {}: {}", url_clone, e);
+                                                        // Log to debug file
+                                                        if let Ok(mut file) = std::fs::OpenOptions::new().create(true).append(true).open("C:\\Mallab\\voodoobox_debug.log") {
+                                                            use std::io::Write;
+                                                            let _ = writeln!(file, "[{}] [DOWNLOAD_ERROR] Network request failed for {}: {}", chrono::Local::now(), url_clone, e);
+                                                        }
                                                         let _ = tx_dl.send(AgentEvent {
                                                             event_type: "DOWNLOAD_ERROR".to_string(),
                                                             process_id: 0,
