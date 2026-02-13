@@ -26,9 +26,10 @@ sequenceDiagram
     participant Frontend
     participant Backend
     participant Postgres
-    participant VectorDB
+    participant ChromaDB
     participant Ghidra
     participant LlamaServer
+    participant MCP
 
     User->>Frontend: Request AI Analysis (Task ID)
     Frontend->>Backend: POST /vms/actions/analyze
@@ -38,13 +39,15 @@ sequenceDiagram
         Postgres-->>Backend: [Raw Telemetry Stream]
         Backend->>Ghidra: GET /analysis/{task_id}
         Ghidra-->>Backend: [Decompiled Functions & Strings]
-        Backend->>VectorDB: Query(BehaviorTags)
-        VectorDB-->>Backend: [MITRE ATT&CK Context]
+        Backend->>ChromaDB: Query(BehaviorTags)
+        ChromaDB-->>Backend: [MITRE ATT&CK Context / SANS IQ]
+        Backend->>MCP: Fetch Extended Context
+        MCP-->>Backend: [Enriched Developer/Agent Context]
     end
 
     Backend->>Backend: Deduplicate & Build "Forensic Context" JSON
     
-    note right of Backend: Context includes:<br/>- Patient Zero Lineage<br/>- Static Capabilities<br/>- Similar Malware Families (VectorDB)
+    note right of Backend: Context includes:<br/>- Patient Zero Lineage<br/>- Static Capabilities<br/>- Similar Malware Families (ChromaDB)
 
     Backend->>LlamaServer: Send "Forensic Triage" System Prompt + Context
     activate LlamaServer

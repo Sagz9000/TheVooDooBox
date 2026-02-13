@@ -13,22 +13,26 @@ C4Context
     Person(analyst, "Security Analyst", "Uploads malware, reviews reports, interacts with AI.")
     
     System_Boundary(host, "Host Environment (Docker)") {
-        System(frontend, "Frontend Dashboard", "React/Vite app for visualization and control.")
+        System(frontend, "Frontend Dashboard", "React/Vite app with V5 Functional Fidelity UI.")
         System(backend, "Hyper-Bridge", "Rust API server. Orchestrates VMs, ingests telemetry, manages AI.")
         System(db, "Persistence Layer", "PostgreSQL (Relational) + ChromaDB (Vector).")
-        System(ai, "AI Engine", "Llama.cpp (Inference) + Python Bindings.")
+        System(ai, "AI Engine", "Llama.cpp (Inference) + DeepSeek-R1-8B.")
+        System(ghidra_srv, "Ghidra Server", "Headless static analysis engine.")
+        System(mcp, "MCP Server", "Model Context Protocol for IDE/Agent integration.")
     }
 
     System_Boundary(isolation, "Isolation Zone (Proxmox/KVM)") {
         System(vm, "Sandbox VM", "Windows 10/11 Guest. Isolated Network.")
-        System(agent, "TheVooDooBox Agent", "Rust binary running inside VM. Captures Kernel events.")
+        System(agent, "TheVooDooBox Agent", "Rust binary with Kernel Driver (The Eye).")
     }
 
-    Rel(analyst, frontend, "Uses")
-    Rel(frontend, backend, "HTTPS / WSS")
+    Rel(analyst, frontend, "Interacts/Views Reports")
+    Rel(frontend, backend, "HTTPS / WSS (Telemetry Stream)")
     Rel(backend, db, "SQL / Vector Query")
-    Rel(backend, ai, "Prompt / Inference")
+    Rel(backend, ai, "Prompt / Inference (reasoning)")
+    Rel(backend, ghidra_srv, "Analysis Requests")
     Rel(backend, vm, "VirtIO Serial / TCP", "Control & Telemetry")
+    Rel(agent, mcp, "Telemetry Enrichment")
 ```
 
 ---

@@ -11,9 +11,12 @@ It provides a real-time window into the malware's execution, allowing analysts t
 *   **Watch** the infection execute live via a high-performance VNC/Spice stream.
 *   **Interact** with the malware (click dialogs, solve CAPTCHAs, traverse file systems).
 *   **Observe** kernel-level events (process creation, file modification, registry connection) as they happen, with millisecond latency.
-*   **Agentic AI Response**: The AI doesn't just watch; it **reacts**. It can autonomously trigger actions (e.g., `FETCH_URL`) based on its forensic findings.
-*   **Digital Verification**: Cross-platform validation of digital signatures for every executing binary. Even when the backend runs on Linux, it leverages Agent-side telemetry to verify the trust status of all sandbox activity.
-*   **Collaborate**: Deep-link support for specific analysis reports, enabling seamless sharing of forensic results among team members.
+- [x] **V5 Functional Fidelity**: Real-time resizable sidebar and inline task expansion for deep-dive previews (Timeline, Stats, Storyboard).
+- [x] **Agentic AI Response**: The AI doesn't just watch; it **reacts**. It can autonomously trigger actions (e.g., `FETCH_URL`) based on its forensic findings.
+- [x] **Verdict Triage**: Automated AI verdicts supplemented by manual "Verdict Override" for expert validation.
+- [x] **Digital Verification**: Cross-platform validation of digital signatures for every executing binary. Even when the backend runs on Linux, it leverages Agent-side telemetry to verify the trust status of all sandbox activity.
+- [x] **Print Optimization**: One-click PDF generation for forensic reports with dedicated print-ready styling.
+- [x] **Collaborate**: Deep-link support for specific analysis reports, enabling seamless sharing of forensic results among team members.
 
 
 ## 📚 Documentation
