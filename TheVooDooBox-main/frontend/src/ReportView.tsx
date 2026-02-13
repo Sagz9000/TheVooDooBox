@@ -132,6 +132,16 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
 
     // Initialize Split.js
     useEffect(() => {
+        if (loading) return;
+
+        const el0 = document.querySelector('#split-0');
+        const el1 = document.querySelector('#split-1');
+
+        if (!el0 || !el1) {
+            console.warn('[ReportView] Split.js elements not found yet');
+            return;
+        }
+
         if (typeof Split !== 'function') {
             console.error('[ReportView] Split.js library failed to load as a function', Split);
             return;
@@ -156,7 +166,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         } catch (err) {
             console.error('[ReportView] Split.js initialization failed:', err);
         }
-    }, []);
+    }, [loading]);
 
     useEffect(() => {
         const nav = navRef.current;
