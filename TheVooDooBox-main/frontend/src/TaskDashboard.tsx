@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+
 import {
     RefreshCw,
     Activity,
@@ -16,6 +17,8 @@ import {
 } from 'lucide-react';
 import { voodooApi, AgentEvent, BASE_URL } from './voodooApi';
 import GhidraConsole from './GhidraConsole';
+import FishboneDiagram from './FishboneDiagram';
+
 
 interface AnalysisTask {
     id: string;
@@ -58,14 +61,24 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
     const [loading, setLoading] = useState(true);
     const [statusFilter, setStatusFilter] = useState('All');
     const [searchTerm, setSearchTerm] = useState("");
+    const [showNoise, setShowNoise] = useState(false);
 
     // Expansion State
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
     const [rawEvents, setRawEvents] = useState<AgentEvent[]>([]);
-    const [showNoise, setShowNoise] = useState(false);
     const [expandedScreenshots, setExpandedScreenshots] = useState<string[]>([]);
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
     const [activeGhidraTask, setActiveGhidraTask] = useState<{ id: string, filename: string } | null>(null);
+
+
+
+
+    const [expandedTab, setExpandedTab] = useState<'timeline' | 'fishbone' | 'screenshots'>('timeline');
+
+    const toggleExpandedTab = (tab: 'timeline' | 'fishbone' | 'screenshots', e: React.MouseEvent) => {
+        e.stopPropagation();
+        setExpandedTab(tab);
+    };
 
     const expandedEvents = useMemo(() => {
         if (!rawEvents) return [];
@@ -351,56 +364,116 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                                 </div>
                                             </div>
 
-                                            {/* EXPANDED ANALYST REPORT AREA - SIMPLIFIED AS PER USER SCREENSHOT */}
+                                            {/* EXPANDED ANALYST REPORT AREA */}
                                             {isExpanded && (
                                                 <div className="col-span-12 bg-[#080808] p-6 border-t border-white/10 shadow-inner animate-in slide-in-from-top-2 duration-300">
-                                                    <div className="flex items-center gap-3 mb-6">
-                                                        <div className="bg-brand-500/10 p-2 rounded"><Activity size={20} className="text-brand-500" /></div>
-                                                        <h3 className="text-sm font-black uppercase tracking-widest text-white">Analyst Task Report <span className="text-brand-500">#{task.id}</span></h3>
+                                                    <div className="flex items-center justify-between mb-6">
+                                                        <div className="flex items-center gap-3">
+                                                            <div className="bg-brand-500/10 p-2 rounded"><Activity size={20} className="text-brand-500" /></div>
+                                                            <h3 className="text-sm font-black uppercase tracking-widest text-white">Analyst Task Report <span className="text-brand-500">#{task.id}</span></h3>
+                                                        </div>
+
+                                                        {/* Preview Tabs */}
+                                                        <div className="flex bg-[#111] p-1 rounded-md border border-white/5">
+                                                            <button
+                                                                onClick={(e) => toggleExpandedTab('timeline', e)}
+                                                                className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider transition-all ${expandedTab === 'timeline' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                                            >
+                                                                Timeline
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => toggleExpandedTab('fishbone', e)}
+                                                                className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider transition-all ${expandedTab === 'fishbone' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                                            >
+                                                                Activity Flow
+                                                            </button>
+                                                            <button
+                                                                onClick={(e) => toggleExpandedTab('screenshots', e)}
+                                                                className={`px-3 py-1 rounded text-[10px] font-black uppercase tracking-wider transition-all ${expandedTab === 'screenshots' ? 'bg-zinc-800 text-white' : 'text-zinc-500 hover:text-zinc-300'}`}
+                                                            >
+                                                                Screenshots ({expandedScreenshots.length})
+                                                            </button>
+                                                        </div>
                                                     </div>
 
                                                     <div className="space-y-6">
-                                                        {/* Target Name Section */}
-                                                        <div className="bg-[#111] border border-white/5 p-4 rounded">
-                                                            <div className="text-[9px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-2">Target Name</div>
-                                                            <div className="text-xs font-mono text-zinc-300 break-all leading-relaxed">
-                                                                {task.original_filename || task.filename}
+                                                        {/* Target Name Section (Always Visible) */}
+                                                        <div className="bg-[#111] border border-white/5 p-4 rounded flex justify-between items-center">
+                                                            <div>
+                                                                <div className="text-[9px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-1">Target Name</div>
+                                                                <div className="text-xs font-mono text-zinc-300 break-all leading-relaxed">
+                                                                    {task.original_filename || task.filename}
+                                                                </div>
                                                             </div>
-                                                        </div>
-
-                                                        {/* Timeline Section */}
-                                                        <div>
-                                                            <div className="flex items-center gap-2 mb-4 text-[9px] font-black uppercase tracking-[0.2em] text-brand-500">
-                                                                <Activity size={12} /> Detonation Timeline
-                                                            </div>
-                                                            <div className="bg-[#111] border border-white/5 rounded-lg overflow-hidden shadow-2xl">
-                                                                <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
-                                                                    {isLoadingDetails ? (
-                                                                        <div className="p-12 text-center text-zinc-600">
-                                                                            <RefreshCw size={16} className="animate-spin mx-auto mb-2" />
-                                                                            <span className="text-[10px] font-black uppercase">Loading Stream...</span>
-                                                                        </div>
-                                                                    ) : expandedEvents.length > 0 ? (
-                                                                        <div className="p-2 space-y-1">
-                                                                            {expandedEvents.map((e, idx) => (
-                                                                                <div key={idx} className="flex gap-4 text-[10px] font-mono text-zinc-400 border-b border-white/5 pb-2 hover:bg-white/5 transition-colors p-2">
-                                                                                    <span className="w-16 text-zinc-600 shrink-0">
-                                                                                        {new Date(e.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                                                                                    </span>
-                                                                                    <span className={`w-32 font-bold shrink-0 ${e.event_type.includes('FILE') ? 'text-blue-400' : e.event_type.includes('NET') ? 'text-green-400' : 'text-yellow-500'}`}>
-                                                                                        {e.event_type}
-                                                                                    </span>
-                                                                                    <span className="w-32 text-white truncate shrink-0" title={e.process_name}>{e.process_name}</span>
-                                                                                    <span className="flex-1 text-zinc-500 italic truncate" title={e.details}>{e.details}</span>
-                                                                                </div>
-                                                                            ))}
-                                                                        </div>
-                                                                    ) : (
-                                                                        <div className="p-12 text-center text-zinc-600">No events found.</div>
-                                                                    )}
+                                                            <div className="text-right">
+                                                                <div className="text-[9px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-1">Items Analyzed</div>
+                                                                <div className="text-xs font-mono text-brand-400 font-bold">
+                                                                    {expandedEvents.length} Events
                                                                 </div>
                                                             </div>
                                                         </div>
+
+                                                        {/* Tab Content */}
+                                                        {expandedTab === 'timeline' && (
+                                                            <div>
+                                                                <div className="flex items-center gap-2 mb-4 text-[9px] font-black uppercase tracking-[0.2em] text-brand-500">
+                                                                    <Activity size={12} /> Detonation Timeline
+                                                                </div>
+                                                                <div className="bg-[#111] border border-white/5 rounded-lg overflow-hidden shadow-2xl">
+                                                                    <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                                                                        {isLoadingDetails ? (
+                                                                            <div className="p-12 text-center text-zinc-600">
+                                                                                <RefreshCw size={16} className="animate-spin mx-auto mb-2" />
+                                                                                <span className="text-[10px] font-black uppercase">Loading Stream...</span>
+                                                                            </div>
+                                                                        ) : expandedEvents.length > 0 ? (
+                                                                            <div className="p-2 space-y-1">
+                                                                                {expandedEvents.map((e, idx) => (
+                                                                                    <div key={idx} className="flex gap-4 text-[10px] font-mono text-zinc-400 border-b border-white/5 pb-2 hover:bg-white/5 transition-colors p-2">
+                                                                                        <span className="w-16 text-zinc-600 shrink-0">
+                                                                                            {new Date(e.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                                                        </span>
+                                                                                        <span className={`w-32 font-bold shrink-0 ${e.event_type.includes('FILE') ? 'text-blue-400' : e.event_type.includes('NET') ? 'text-green-400' : 'text-yellow-500'}`}>
+                                                                                            {e.event_type}
+                                                                                        </span>
+                                                                                        <span className="w-32 text-white truncate shrink-0" title={e.process_name}>{e.process_name}</span>
+                                                                                        <span className="flex-1 text-zinc-500 italic truncate" title={e.details}>{e.details}</span>
+                                                                                    </div>
+                                                                                ))}
+                                                                            </div>
+                                                                        ) : (
+                                                                            <div className="p-12 text-center text-zinc-600">No events found.</div>
+                                                                        )}
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                        )}
+
+                                                        {expandedTab === 'fishbone' && (
+                                                            <div className="h-[400px]">
+                                                                <FishboneDiagram events={expandedEvents} width={1000} height={400} />
+                                                            </div>
+                                                        )}
+
+                                                        {expandedTab === 'screenshots' && (
+                                                            <div>
+                                                                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+                                                                    {expandedScreenshots.length > 0 ? expandedScreenshots.map((url, idx) => (
+                                                                        <div key={idx} className="group relative aspect-video bg-black border border-white/10 rounded overflow-hidden cursor-pointer hover:border-brand-500/50 transition-all">
+                                                                            <img src={`${BASE_URL}/screenshots/${url}`} alt={`Screenshot ${idx}`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                                                                            <div className="absolute bottom-0 left-0 right-0 bg-black/80 p-1 text-[9px] font-mono text-center text-zinc-400 truncate">
+                                                                                {url}
+                                                                            </div>
+                                                                        </div>
+                                                                    )) : (
+                                                                        <div className="col-span-full h-32 flex items-center justify-center text-zinc-600 border border-white/5 border-dashed rounded">
+                                                                            <span className="text-[10px] uppercase font-black tracking-widest">No Screenshots Available</span>
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
+
                                                     </div>
                                                 </div>
                                             )}
