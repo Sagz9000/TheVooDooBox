@@ -274,13 +274,16 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                         <React.Fragment key={task.id}>
                                             <div
                                                 onClick={() => handleRowClick(task)}
-                                                className={`grid grid-cols-12 gap-4 p-4 items-center border-b border-white/5 hover:bg-white/5 transition-colors cursor-pointer group ${isExpanded ? 'bg-brand-900/10' : ''}`}
+                                                className={`grid grid-cols-12 gap-2 p-3 items-center hover:bg-brand-500/5 transition-colors group cursor-pointer border-b border-security-border/40 shadow-sm ${isExpanded ? 'bg-brand-500/10' : ''}`}
                                             >
-                                                <div className="col-span-1 font-mono text-xs text-brand-500 flex items-center gap-1">
-                                                    {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-                                                    #{task.id}
+                                                <div className="col-span-1 flex items-center gap-1 hover:bg-white/5 p-1 rounded cursor-pointer z-10">
+                                                    {isExpanded ? <ChevronDown size={12} className="text-brand-500" /> : <ChevronRight size={12} className="text-security-muted" />}
+                                                    <span className="text-[10px] font-black text-brand-500/80 cursor-text select-text block truncate">
+                                                        #{task.id}
+                                                    </span>
                                                 </div>
 
+                                                {/* VERDICT COLUMN - V5 Requirement */}
                                                 <div className="col-span-1">
                                                     {task.verdict ? (
                                                         <span className={`px-2 py-1 rounded text-[9px] font-black border uppercase tracking-wider ${task.verdict === 'Malicious' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
@@ -294,127 +297,108 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                                     )}
                                                 </div>
 
-                                                <div className="col-span-2 text-xs text-zinc-400 flex items-center gap-2">
-                                                    <Clock size={12} />
-                                                    {isExpanded ? formatTimestamp(task.created_at) : new Date(task.created_at).toLocaleString()}
-                                                </div>
-
-                                                <div className="col-span-1 text-xs text-zinc-500 font-mono">
-                                                    {sandboxName}
-                                                </div>
-
-                                                <div className="col-span-3 flex items-center gap-2 overflow-hidden">
-                                                    {task.verdict === 'Malicious' ? <FileText size={16} className="text-red-500 shrink-0" /> : <FileText size={16} className="text-zinc-500 shrink-0" />}
-                                                    <span className="text-sm font-bold text-white truncate" title={task.original_filename || task.filename}>
-                                                        {task.original_filename || task.filename}
+                                                <div className="col-span-2 flex items-center gap-2 min-w-0">
+                                                    <Clock size={12} className="text-security-muted shrink-0" />
+                                                    <span className="text-[10px] font-medium text-slate-300 cursor-text select-text truncate">
+                                                        {formatTimestamp(task.created_at)}
                                                     </span>
                                                 </div>
 
-                                                <div className="col-span-2 flex items-center gap-2">
-                                                    <div className={`w-1.5 h-1.5 rounded-full ${task.status === 'Completed' ? 'bg-green-500' : 'bg-yellow-500 animate-pulse'}`}></div>
-                                                    <span className="text-xs font-mono text-zinc-300 uppercase">{task.status}</span>
+                                                <div className="col-span-1">
+                                                    <div className="flex items-center gap-1">
+                                                        <Monitor size={12} className="text-brand-500/50" />
+                                                        <span className="text-[10px] font-bold text-slate-400 cursor-text select-text truncate">{sandboxName}</span>
+                                                    </div>
                                                 </div>
 
-                                                <div className="col-span-2 flex justify-end gap-2 opacity-50 group-hover:opacity-100 transition-opacity">
+                                                <div className="col-span-3 min-w-0 text-white font-bold">
+                                                    <div className="flex items-start gap-2 min-w-0">
+                                                        {task.verdict === 'Malicious' ? <FileText size={16} className="text-red-500 shrink-0" /> : <FileText size={16} className="text-zinc-500 shrink-0" />}
+                                                        <span className="text-[11px] truncate cursor-text select-text" title={task.original_filename || task.filename}>
+                                                            {task.original_filename || task.filename}
+                                                        </span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="col-span-2">
+                                                    <div className={`text-[10px] font-black uppercase flex items-center gap-1.5 ${task.status === 'Completed' || task.status === 'Analysis Complete' ? 'text-brand-500' :
+                                                        task.status.includes('Failed') ? 'text-threat-critical' :
+                                                            'text-yellow-500 animate-pulse'
+                                                        }`}>
+                                                        <div className={`w-1.5 h-1.5 rounded-full ${task.status === 'Completed' || task.status === 'Analysis Complete' ? 'bg-brand-500' :
+                                                            task.status.includes('Failed') ? 'bg-threat-critical' :
+                                                                'bg-yellow-500'
+                                                            }`}></div>
+                                                        <span className="cursor-text select-text truncate" title={task.status}>{task.status}</span>
+                                                    </div>
+                                                </div>
+
+                                                <div className="col-span-2 flex justify-end items-center gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
                                                     <button
-                                                        onClick={(e) => { e.stopPropagation(); onSelectTask(task.id); }}
-                                                        className="p-1.5 hover:bg-white/10 rounded text-zinc-400"
-                                                        title="Full Report"
+                                                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); onSelectTask(task.id); }}
+                                                        title="View Neural Report"
+                                                        className="p-1.5 hover:bg-brand-500/20 text-brand-500 border border-transparent hover:border-brand-500/30 rounded transition-all"
                                                     >
-                                                        <Brain size={16} />
+                                                        <Brain size={14} />
                                                     </button>
                                                     <button
-                                                        onClick={(e) => { e.stopPropagation(); handleDeleteTask(task.id, e); }}
-                                                        className="p-1.5 hover:bg-white/10 rounded text-zinc-400 hover:text-red-500"
-                                                        title="Delete"
+                                                        onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDeleteTask(task.id, e); }}
+                                                        title="Delete Task"
+                                                        className="p-1.5 hover:bg-threat-critical/20 text-threat-critical border border-transparent hover:border-threat-critical/30 rounded transition-all"
                                                     >
-                                                        <Trash2 size={16} />
+                                                        <Trash2 size={14} />
                                                     </button>
                                                 </div>
                                             </div>
 
-                                            {/* EXPANDED ANALYST REPORT AREA - RESPONSIVE */}
+                                            {/* EXPANDED ANALYST REPORT AREA - SIMPLIFIED AS PER USER SCREENSHOT */}
                                             {isExpanded && (
-                                                <div className="col-span-12 p-6 bg-[#080808] border-t border-white/10 shadow-inner">
+                                                <div className="col-span-12 bg-[#080808] p-6 border-t border-white/10 shadow-inner animate-in slide-in-from-top-2 duration-300">
                                                     <div className="flex items-center gap-3 mb-6">
                                                         <div className="bg-brand-500/10 p-2 rounded"><Activity size={20} className="text-brand-500" /></div>
                                                         <h3 className="text-sm font-black uppercase tracking-widest text-white">Analyst Task Report <span className="text-brand-500">#{task.id}</span></h3>
                                                     </div>
 
-                                                    <div className="flex gap-6 mb-6">
-                                                        {/* Left: Stats Cards */}
-                                                        <div className="flex-1 space-y-4">
-                                                            <div className="grid grid-cols-4 gap-4">
-                                                                <div className="bg-[#111] border border-white/5 p-3 rounded">
-                                                                    <div className="text-[9px] text-zinc-500 font-black uppercase tracking-wider mb-1">Target Name</div>
-                                                                    <div className="text-xs font-mono text-zinc-300 truncate">{task.filename}</div>
-                                                                </div>
-                                                                <div className="bg-[#111] border border-white/5 p-3 rounded">
-                                                                    <div className="text-[9px] text-zinc-500 font-black uppercase tracking-wider mb-1">Telemetry</div>
-                                                                    <div className="text-xl font-black text-purple-400">{expandedEvents.length}</div>
-                                                                </div>
-                                                                <div className="bg-[#111] border border-white/5 p-3 rounded">
-                                                                    <div className="text-[9px] text-zinc-500 font-black uppercase tracking-wider mb-1">Processes</div>
-                                                                    <div className="text-xl font-black text-blue-400">{new Set(expandedEvents.filter(e => e.process_id).map(e => e.process_id)).size}</div>
-                                                                </div>
-                                                                <div className="bg-[#111] border border-white/5 p-3 rounded">
-                                                                    <div className="text-[9px] text-zinc-500 font-black uppercase tracking-wider mb-1">Duration</div>
-                                                                    <div className="text-xl font-black text-zinc-300">{task.completed_at ? Math.floor((task.completed_at - task.created_at) / 1000) + 's' : 'Running'}</div>
-                                                                </div>
-                                                            </div>
-
-                                                            {/* Detonation Timeline */}
-                                                            <div className="bg-[#111] border border-white/5 rounded overflow-hidden">
-                                                                <div className="p-2 border-b border-white/5 bg-white/5 flex items-center justify-between">
-                                                                    <div className="text-[9px] font-black uppercase tracking-wider text-brand-500 flex items-center gap-2">
-                                                                        <Activity size={12} /> Detonation Timeline
-                                                                    </div>
-                                                                    <button onClick={() => setShowNoise(!showNoise)} className="text-[9px] text-zinc-500 font-mono cursor-pointer hover:text-white uppercase">
-                                                                        {showNoise ? 'Hide Noise' : 'Show Noise'}
-                                                                    </button>
-                                                                </div>
-                                                                <div className="p-2 space-y-2 h-[200px] overflow-y-auto custom-scrollbar">
-                                                                    {expandedEvents.length > 0 ? expandedEvents.map((e, idx) => (
-                                                                        <div key={idx} className="flex gap-4 text-[10px] font-mono text-zinc-400 border-b border-white/5 pb-2">
-                                                                            <span className="w-16 text-zinc-600">
-                                                                                {e.timestamp ? new Date(e.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--'}
-                                                                            </span>
-                                                                            <span className={`w-24 font-bold ${e.event_type.includes('FILE') ? 'text-blue-400' : e.event_type.includes('NET') ? 'text-green-400' : 'text-yellow-500'}`}>{e.event_type}</span>
-                                                                            <span className="w-24 text-white truncate" title={e.process_name}>{e.process_name}</span>
-                                                                            <span className="flex-1 truncate" title={e.details}>{e.details}</span>
-                                                                        </div>
-                                                                    )) : (
-                                                                        <div className="text-center text-zinc-600 py-10">No events found.</div>
-                                                                    )}
-                                                                </div>
+                                                    <div className="space-y-6">
+                                                        {/* Target Name Section */}
+                                                        <div className="bg-[#111] border border-white/5 p-4 rounded">
+                                                            <div className="text-[9px] text-zinc-500 font-black uppercase tracking-[0.2em] mb-2">Target Name</div>
+                                                            <div className="text-xs font-mono text-zinc-300 break-all leading-relaxed">
+                                                                {task.original_filename || task.filename}
                                                             </div>
                                                         </div>
 
-                                                        {/* Right: Visuals & Score */}
-                                                        <div className="w-80 space-y-4">
-                                                            <div className="bg-[#111] border border-red-500/20 rounded p-6 flex flex-col items-center justify-center relative overflow-hidden">
-                                                                <Shield size={48} className="text-red-500/20 mb-2" />
-                                                                <div className="text-[9px] text-zinc-500 font-black uppercase tracking-wider mb-1">Threat Rating</div>
-                                                                <div className={`text-4xl font-black mb-4 ${task.verdict === 'Malicious' ? 'text-red-500' : task.verdict === 'Clean' ? 'text-green-500' : 'text-orange-500'}`}>
-                                                                    {task.risk_score || 0}%
-                                                                </div>
-                                                                <button
-                                                                    onClick={(e) => { e.stopPropagation(); onSelectTask(task.id); }}
-                                                                    className="w-full py-2 rounded bg-red-500/10 text-red-500 border border-red-500/20 text-[10px] font-black uppercase tracking-wider hover:bg-red-500 hover:text-white transition-all flex items-center justify-center gap-2"
-                                                                >
-                                                                    Deep Dive
-                                                                </button>
+                                                        {/* Timeline Section */}
+                                                        <div>
+                                                            <div className="flex items-center gap-2 mb-4 text-[9px] font-black uppercase tracking-[0.2em] text-brand-500">
+                                                                <Activity size={12} /> Detonation Timeline
                                                             </div>
-
-                                                            <div className="bg-[#111] border border-white/5 rounded overflow-hidden h-40 flex items-center justify-center relative group">
-                                                                {expandedScreenshots.length > 0 ? (
-                                                                    <img src={voodooApi.getScreenshotUrl(expandedScreenshots[0], task.id)} className="w-full h-full object-cover opacity-60 group-hover:opacity-100 transition-opacity" alt="Preview" />
-                                                                ) : (
-                                                                    <div className="text-center">
-                                                                        <Monitor size={32} className="text-zinc-600 mx-auto mb-2" />
-                                                                        <div className="text-[9px] font-black uppercase text-zinc-600">No Visuals</div>
-                                                                    </div>
-                                                                )}
+                                                            <div className="bg-[#111] border border-white/5 rounded-lg overflow-hidden shadow-2xl">
+                                                                <div className="max-h-[500px] overflow-y-auto custom-scrollbar">
+                                                                    {isLoadingDetails ? (
+                                                                        <div className="p-12 text-center text-zinc-600">
+                                                                            <RefreshCw size={16} className="animate-spin mx-auto mb-2" />
+                                                                            <span className="text-[10px] font-black uppercase">Loading Stream...</span>
+                                                                        </div>
+                                                                    ) : expandedEvents.length > 0 ? (
+                                                                        <div className="p-2 space-y-1">
+                                                                            {expandedEvents.map((e, idx) => (
+                                                                                <div key={idx} className="flex gap-4 text-[10px] font-mono text-zinc-400 border-b border-white/5 pb-2 hover:bg-white/5 transition-colors p-2">
+                                                                                    <span className="w-16 text-zinc-600 shrink-0">
+                                                                                        {new Date(e.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                                                                                    </span>
+                                                                                    <span className={`w-32 font-bold shrink-0 ${e.event_type.includes('FILE') ? 'text-blue-400' : e.event_type.includes('NET') ? 'text-green-400' : 'text-yellow-500'}`}>
+                                                                                        {e.event_type}
+                                                                                    </span>
+                                                                                    <span className="w-32 text-white truncate shrink-0" title={e.process_name}>{e.process_name}</span>
+                                                                                    <span className="flex-1 text-zinc-500 italic truncate" title={e.details}>{e.details}</span>
+                                                                                </div>
+                                                                            ))}
+                                                                        </div>
+                                                                    ) : (
+                                                                        <div className="p-12 text-center text-zinc-600">No events found.</div>
+                                                                    )}
+                                                                </div>
                                                             </div>
                                                         </div>
                                                     </div>

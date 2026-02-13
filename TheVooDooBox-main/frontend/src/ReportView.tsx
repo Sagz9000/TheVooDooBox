@@ -679,7 +679,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             <TabButton active={activeTab === 'registry'} onClick={() => setActiveTab('registry')} icon={<Server size={14} />} label="Registry" count={registryEvents.length} />
                             <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Static Findings" count={ghidraFindings.length} />
                             <TabButton active={activeTab === 'tactics'} onClick={() => setActiveTab('tactics')} icon={<Target size={14} />} label="MITRE Matrix" />
-                            <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} icon={<Sparkles size={14} />} label="Intelligence" />
+                            <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} icon={<Sparkles size={14} />} label="Neural Correlation Engine" />
                             <TabButton active={activeTab === 'notes'} onClick={() => setActiveTab('notes')} icon={<Pencil size={14} />} label="Notes" />
                             <TabButton active={activeTab === 'decoder'} onClick={() => setActiveTab('decoder')} icon={<Binary size={14} />} label="Decoder" />
                             <TabButton active={activeTab === 'console'} onClick={() => setActiveTab('console')} icon={<Terminal size={14} />} label="Raw Feed" count={stats.count} />
