@@ -93,6 +93,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(false);
     const [printMode, setPrintMode] = useState(false);
+    const [exportMenuOpen, setExportMenuOpen] = useState(false);
 
     const scrollInterval = React.useRef<any>(null);
 
@@ -568,23 +569,63 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                 <span className="hidden xs:inline">SHARE</span>
                             </button>
 
-                            <button
-                                onClick={() => {
-                                    setPrintMode(true);
-                                    setTimeout(() => {
-                                        window.print();
-                                        setPrintMode(false);
-                                    }, 300);
-                                }}
-                                className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] ${aiReport
-                                    ? 'bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 shadow-brand-500/40'
-                                    : 'bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300'
-                                    } no-print`}
-                                title="Print Full Report as PDF"
-                            >
-                                <Download size={14} />
-                                <span className="hidden xs:inline">PDF</span>
-                            </button>
+                            <div className="relative no-print">
+                                <button
+                                    onClick={() => setExportMenuOpen(!exportMenuOpen)}
+                                    className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] ${aiReport
+                                            ? 'bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 shadow-brand-500/40'
+                                            : 'bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300'
+                                        }`}
+                                    title="Export Report"
+                                >
+                                    <Download size={14} />
+                                    <span className="hidden xs:inline">EXPORT</span>
+                                    <ChevronRight size={10} className={`transition-transform ${exportMenuOpen ? 'rotate-90' : ''}`} />
+                                </button>
+                                {exportMenuOpen && (
+                                    <div className="absolute right-0 top-full mt-1 w-56 bg-[#1a1a1a] border border-white/10 rounded-lg shadow-2xl z-50 overflow-hidden">
+                                        <button
+                                            onClick={() => {
+                                                setExportMenuOpen(false);
+                                                setPrintMode(true);
+                                                setTimeout(() => {
+                                                    window.print();
+                                                    setPrintMode(false);
+                                                }, 300);
+                                            }}
+                                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left border-b border-white/5"
+                                        >
+                                            <div className="w-7 h-7 rounded-md bg-brand-500/20 flex items-center justify-center shrink-0">
+                                                <FileText size={14} className="text-brand-400" />
+                                            </div>
+                                            <div>
+                                                <div className="text-[11px] font-bold text-zinc-200">PDF Report</div>
+                                                <div className="text-[9px] text-zinc-500">High-fidelity print with full styling</div>
+                                            </div>
+                                        </button>
+                                        <button
+                                            onClick={() => {
+                                                setExportMenuOpen(false);
+                                                if (aiReport) {
+                                                    voodooApi.downloadPdf(taskId, aiReport);
+                                                } else {
+                                                    setActiveTab('intelligence');
+                                                    alert("AI Analysis is required before generating the text report. Please click 'RUN ANALYTICS'.");
+                                                }
+                                            }}
+                                            className="w-full flex items-center gap-3 px-4 py-3 hover:bg-white/5 transition-colors text-left"
+                                        >
+                                            <div className="w-7 h-7 rounded-md bg-zinc-700/50 flex items-center justify-center shrink-0">
+                                                <Code2 size={14} className="text-zinc-400" />
+                                            </div>
+                                            <div>
+                                                <div className="text-[11px] font-bold text-zinc-200">Text Report</div>
+                                                <div className="text-[9px] text-zinc-500">Backend Rust-generated forensic doc</div>
+                                            </div>
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
                         </>
                     )}
                 </div>
@@ -1019,8 +1060,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             <div className="flex items-center justify-between gap-4 p-4 bg-[#111] border border-white/10 rounded-lg">
                                 <div>
                                     <div className={`inline-flex px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest border-2 ${aiReport.verdict === 'Malicious' ? 'bg-red-500/20 text-red-400 border-red-500/40' :
-                                            aiReport.verdict === 'Suspicious' ? 'bg-orange-500/20 text-orange-400 border-orange-500/40' :
-                                                'bg-green-500/20 text-green-400 border-green-500/40'
+                                        aiReport.verdict === 'Suspicious' ? 'bg-orange-500/20 text-orange-400 border-orange-500/40' :
+                                            'bg-green-500/20 text-green-400 border-green-500/40'
                                         }`}>{aiReport.verdict}</div>
                                     <div className="mt-2 text-xs text-zinc-400">
                                         Family: <span className="text-white font-mono">{aiReport.malware_family || 'Unknown'}</span>

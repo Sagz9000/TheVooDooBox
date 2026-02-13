@@ -199,7 +199,11 @@
 @media print {
     @page {
         size: A4 portrait;
-        margin: 12mm 10mm;
+        margin: 14mm 12mm;
+    }
+
+    * {
+        box-sizing: border-box !important;
     }
 
     body {
@@ -210,6 +214,8 @@
         overflow: visible !important;
         height: auto !important;
         width: auto !important;
+        font-size: 11px !important;
+        line-height: 1.5 !important;
     }
 
     /* Hide ALL interactive UI chrome */
@@ -231,36 +237,72 @@
         display: block !important;
         position: relative !important;
         width: 100% !important;
+        max-width: 100% !important;
         padding: 0 !important;
         margin: 0 !important;
         overflow: visible !important;
     }
 
-    /* Print header */
+    /* ─── Print header ─── */
     .print-header {
-        margin-bottom: 24px;
-        padding-bottom: 16px;
-        border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+        margin-bottom: 28px;
+        padding-bottom: 18px;
+        border-bottom: 2px solid rgba(255, 255, 255, 0.15);
     }
 
-    /* Print sections */
+    .print-header h1 {
+        font-size: 22px !important;
+        letter-spacing: 0.05em;
+    }
+
+    /* ─── Print sections ─── */
     .print-section {
-        margin-bottom: 20px;
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.04);
         page-break-inside: avoid;
     }
 
+    .print-section:last-child {
+        border-bottom: none;
+    }
+
     .print-section-header {
-        font-size: 11px;
+        font-size: 12px;
         font-weight: 900;
         text-transform: uppercase;
         letter-spacing: 0.15em;
-        color: #a0a0a0;
-        margin-bottom: 8px;
-        padding-bottom: 4px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        color: #b0b0b0;
+        margin-bottom: 10px;
+        padding-bottom: 5px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.08);
     }
 
-    /* Force background colors to print */
+    /* ─── Typography cleanup ─── */
+    .font-mono,
+    code,
+    pre {
+        word-break: break-all !important;
+        overflow-wrap: break-word !important;
+        white-space: pre-wrap !important;
+        max-width: 100% !important;
+    }
+
+    .break-all {
+        word-break: break-all !important;
+    }
+
+    /* ─── Force single-column grids in print ─── */
+    .print-section .grid {
+        display: block !important;
+    }
+
+    .print-section .grid>div {
+        margin-bottom: 8px !important;
+        width: 100% !important;
+    }
+
+    /* ─── Force background colors to print ─── */
     .bg-security-surface {
         background-color: #111 !important;
     }
@@ -269,7 +311,7 @@
         background-color: #1a1a1a !important;
     }
 
-    /* Expand scrollable areas to show full content */
+    /* ─── Expand scrollable areas to show full content ─── */
     .overflow-auto,
     .overflow-y-auto,
     .overflow-hidden {
@@ -278,13 +320,42 @@
         max-height: none !important;
     }
 
-    /* Page break helpers */
+    /* ─── Page break control ─── */
     .break-inside-avoid {
         page-break-inside: avoid;
     }
 
-    /* Ensure grids render correctly in print */
+    /* MITRE matrix gets its own page if there's a lot preceding it */
+    .print-section:nth-child(n+4) {
+        page-break-before: auto;
+    }
+
+    /* ─── Footer ─── */
+    .print-footer {
+        margin-top: 32px;
+        page-break-inside: avoid;
+    }
+
+    .print-footer div {
+        font-size: 9px !important;
+        color: #666 !important;
+        padding-top: 12px;
+        border-top: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    /* ─── Ensure grids render correctly in print ─── */
     .grid {
         display: grid !important;
+    }
+
+    /* ─── Inline elements: keep flex items from overflowing ─── */
+    .flex {
+        flex-wrap: wrap !important;
+    }
+
+    /* ─── Images never break ─── */
+    img {
+        max-width: 100% !important;
+        page-break-inside: avoid;
     }
 }
