@@ -131,41 +131,52 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     };
 
     // Initialize Split.js
+    // Initialize Split.js with Robust DOM Polling
     useEffect(() => {
         if (loading) return;
 
-        const el0 = document.querySelector('#split-0');
-        const el1 = document.querySelector('#split-1');
+        let splitInstance: any = null;
+        let attempts = 0;
+        const maxAttempts = 20; // Try for ~2 seconds
 
-        if (!el0 || !el1) {
-            console.warn('[ReportView] Split.js elements not found yet');
-            return;
-        }
+        const initSplit = () => {
+            const el0 = document.querySelector('#split-0');
+            const el1 = document.querySelector('#split-1');
 
-        if (typeof Split !== 'function') {
-            console.error('[ReportView] Split.js library failed to load as a function', Split);
-            return;
-        }
+            if (el0 && el1 && typeof Split === 'function') {
+                try {
+                    console.log('[ReportView] Initializing Split.js...');
+                    splitInstance = Split(['#split-0', '#split-1'], {
+                        sizes: [25, 75],
+                        minSize: [200, 400],
+                        gutterSize: 8,
+                        cursor: 'col-resize',
+                        gutter: (index, direction) => {
+                            const gutter = document.createElement('div');
+                            gutter.className = `gutter gutter-${direction} bg-[#1a1a1a] bg-no-repeat bg-center hover:bg-brand-500/50 transition-colors`;
+                            return gutter;
+                        },
+                    });
+                } catch (err) {
+                    console.error('[ReportView] Split.js initialization failed:', err);
+                }
+                return true;
+            }
+            return false;
+        };
 
-        try {
-            const splitInstance = Split(['#split-0', '#split-1'], {
-                sizes: [25, 75],
-                minSize: [200, 400],
-                gutterSize: 8,
-                cursor: 'col-resize',
-                gutter: (index, direction) => {
-                    const gutter = document.createElement('div');
-                    gutter.className = `gutter gutter-${direction} bg-[#1a1a1a] bg-no-repeat bg-center hover:bg-brand-500/50 transition-colors`;
-                    return gutter;
-                },
-            });
+        // Poll for elements
+        const intervalId = setInterval(() => {
+            if (initSplit() || attempts >= maxAttempts) {
+                clearInterval(intervalId);
+            }
+            attempts++;
+        }, 100);
 
-            return () => {
-                splitInstance.destroy();
-            };
-        } catch (err) {
-            console.error('[ReportView] Split.js initialization failed:', err);
-        }
+        return () => {
+            clearInterval(intervalId);
+            if (splitInstance) splitInstance.destroy();
+        };
     }, [loading]);
 
     useEffect(() => {
@@ -1133,9 +1144,21 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, tags, onTag, level }: { 
 
                 <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
-                        <span className={`text-[11px] font-bold truncate ${isSelected ? 'text-white' : 'text-zinc-300'}`} title={node.name}>
-                            {node.name}
-                        </span>
+                        <div className="flex items-center gap-2 truncate">
+                            <span className={`text-[11px] truncate ${getProcessColor(node.name, isSelected)}`} title={node.name}>
+                                {node.name}
+                            </span>
+                            {/* NET Badge for Powershell or Network Tools */}
+                            {['powershell.exe', 'curl.exe', 'wget.exe'].includes(node.name.toLowerCase()) && (
+                                <span className="px-1 py-0.5 rounded bg-red-500/20 text-red-500 text-[8px] font-black uppercase tracking-wider">
+                                    NET
+                                </span>
+                            )}
+                            {/* Lightning for Sample */}
+                            {node.name.toLowerCase() === 'sample.exe' && (
+                                <Activity size={10} className="text-red-500 animate-pulse" />
+                            )}
+                        </div>
                         <div className="flex items-center gap-2 shrink-0">
                             {/* Tag Indicator for Sidebar */}
                             {tags.some(t => node.events.some(ev => ev.id === t.event_id)) && (
@@ -1179,6 +1202,16 @@ const ProcessTreeNode = ({ node, selectedPid, onSelect, tags, onTag, level }: { 
             </div>
         </div>
     );
+};
+
+// Helper for Mockup V4 Colors
+const getProcessColor = (nodeName: string, isSelected: boolean): string => {
+    const name = nodeName.toLowerCase();
+    if (isSelected) return 'text-white';
+    if (name === 'cmd.exe') return 'text-orange-400 font-bold';
+    if (name === 'powershell.exe') return 'text-red-400 font-bold';
+    if (name === 'sample.exe') return 'text-brand-400 font-bold';
+    return 'text-zinc-300';
 };
 
 const getTagStyle = (tags: Tag[], eventId?: number) => {

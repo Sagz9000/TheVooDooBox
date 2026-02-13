@@ -9,10 +9,13 @@ export default {
             colors: {
                 // Cyber Purple Theme
                 // BoomBox Theme
+                // BoomBox Theme
                 brand: {
-                    500: "#BF00FF", // Neon Purple
-                    600: "#9333ea",
-                    700: "#7c3bed",
+                    500: "#3b82f6", // Blue (from V4 Mockup)
+                    600: "#2563eb",
+                    700: "#1d4ed8",
+                    400: "#60a5fa",
+                    300: "#93c5fd",
                 },
                 voodoo: {
                     purple: '#bf00ff',
