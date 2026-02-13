@@ -1,0 +1,110 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom Scrollbar for "Cyber" feel */
+.custom-scrollbar::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: #050505;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 4px;
+}
+
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #3b82f6;
+    /* Brand Blue */
+}
+
+/* Animations */
+@keyframes scanline {
+    0% {
+        transform: translateY(-100%);
+    }
+
+    100% {
+        transform: translateY(100%);
+    }
+}
+
+.scanlines::before {
+    content: " ";
+    display: block;
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    right: 0;
+    background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+    z-index: 50;
+    background-size: 100% 2px, 3px 100%;
+    pointer-events: none;
+}
+
+/* Resizable Splitter Handle */
+.gutter {
+    background-color: #1a1a1a;
+    background-repeat: no-repeat;
+    background-position: 50%;
+    cursor: col-resize;
+    transition: background-color 0.2s;
+}
+
+.gutter:hover {
+    background-color: #3b82f6;
+    /* Brand color highlight */
+}
+
+/* 
+   PRINT STYLES - The Core of V4 
+   Ensures "What you see is what you get" for PDF export
+*/
+@media print {
+    @page {
+        size: A4 landscape;
+        margin: 0;
+    }
+
+    body {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        background-color: #050505 !important;
+        color: white !important;
+        overflow: visible !important;
+        height: auto !important;
+    }
+
+    /* Hide UI elements not needed in report */
+    .no-print {
+        display: none !important;
+    }
+
+    /* Force background colors to print */
+    .bg-security-surface {
+        background-color: #111 !important;
+    }
+
+    .bg-security-panel {
+        background-color: #1a1a1a !important;
+    }
+
+    /* Expand scrollable areas to show full content */
+    .overflow-auto,
+    .overflow-y-auto,
+    .overflow-hidden {
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+    }
+
+    /* Ensure graphs/Timeline don't break across pages awkwardly */
+    .break-inside-avoid {
+        page-break-inside: avoid;
+    }
+}

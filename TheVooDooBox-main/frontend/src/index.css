@@ -128,8 +128,8 @@
 }
 
 .custom-scrollbar::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+    width: 8px;
+    height: 8px;
 }
 
 .custom-scrollbar::-webkit-scrollbar-track {
@@ -170,6 +170,72 @@
 }
 
 /* Grid layout for telemetry */
-.telemetry-row {
-    @apply flex items-center py-1 px-3 border-b border-security-border/30 hover:bg-white/5 transition-colors cursor-pointer;
+@apply flex items-center py-1 px-3 border-b border-security-border/30 hover:bg-white/5 transition-colors cursor-pointer;
+}
+
+/* Resizable Splitter Handle */
+.gutter {
+    background-color: #1a1a1a;
+    background-repeat: no-repeat;
+    background-position: 50%;
+    cursor: col-resize;
+    transition: background-color 0.2s;
+}
+
+.gutter:hover {
+    background-color: #3b82f6;
+    /* Brand color highlight */
+}
+
+.gutter.gutter-horizontal {
+    cursor: col-resize;
+    background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeOgFAPCIFhN/1IgAAAABJRU5ErkJggg==');
+}
+
+/* 
+   PRINT STYLES - The Core of V5 Report 
+   Ensures "What you see is what you get" for PDF export
+*/
+@media print {
+    @page {
+        size: A4 landscape;
+        margin: 0;
+    }
+
+    body {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        background-color: #050505 !important;
+        color: white !important;
+        overflow: visible !important;
+        height: auto !important;
+    }
+
+    /* Hide UI elements not needed in report */
+    .no-print {
+        display: none !important;
+    }
+
+    /* Force background colors to print */
+    .bg-security-surface {
+        background-color: #111 !important;
+    }
+
+    .bg-security-panel {
+        background-color: #1a1a1a !important;
+    }
+
+    /* Expand scrollable areas to show full content */
+    .overflow-auto,
+    .overflow-y-auto,
+    .overflow-hidden {
+        overflow: visible !important;
+        height: auto !important;
+        max-height: none !important;
+    }
+
+    /* Ensure graphs/Timeline don't break across pages awkwardly */
+    .break-inside-avoid {
+        page-break-inside: avoid;
+    }
 }

@@ -1,0 +1,88 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+    .btn-primary {
+        @apply px-4 py-2 bg-voodoo-purple hover:bg-brand-600 text-white font-bold rounded shadow-[0_0_15px_rgba(191, 0, 255, 0.5)] transition-all uppercase tracking-wider text-xs;
+    }
+
+    .btn-secondary {
+        @apply px-4 py-2 bg-transparent border border-white/20 hover:border-voodoo-purple hover:text-voodoo-purple text-white/70 font-bold rounded transition-all uppercase tracking-wider text-xs;
+    }
+
+    .card {
+        @apply bg-security-surface border border-white/10 rounded-sm relative overflow-hidden;
+    }
+
+    .scanlines {
+        background: linear-gradient(to bottom,
+                rgba(255, 255, 255, 0),
+                rgba(255, 255, 255, 0) 50%,
+                rgba(0, 0, 0, 0.2) 50%,
+                rgba(0, 0, 0, 0.2));
+        background-size: 100% 4px;
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        pointer-events: none;
+        z-index: 10;
+        opacity: 0.15;
+    }
+
+    /* Fishbone Diagram Styles */
+    .fishbone-container {
+        @apply relative w-full h-48 overflow-x-auto overflow-y-hidden bg-black/20 p-4 border border-white/5 rounded;
+    }
+
+    .fishbone-spine {
+        @apply absolute top-1/2 left-0 right-0 h-0.5 bg-white/20;
+        transform: translateY(-50%);
+    }
+
+    .fishbone-node {
+        @apply absolute flex flex-col items-center group cursor-pointer transition-all;
+        top: 50%;
+        transform: translateY(-50%);
+    }
+
+    .fishbone-node:hover .fishbone-connector {
+        @apply bg-voodoo-purple h-8;
+    }
+
+    .fishbone-node:hover .fishbone-icon {
+        @apply border-voodoo-purple shadow-[0_0_15px_rgba(191, 0, 255, 0.5)] bg-voodoo-purple/20;
+    }
+
+    .fishbone-time {
+        @apply absolute -top-8 text-[9px] text-white/40 font-mono opacity-0 group-hover:opacity-100 transition-opacity;
+    }
+
+    .fishbone-connector {
+        @apply w-0.5 h-4 bg-white/20 transition-all duration-300;
+    }
+
+    .fishbone-icon {
+        @apply w-8 h-8 rounded bg-black border border-white/20 flex items-center justify-center text-xs transition-all duration-300 z-10;
+    }
+
+    .fishbone-label {
+        @apply absolute top-10 text-[10px] text-white/60 font-mono whitespace-nowrap bg-black/80 px-1 rounded opacity-60 group-hover:opacity-100 group-hover:text-white transition-all;
+    }
+}
+
+/* Custom Scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+
+::-webkit-scrollbar-track {
+    @apply bg-black;
+}
+
+::-webkit-scrollbar-thumb {
+    @apply bg-white/20 rounded hover:bg-voodoo-purple;
+}

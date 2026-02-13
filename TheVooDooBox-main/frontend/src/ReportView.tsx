@@ -32,6 +32,7 @@ import {
 import { AgentEvent, voodooApi, ForensicReport, Tag } from './voodooApi';
 import AIInsightPanel from './AIInsightPanel';
 import AnalystNotepad from './AnalystNotepad';
+import Split from './lib/split';
 
 interface Props {
     taskId: string | null;
@@ -128,6 +129,25 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
             });
         }
     };
+
+    // Initialize Split.js
+    useEffect(() => {
+        const splitInstance = Split(['#split-0', '#split-1'], {
+            sizes: [25, 75],
+            minSize: [200, 400],
+            gutterSize: 8,
+            cursor: 'col-resize',
+            gutter: (index, direction) => {
+                const gutter = document.createElement('div');
+                gutter.className = `gutter gutter-${direction} bg-[#1a1a1a] bg-no-repeat bg-center hover:bg-brand-500/50 transition-colors`;
+                return gutter;
+            },
+        });
+
+        return () => {
+            splitInstance.destroy();
+        };
+    }, []);
 
     useEffect(() => {
         const nav = navRef.current;
@@ -485,6 +505,15 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             <span className="hidden sm:inline-block px-2 py-0.5 rounded bg-brand-500/10 text-brand-400 text-[9px] font-black border border-brand-500/20 uppercase tracking-wider">
                                 Dynamic
                             </span>
+                            {/* Verdict Badge - V5 Requirement */}
+                            {aiReport?.classification && (
+                                <span className={`px-2 py-0.5 rounded text-[9px] font-black border uppercase tracking-wider ${aiReport.classification === 'MALICIOUS' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
+                                        aiReport.classification === 'SUSPICIOUS' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
+                                            'bg-green-500/10 text-green-500 border-green-500/20'
+                                    }`}>
+                                    {aiReport.classification}
+                                </span>
+                            )}
                         </div>
                     </div>
                 </div>
@@ -501,7 +530,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                     navigator.clipboard.writeText(url);
                                     alert("Analysis Link Copied to Clipboard!");
                                 }}
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300"
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300 no-print"
                                 title="Share Analysis Link"
                             >
                                 <Share2 size={14} />
@@ -521,20 +550,28 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] ${aiReport
                                     ? 'bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 shadow-brand-500/40'
                                     : 'bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300'
-                                    }`}
+                                    } no-print`}
                                 title={aiReport ? "Download PDF Report" : "Analysis Required"}
                             >
                                 <Download size={14} />
                                 <span className="hidden xs:inline">PDF</span>
+                            </button>
+                            <button
+                                onClick={() => window.print()}
+                                className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 shadow-brand-500/40 no-print"
+                                title="Print Report"
+                            >
+                                <div className="w-3 h-3"><Download size={12} className="rotate-180" /></div>
+                                <span className="hidden xs:inline">Print</span>
                             </button>
                         </>
                     )}
                 </div>
             </header>
 
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0">
+            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0" id="split-container">
                 {/* Left: Enhanced Process Tree (Fluid Sidebar) */}
-                <div className="w-full lg:w-80 xl:w-[350px] lg:border-r border-b lg:border-b-0 border-white/10 bg-[#0c0c0c] flex flex-col shrink-0 min-h-0 h-64 lg:h-auto">
+                <div id="split-0" className="w-full lg:w-80 xl:w-[350px] lg:border-r border-b lg:border-b-0 border-white/10 bg-[#0c0c0c] flex flex-col shrink-0 min-h-0 h-64 lg:h-auto no-print">
                     <div className="p-4 border-b border-white/10 bg-[#111] flex flex-col gap-3 shadow-sm">
                         <div className="flex items-center gap-2">
                             <Activity size={14} className="text-brand-500" />
@@ -567,7 +604,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                 </div>
 
                 {/* Right: Detailed Analysis Panel */}
-                <div className="flex-1 flex flex-col bg-[#050505] min-w-0">
+                <div id="split-1" className="flex-1 flex flex-col bg-[#050505] min-w-0">
                     {/* Process Detail Card */}
                     {selectedProcessNode ? (
                         <div className="bg-[#0a0a0a] border-b border-white/10 p-6 flex flex-col shadow-lg z-10">
@@ -757,8 +794,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                                                 )}
                                                                 {tech.status && (
                                                                     <div className={`mt-1 text-[9px] font-bold uppercase tracking-wider ${tech.status === 'confirmed' ? 'text-red-400' :
-                                                                            tech.status === 'suspected' ? 'text-yellow-400' :
-                                                                                'text-zinc-500'
+                                                                        tech.status === 'suspected' ? 'text-yellow-400' :
+                                                                            'text-zinc-500'
                                                                         }`}>
                                                                         {tech.status}
                                                                     </div>

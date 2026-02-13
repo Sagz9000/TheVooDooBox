@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VooDooBox Report V4 (Print Optimized)</title>
+    <!-- Tailwind via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 500: '#3b82f6', 600: '#2563eb' },
+                        security: { surface: '#0a0a0a', panel: '#111', border: '#1a1a1a', muted: '#666' },
+                        threat: { critical: '#ef4444', high: '#f97316', low: '#22c55e' }
+                    },
+                    fontFamily: { mono: ['JetBrains Mono', 'monospace'], sans: ['Inter', 'sans-serif'] }
+                }
+            }
+        }
+    </script>
+    <!-- Split.js for Resizable Panels -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/split.js/1.6.0/split.min.js"></script>
+    <!-- Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <link rel="stylesheet" href="voodoo.css">
+    <style>
+        /* Split.js Gutter Style */
+        .gutter {
+            background-color: #1a1a1a;
+            background-repeat: no-repeat;
+            background-position: 50%;
+        }
+
+        .gutter.gutter-horizontal {
+            cursor: col-resize;
+            background-image: url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAUAAAAeCAYAAADkftS9AAAAIklEQVQoU2M4c+bMfxAGAgYYmwGrIIiDjrELjpo5aiZeOgFAPCIFhN/1IgAAAABJRU5ErkJggg==');
+        }
+    </style>
+</head>
+
+<body class="bg-[#050505] text-white font-sans h-screen flex flex-col overflow-hidden">
+
+    <!-- HEADER (Collapsible / Non-Print if needed, but useful context) -->
+    <header class="h-14 border-b border-white/10 bg-[#0a0a0a] flex items-center justify-between px-6 z-20 shrink-0">
+        <div class="flex items-center gap-4">
+            <div className="p-2 bg-white/5 rounded-full"><i data-lucide="arrow-left" class="w-4 h-4 text-zinc-400"></i>
+            </div>
+            <div class="flex flex-col">
+                <div class="flex items-center gap-3">
+                    <span class="text-sm font-bold tracking-tight">ANALYSIS #1770942764</span>
+                    <!-- VERDICT BADGE -->
+                    <span
+                        class="px-2 py-0.5 rounded bg-red-500/10 text-red-500 text-[10px] font-black border border-red-500/20 uppercase tracking-wider">
+                        MALICIOUS
+                    </span>
+                </div>
+                <span class="text-[9px] font-mono text-zinc-500">SAMPLE.EXE • SHA256: 8A...F2</span>
+            </div>
+        </div>
+
+        <div class="flex items-center gap-4 no-print">
+            <div class="text-xs font-mono text-zinc-500">
+                <i data-lucide="clock" class="inline w-3 h-3 mr-1"></i> 00:03:16
+            </div>
+            <button onclick="window.print()"
+                class="flex items-center gap-2 px-3 py-1.5 rounded bg-brand-600 hover:bg-brand-500 text-white text-[10px] font-black uppercase tracking-wider transition-all">
+                <i data-lucide="printer" class="w-3 h-3"></i> Print Report
+            </button>
+        </div>
+    </header>
+
+    <!-- CONTENT (Split View) -->
+    <div class="flex-1 flex overflow-hidden relative" id="split-container">
+
+        <!-- LEFT: Process Lineage (Resizable) -->
+        <div id="split-0"
+            class="bg-[#0c0c0c] flex flex-col min-w-[250px] overflow-hidden border-r border-white/5 print:w-1/3">
+            <div class="p-3 border-b border-white/10 bg-[#111] flex items-center justify-between">
+                <span class="text-[10px] font-black uppercase tracking-wider text-zinc-400">Process Lineage</span>
+                <span class="text-[9px] font-mono text-zinc-600">FILTER MODE</span>
+            </div>
+            <div class="flex-1 overflow-y-auto p-2 custom-scrollbar">
+                <!-- Tree Node -->
+                <div class="pl-2 border-l border-zinc-700 ml-2 mb-2">
+                    <div class="flex items-center gap-2 py-1 hover:bg-white/5 rounded px-2 cursor-pointer group">
+                        <span class="text-zinc-500 font-mono text-[10px]">6836</span>
+                        <span class="text-xs text-zinc-300 font-bold">mallab-agent.exe</span>
+                    </div>
+                    <!-- Child -->
+                    <div class="pl-4 border-l border-zinc-700 ml-2 mt-1">
+                        <div
+                            class="flex items-center gap-2 py-1 bg-brand-500/10 border border-brand-500/20 rounded px-2 cursor-pointer">
+                            <span class="text-brand-500 font-mono text-[10px]">7326</span>
+                            <span class="text-xs text-brand-400 font-bold">sample.exe</span>
+                            <i data-lucide="zap" class="w-3 h-3 text-red-500 ml-auto"></i>
+                        </div>
+                        <!-- Grandchild -->
+                        <div class="pl-4 border-l border-red-500/30 ml-2 mt-1">
+                            <div class="flex items-center gap-2 py-1 hover:bg-white/5 rounded px-2 cursor-pointer">
+                                <span class="text-zinc-500 font-mono text-[10px]">4490</span>
+                                <span class="text-xs text-orange-400 font-bold">cmd.exe</span>
+                            </div>
+                            <div class="pl-4 ml-2 mt-1">
+                                <div class="flex items-center gap-2 py-1 hover:bg-white/5 rounded px-2 cursor-pointer">
+                                    <span class="text-zinc-500 font-mono text-[10px]">2223</span>
+                                    <span class="text-xs text-red-400 font-bold">powershell.exe</span>
+                                    <span class="text-[9px] text-red-500 bg-red-500/10 px-1 rounded ml-auto">NET</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- RIGHT: Report Panels (Resizable) -->
+        <div id="split-1" class="bg-[#050505] flex flex-col min-w-[400px] overflow-hidden relative">
+
+            <!-- Process Detail Header -->
+            <div class="p-6 bg-[#0a0a0a] border-b border-white/10 shrink-0">
+                <div class="flex items-start gap-4">
+                    <div class="p-3 bg-brand-900/20 rounded-xl border border-brand-500/20">
+                        <i data-lucide="terminal" class="w-6 h-6 text-brand-400"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-xl font-bold text-white">sample.exe</h2>
+                        <div class="flex items-center gap-4 mt-1 text-xs font-mono text-zinc-500">
+                            <span>PID: <span class="text-zinc-300">7326</span></span>
+                            <span>PPID: <span class="text-zinc-300">6836</span></span>
+                            <span>Started: <span class="text-zinc-300">14:02:22</span></span>
+                        </div>
+                    </div>
+                </div>
+                <!-- Command Line -->
+                <div
+                    class="mt-4 bg-black/40 p-3 rounded border border-white/10 font-mono text-[11px] text-zinc-300 break-all">
+                    <span class="text-brand-500 select-none mr-2">$</span>
+                    "C:\Users\Public\sample.exe" --silent --inject 0x443
+                </div>
+            </div>
+
+            <!-- TABS (Print: Hidden, Content Always Shown) -->
+            <div class="border-b border-white/10 bg-[#0a0a0a] flex items-center px-4 gap-1 overflow-x-auto no-print">
+                <button
+                    class="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-zinc-500 border-b-2 border-transparent hover:text-zinc-300">Timeline</button>
+                <button
+                    class="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-brand-400 border-b-2 border-brand-500 bg-white/5">Intelligence</button>
+                <button
+                    class="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-zinc-500 border-b-2 border-transparent hover:text-zinc-300">Network
+                    <span class="ml-1 bg-zinc-800 px-1 rounded text-[9px]">12</span></button>
+                <button
+                    class="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-zinc-500 border-b-2 border-transparent hover:text-zinc-300">Files
+                    <span class="ml-1 bg-zinc-800 px-1 rounded text-[9px]">4</span></button>
+                <button
+                    class="px-4 py-3 text-[11px] font-bold uppercase tracking-wider text-zinc-500 border-b-2 border-transparent hover:text-zinc-300">Screenshots</button>
+            </div>
+
+            <!-- CONTENT AREA -->
+            <div class="flex-1 overflow-y-auto p-6 bg-[#080808] custom-scrollbar break-inside-avoid">
+
+                <!-- INTELLIGENCE PANEL (Default View) -->
+                <div class="max-w-4xl mx-auto space-y-8">
+
+                    <!-- Header -->
+                    <div class="flex items-center gap-3 mb-6 pb-4 border-b border-white/10">
+                        <div class="p-2 bg-purple-500/10 rounded-lg"><i data-lucide="brain"
+                                class="w-5 h-5 text-purple-400"></i></div>
+                        <div>
+                            <h2 class="text-lg font-bold text-white">Forensic Analysis</h2>
+                            <p class="text-[10px] text-zinc-500 uppercase tracking-widest">Neural Correlation Engine</p>
+                        </div>
+                    </div>
+
+                    <!-- Verdict Card -->
+                    <div
+                        class="p-5 bg-[#111] border border-red-500/20 rounded-xl relative overflow-hidden flex items-center justify-between shadow-[0_0_30px_rgba(239,68,68,0.05)]">
+                        <div class="absolute top-0 left-0 bottom-0 w-1 bg-red-500"></div>
+                        <div>
+                            <div class="text-[9px] text-zinc-500 uppercase font-black tracking-[0.2em] mb-1">
+                                Classification</div>
+                            <div class="text-3xl font-black text-red-500 tracking-tight">MALICIOUS</div>
+                            <div class="mt-1 text-xs text-zinc-400">Family: <span
+                                    class="text-white font-mono">Trojan.Emotet</span></div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-4xl font-black text-white tracking-tighter">92<span
+                                    class="text-lg text-zinc-600">/100</span></div>
+                            <div class="text-[9px] text-zinc-500 uppercase tracking-wider">Threat Score</div>
+                        </div>
+                    </div>
+
+                    <!-- AI Summary -->
+                    <div>
+                        <div class="text-[9px] text-zinc-500 uppercase font-black tracking-[0.2em] mb-3">Executive
+                            Summary</div>
+                        <div
+                            class="text-sm text-zinc-300 leading-relaxed bg-[#111] p-5 rounded-lg border-l-2 border-brand-500 italic">
+                            "The sample acts as a sophisticated loader, establishing persistence via Registry Run keys
+                            immediately after execution. It attempts to contact C2 servers on <b>192.168.1.105</b> to
+                            download secondary payloads. Behavioral patterns match <b>Emotet</b> variants, specifically
+                            the use of PowerShell for encoded command execution."
+                        </div>
+                    </div>
+
+                    <!-- Attack Timeline (Condensed) -->
+                    <div>
+                        <div class="flex items-center justify-between mb-3">
+                            <div class="text-[9px] text-zinc-500 uppercase font-black tracking-[0.2em]">Key Attack
+                                Phases</div>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="bg-[#111] border border-white/5 rounded p-3 flex gap-4 break-inside-avoid">
+                                <span class="text-[10px] font-mono text-zinc-500 w-12 pt-1">+00:01</span>
+                                <div>
+                                    <div class="text-xs font-bold text-white">Initial Execution</div>
+                                    <div class="text-[11px] text-zinc-400">Process started from Explorer.exe</div>
+                                </div>
+                            </div>
+                            <div class="bg-[#111] border border-red-500/20 rounded p-3 flex gap-4 break-inside-avoid">
+                                <span class="text-[10px] font-mono text-zinc-500 w-12 pt-1">+00:05</span>
+                                <div>
+                                    <div class="text-xs font-bold text-red-400">Persistence Established</div>
+                                    <div class="text-[11px] text-zinc-400">Registry key HKCU\Run\Updater created
+                                        pointing to C:\Users\Public\sample.exe</div>
+                                </div>
+                            </div>
+                            <div
+                                class="bg-[#111] border border-orange-500/20 rounded p-3 flex gap-4 break-inside-avoid">
+                                <span class="text-[10px] font-mono text-zinc-500 w-12 pt-1">+00:12</span>
+                                <div>
+                                    <div class="text-xs font-bold text-orange-400">C2 Beacon</div>
+                                    <div class="text-[11px] text-zinc-400">HTTP POST to
+                                        http://malicious-site.com/gate.php (Size: 402b)</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- IOCs -->
+                    <div>
+                        <div class="text-[9px] text-zinc-500 uppercase font-black tracking-[0.2em] mb-3">Indicators of
+                            Compromise</div>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="bg-[#111] p-4 rounded border border-white/5 break-inside-avoid">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <i data-lucide="globe" class="w-3 h-3 text-red-500"></i>
+                                    <span class="text-[10px] font-bold text-red-500 uppercase">Network</span>
+                                </div>
+                                <ul class="space-y-1">
+                                    <li class="font-mono text-[10px] text-zinc-300 bg-black/50 px-2 py-1 rounded">
+                                        192.168.1.105</li>
+                                    <li class="font-mono text-[10px] text-zinc-300 bg-black/50 px-2 py-1 rounded">
+                                        http://malicious.com</li>
+                                </ul>
+                            </div>
+                            <div class="bg-[#111] p-4 rounded border border-white/5 break-inside-avoid">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <i data-lucide="file" class="w-3 h-3 text-orange-500"></i>
+                                    <span class="text-[10px] font-bold text-orange-500 uppercase">Files</span>
+                                </div>
+                                <ul class="space-y-1">
+                                    <li class="font-mono text-[10px] text-zinc-300 bg-black/50 px-2 py-1 rounded">
+                                        C:\Users\Public\sample.exe</li>
+                                    <li class="font-mono text-[10px] text-zinc-300 bg-black/50 px-2 py-1 rounded">
+                                        C:\Temp\drop.bat</li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Init Icons
+        lucide.createIcons();
+
+        // Init Resize
+        Split(['#split-0', '#split-1'], {
+            sizes: [25, 75],
+            minSize: [200, 400],
+            gutterSize: 8,
+            cursor: 'col-resize'
+        });
+    </script>
+</body>
+
+</html>
