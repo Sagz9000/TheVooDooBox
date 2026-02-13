@@ -15,10 +15,12 @@ interface ProcessNode {
     children: ProcessNode[];
     events: AgentEvent[];
     type: 'root' | 'process';
+    startTime?: number;
 }
 
 export default function FishboneDiagram({ events, width = 800, height = 400 }: FishboneProps) {
     const svgRef = useRef<SVGSVGElement>(null);
+    const gRef = useRef<SVGGElement | null>(null);
 
     // Process events into a hierarchy
     const root = useMemo(() => {
@@ -54,6 +56,20 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
             // Update name if we find a better one (e.g., from PROCESS_CREATE)
             if (e.event_type === 'PROCESS_CREATE' && e.process_name) {
                 node.name = e.process_name;
+            }
+        });
+
+        // 2.5 Calculate Start Times
+        processMap.forEach(node => {
+            if (node.events.length > 0) {
+                // Determine start time based on the earliest event
+                // If there's a PROCESS_CREATE, that's definitive. Otherwise min of all.
+                const createEvent = node.events.find(e => e.event_type === 'PROCESS_CREATE');
+                if (createEvent) {
+                    node.startTime = createEvent.timestamp;
+                } else {
+                    node.startTime = Math.min(...node.events.map(e => e.timestamp));
+                }
             }
         });
 
@@ -93,16 +109,24 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
         } else if (roots.length === 1) {
             hierarchyRoot = roots[0];
             hierarchyRoot.type = 'root'; // Mark as main root
+            // Ensure root has a start time for delta calcs if needed (e.g. from its first child?)
+            // If actual root, it has events.
         } else {
             // Multiple roots (e.g. system processes noise + actual malware)
             // We create a virtual "Detonation" root
+            // Start time = min of all roots
+            const contextStart = roots.length > 0
+                ? Math.min(...roots.map(r => r.startTime || Infinity))
+                : Date.now();
+
             hierarchyRoot = {
                 id: 0,
                 pid: 0,
                 name: "Detonation Context",
                 children: roots,
                 events: [],
-                type: 'root'
+                type: 'root',
+                startTime: contextStart === Infinity ? 0 : contextStart
             };
         }
 
@@ -119,8 +143,22 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = height - margin.top - margin.bottom;
 
+        // Container for Zoom
         const g = svg.append("g")
             .attr("transform", `translate(${margin.left},${margin.top})`);
+
+        gRef.current = g.node();
+
+        // Zoom Behavior
+        const zoom = d3.zoom<SVGSVGElement, unknown>()
+            .scaleExtent([0.1, 4])
+            .on("zoom", (event) => {
+                g.attr("transform", event.transform);
+            });
+
+        svg.call(zoom)
+            .call(zoom.transform, d3.zoomIdentity.translate(margin.left, margin.top));
+
 
         // Tree Layout - Horizontal
         // Note: d3.tree() expects [height, width] for horizontal layouts if we swap x/y later
@@ -140,6 +178,29 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
             .attr("stroke", "#333")
             .attr("stroke-width", 1.5)
             .attr("opacity", 0.6);
+
+        // Time Spread Labels
+        g.selectAll(".time-label")
+            .data(treeData.links())
+            .enter().append("text")
+            .attr("class", "time-label")
+            .attr("x", d => (d.source.y + d.target.y) / 2)
+            .attr("y", d => (d.source.x + d.target.x) / 2 - 4) // Slight offset above the link
+            .attr("text-anchor", "middle")
+            .style("fill", "#666")
+            .style("font-size", "9px")
+            .style("font-family", "'JetBrains Mono', monospace")
+            .text(d => {
+                const start = d.source.data.startTime;
+                const end = d.target.data.startTime;
+                if (start && end) {
+                    const diff = end - start;
+                    if (diff <= 0) return ""; // effectively instantaneous or weird order
+                    if (diff < 1000) return `+${diff}ms`;
+                    return `+${(diff / 1000).toFixed(2)}s`;
+                }
+                return "";
+            });
 
         // Nodes (Groups)
         const nodes = g.selectAll(".node")
