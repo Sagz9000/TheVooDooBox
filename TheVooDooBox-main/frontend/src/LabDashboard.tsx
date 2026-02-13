@@ -158,8 +158,8 @@ export default function LabDashboard({ vms, onRefresh, onSelectVm, onLaunchNativ
                         <div className="h-12 bg-black/60 border-b border-voodoo-border px-6 flex items-center justify-between shrink-0">
                             <span className="text-[10px] font-black text-voodoo-toxic-green uppercase tracking-widest bg-black px-1">Analysis Queue</span>
                             <div className="flex gap-2">
-                                <span className="status-badge text-voodoo-green border-voodoo-green/30">CLEAN: {tasks.filter((t: AnalysisTask) => t.verdict === 'Benign' || t.verdict === 'Clean').length}</span>
-                                <span className="status-badge text-voodoo-purple border-voodoo-purple/30">MALICIOUS: {tasks.filter((t: AnalysisTask) => t.verdict === 'Malicious').length}</span>
+                                <span className="status-badge text-voodoo-green border-voodoo-green/30">CLEAN: {(!tasks ? 0 : tasks.filter((t: AnalysisTask) => t.verdict === 'Benign' || t.verdict === 'Clean').length)}</span>
+                                <span className="status-badge text-voodoo-purple border-voodoo-purple/30">MALICIOUS: {(!tasks ? 0 : tasks.filter((t: AnalysisTask) => t.verdict === 'Malicious').length)}</span>
                             </div>
                         </div>
 
@@ -181,7 +181,9 @@ export default function LabDashboard({ vms, onRefresh, onSelectVm, onLaunchNativ
                                             onClick={() => onSelectTask(task.id)}
                                             className="border-b border-voodoo-border/30 hover:bg-white/5 transition-colors group cursor-pointer"
                                         >
-                                            <td className="p-3 text-white/50">{new Date(task.created_at).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' })}</td>
+                                            <td className="p-3 text-white/50">
+                                                {task.created_at ? new Date(task.created_at).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit' }) : '--:--'}
+                                            </td>
                                             <td className="p-3 text-white">
                                                 <div className="flex items-center gap-2">
                                                     <Box size={12} className="text-voodoo-purple" />

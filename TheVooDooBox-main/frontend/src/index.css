@@ -169,8 +169,8 @@
     text-align: left;
 }
 
-/* Grid layout for telemetry */
-@apply flex items-center py-1 px-3 border-b border-security-border/30 hover:bg-white/5 transition-colors cursor-pointer;
+.telemetry-row {
+    @apply flex items-center py-1 px-3 border-b border-security-border/30 hover:bg-white/5 transition-colors cursor-pointer;
 }
 
 /* Resizable Splitter Handle */

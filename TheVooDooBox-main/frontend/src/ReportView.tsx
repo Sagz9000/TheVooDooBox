@@ -132,21 +132,30 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
 
     // Initialize Split.js
     useEffect(() => {
-        const splitInstance = Split(['#split-0', '#split-1'], {
-            sizes: [25, 75],
-            minSize: [200, 400],
-            gutterSize: 8,
-            cursor: 'col-resize',
-            gutter: (index, direction) => {
-                const gutter = document.createElement('div');
-                gutter.className = `gutter gutter-${direction} bg-[#1a1a1a] bg-no-repeat bg-center hover:bg-brand-500/50 transition-colors`;
-                return gutter;
-            },
-        });
+        if (typeof Split !== 'function') {
+            console.error('[ReportView] Split.js library failed to load as a function', Split);
+            return;
+        }
 
-        return () => {
-            splitInstance.destroy();
-        };
+        try {
+            const splitInstance = Split(['#split-0', '#split-1'], {
+                sizes: [25, 75],
+                minSize: [200, 400],
+                gutterSize: 8,
+                cursor: 'col-resize',
+                gutter: (index, direction) => {
+                    const gutter = document.createElement('div');
+                    gutter.className = `gutter gutter-${direction} bg-[#1a1a1a] bg-no-repeat bg-center hover:bg-brand-500/50 transition-colors`;
+                    return gutter;
+                },
+            });
+
+            return () => {
+                splitInstance.destroy();
+            };
+        } catch (err) {
+            console.error('[ReportView] Split.js initialization failed:', err);
+        }
     }, []);
 
     useEffect(() => {
@@ -508,8 +517,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             {/* Verdict Badge - V5 Requirement */}
                             {aiReport?.classification && (
                                 <span className={`px-2 py-0.5 rounded text-[9px] font-black border uppercase tracking-wider ${aiReport.classification === 'MALICIOUS' ? 'bg-red-500/10 text-red-500 border-red-500/20' :
-                                        aiReport.classification === 'SUSPICIOUS' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
-                                            'bg-green-500/10 text-green-500 border-green-500/20'
+                                    aiReport.classification === 'SUSPICIOUS' ? 'bg-orange-500/10 text-orange-500 border-orange-500/20' :
+                                        'bg-green-500/10 text-green-500 border-green-500/20'
                                     }`}>
                                     {aiReport.classification}
                                 </span>

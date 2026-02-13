@@ -45,6 +45,7 @@ export default function AnalysisArena({ target, events, onBack }: Props) {
 
     // Get the most recent task ID from events for this session
     const activeTaskId = useMemo(() => {
+        if (!events || !Array.isArray(events)) return undefined;
         // If there are events, find the most common non-null task_id or just the latest
         const latestWithId = events.slice().reverse().find(e => e.task_id);
         return latestWithId?.task_id;
@@ -293,7 +294,7 @@ export default function AnalysisArena({ target, events, onBack }: Props) {
 
                     <div className="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar bg-security-bg/10">
                         {activeTab === 'telemetry' ? (
-                            events.length === 0 ? (
+                            (!events || events.length === 0) ? (
                                 <div className="h-full flex flex-col items-center justify-center text-security-muted/30 py-20 px-10 text-center">
                                     <Database size={40} className="mb-4" />
                                     <p className="text-[10px] font-extrabold uppercase tracking-[0.2em] leading-relaxed">
@@ -325,18 +326,20 @@ export default function AnalysisArena({ target, events, onBack }: Props) {
                                                 </div>
                                             )}
                                             <div className="flex justify-between items-start mb-1.5">
-                                                <span className={`text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded ${evt.event_type.includes("ERROR") || evt.process_name.includes("malware")
+                                                <span className={`text-[9px] font-extrabold uppercase tracking-widest px-1.5 py-0.5 rounded ${(evt.event_type?.includes("ERROR") || evt.process_name?.includes("malware"))
                                                     ? "bg-threat-critical/20 text-threat-critical border border-threat-critical/20"
                                                     : "bg-brand-500/10 text-brand-500 border border-brand-500/20"
                                                     }`}>
-                                                    {evt.event_type}
+                                                    {evt.event_type || 'EVENT'}
                                                 </span>
-                                                <span className="text-[9px] font-mono text-security-muted">{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                                                <span className="text-[9px] font-mono text-security-muted">
+                                                    {evt.timestamp ? new Date(evt.timestamp).toLocaleTimeString() : '--:--:--'}
+                                                </span>
                                             </div>
                                             <div className="flex items-center gap-2 text-white font-mono text-[11px] font-bold">
                                                 <Terminal size={10} className="text-security-muted" />
-                                                <span className="truncate">{evt.process_name}</span>
-                                                <span className="px-1 bg-security-bg text-security-muted rounded text-[9px] font-bold border border-security-border">PID {evt.process_id}</span>
+                                                <span className="truncate">{evt.process_name || 'System'}</span>
+                                                <span className="px-1 bg-security-bg text-security-muted rounded text-[9px] font-bold border border-security-border">PID {evt.process_id || '???'}</span>
                                             </div>
                                             <div className="mt-2 text-[10px] text-security-muted leading-relaxed font-mono italic break-words border-t border-security-border/30 pt-1.5">
                                                 {evt.details}

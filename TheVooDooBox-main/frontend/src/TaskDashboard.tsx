@@ -68,8 +68,9 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
     const [activeGhidraTask, setActiveGhidraTask] = useState<{ id: string, filename: string } | null>(null);
 
     const expandedEvents = useMemo(() => {
+        if (!rawEvents) return [];
         if (showNoise) return rawEvents;
-        return rawEvents.filter(e => !NOISE_FILTER_PROCESSES.includes(e.process_name.toLowerCase()));
+        return rawEvents.filter(e => e.process_name && !NOISE_FILTER_PROCESSES.includes(e.process_name.toLowerCase()));
     }, [rawEvents, showNoise]);
 
     const handleRowClick = async (task: AnalysisTask) => {
@@ -354,7 +355,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                                                 </div>
                                                                 <div className="bg-[#111] border border-white/5 p-3 rounded">
                                                                     <div className="text-[9px] text-zinc-500 font-black uppercase tracking-wider mb-1">Processes</div>
-                                                                    <div className="text-xl font-black text-blue-400">{new Set(expandedEvents.map(e => e.process_id)).size}</div>
+                                                                    <div className="text-xl font-black text-blue-400">{new Set(expandedEvents.filter(e => e.process_id).map(e => e.process_id)).size}</div>
                                                                 </div>
                                                                 <div className="bg-[#111] border border-white/5 p-3 rounded">
                                                                     <div className="text-[9px] text-zinc-500 font-black uppercase tracking-wider mb-1">Duration</div>
@@ -375,7 +376,9 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                                                 <div className="p-2 space-y-2 h-[200px] overflow-y-auto custom-scrollbar">
                                                                     {expandedEvents.length > 0 ? expandedEvents.map((e, idx) => (
                                                                         <div key={idx} className="flex gap-4 text-[10px] font-mono text-zinc-400 border-b border-white/5 pb-2">
-                                                                            <span className="w-16 text-zinc-600">{new Date(e.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                                                                            <span className="w-16 text-zinc-600">
+                                                                                {e.timestamp ? new Date(e.timestamp).toLocaleTimeString([], { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' }) : '--:--:--'}
+                                                                            </span>
                                                                             <span className={`w-24 font-bold ${e.event_type.includes('FILE') ? 'text-blue-400' : e.event_type.includes('NET') ? 'text-green-400' : 'text-yellow-500'}`}>{e.event_type}</span>
                                                                             <span className="w-24 text-white truncate" title={e.process_name}>{e.process_name}</span>
                                                                             <span className="flex-1 truncate" title={e.details}>{e.details}</span>
