@@ -92,6 +92,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
     const navRef = React.useRef<HTMLDivElement>(null);
     const [canScrollLeft, setCanScrollLeft] = useState(false);
     const [canScrollRight, setCanScrollRight] = useState(false);
+    const [printMode, setPrintMode] = useState(false);
 
     const scrollInterval = React.useRef<any>(null);
 
@@ -569,30 +570,20 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
 
                             <button
                                 onClick={() => {
-                                    if (aiReport) {
-                                        voodooApi.downloadPdf(taskId, aiReport);
-                                    } else {
-                                        // Switch to intelligence tab and explain
-                                        setActiveTab('intelligence');
-                                        alert("AI Analysis is required before downloading the PDF report. Please click 'RUN ANALYTICS'.");
-                                    }
+                                    setPrintMode(true);
+                                    setTimeout(() => {
+                                        window.print();
+                                        setPrintMode(false);
+                                    }, 300);
                                 }}
                                 className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] ${aiReport
                                     ? 'bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 shadow-brand-500/40'
                                     : 'bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300'
                                     } no-print`}
-                                title={aiReport ? "Download PDF Report" : "Analysis Required"}
+                                title="Print Full Report as PDF"
                             >
                                 <Download size={14} />
                                 <span className="hidden xs:inline">PDF</span>
-                            </button>
-                            <button
-                                onClick={() => window.print()}
-                                className="flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 shadow-brand-500/40 no-print"
-                                title="Print Report"
-                            >
-                                <div className="w-3 h-3"><Download size={12} className="rotate-180" /></div>
-                                <span className="hidden xs:inline">Print</span>
                             </button>
                         </>
                     )}
@@ -1008,6 +999,182 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                     ))}
                 </div>,
                 document.body
+            )}
+
+            {/* ===== PRINT LAYOUT: Rendered inline when printMode is active ===== */}
+            {printMode && (
+                <div className="print-report hidden">
+                    {/* Header */}
+                    <div className="print-header">
+                        <h1 className="text-3xl font-black text-white uppercase tracking-tight">VooDooBox Forensic Report</h1>
+                        <div className="text-xs text-zinc-400 font-mono mt-1">
+                            Task: {taskId} | Generated: {new Date().toLocaleString()}
+                        </div>
+                    </div>
+
+                    {/* Verdict & Classification */}
+                    {aiReport && (
+                        <div className="print-section">
+                            <div className="print-section-header">Classification</div>
+                            <div className="flex items-center justify-between gap-4 p-4 bg-[#111] border border-white/10 rounded-lg">
+                                <div>
+                                    <div className={`inline-flex px-4 py-2 rounded-lg text-sm font-black uppercase tracking-widest border-2 ${aiReport.verdict === 'Malicious' ? 'bg-red-500/20 text-red-400 border-red-500/40' :
+                                            aiReport.verdict === 'Suspicious' ? 'bg-orange-500/20 text-orange-400 border-orange-500/40' :
+                                                'bg-green-500/20 text-green-400 border-green-500/40'
+                                        }`}>{aiReport.verdict}</div>
+                                    <div className="mt-2 text-xs text-zinc-400">
+                                        Family: <span className="text-white font-mono">{aiReport.malware_family || 'Unknown'}</span>
+                                    </div>
+                                    {aiReport.digital_signature && (
+                                        <div className="mt-1 text-xs text-zinc-400">
+                                            Signature: <span className="font-mono text-zinc-300">{aiReport.digital_signature}</span>
+                                        </div>
+                                    )}
+                                </div>
+                                <div className="text-right">
+                                    <div className="text-4xl font-black text-white">{aiReport.threat_score}</div>
+                                    <div className="text-[10px] text-zinc-500 uppercase tracking-wider">Threat Score</div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Executive Summary */}
+                    {aiReport?.executive_summary && (
+                        <div className="print-section">
+                            <div className="print-section-header">Executive Summary</div>
+                            <div className="p-4 bg-[#111] border border-white/10 rounded-lg text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">
+                                {aiReport.executive_summary}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Forensic Reasoning */}
+                    {aiReport?.thinking && (
+                        <div className="print-section">
+                            <div className="print-section-header">Forensic Reasoning (Chain of Thought)</div>
+                            <div className="p-4 bg-[#0a0a0a] border border-white/5 rounded-lg text-xs font-mono text-zinc-400 leading-relaxed whitespace-pre-wrap">
+                                {aiReport.thinking}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* MITRE ATT&CK Matrix */}
+                    {aiReport?.mitre_matrix && Object.keys(aiReport.mitre_matrix).length > 0 && (
+                        <div className="print-section">
+                            <div className="print-section-header">MITRE ATT&CK Matrix</div>
+                            <div className="grid grid-cols-2 gap-3">
+                                {Object.entries(aiReport.mitre_matrix).map(([tactic, techniques]: [string, any]) => (
+                                    <div key={tactic} className="bg-[#0c0c0c] border border-white/5 rounded-lg overflow-hidden">
+                                        <div className="p-2 border-b border-white/5 bg-white/5">
+                                            <h3 className="text-[10px] font-black text-zinc-300 uppercase tracking-wider">
+                                                {tactic.replace(/_/g, ' ')}
+                                            </h3>
+                                        </div>
+                                        <div className="p-2 space-y-2">
+                                            {(techniques as any[]).map((tech: any, i: number) => (
+                                                <div key={i} className="bg-black/30 rounded p-2 border border-white/5">
+                                                    <div className="flex items-center gap-2 mb-0.5">
+                                                        <span className="text-[8px] font-mono text-brand-400 bg-brand-500/10 px-1 py-0.5 rounded">{tech.id || 'N/A'}</span>
+                                                        <span className="text-[10px] font-bold text-zinc-300">{tech.name || tech}</span>
+                                                    </div>
+                                                    {tech.evidence && tech.evidence.length > 0 && (
+                                                        <div className="mt-1 space-y-0.5 pl-2 border-l border-white/5">
+                                                            {tech.evidence.map((ev: string, j: number) => (
+                                                                <div key={j} className="text-[9px] text-zinc-500 font-mono">• {ev}</div>
+                                                            ))}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Behavioral Timeline */}
+                    {aiReport?.behavioral_timeline && aiReport.behavioral_timeline.length > 0 && (
+                        <div className="print-section">
+                            <div className="print-section-header">Behavioral Timeline</div>
+                            <div className="space-y-2">
+                                {aiReport.behavioral_timeline.map((event: any, i: number) => (
+                                    <div key={i} className="flex gap-3 p-3 bg-[#111] border border-white/5 rounded-lg">
+                                        <div className="text-[9px] font-black uppercase text-brand-400 whitespace-nowrap w-24 shrink-0 pt-0.5">{event.stage}</div>
+                                        <div className="flex-1">
+                                            <div className="text-[11px] text-zinc-300">{event.event_description}</div>
+                                            <div className="text-[10px] text-zinc-500 font-mono mt-0.5">{event.technical_context}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Forensic Artifacts & IOCs */}
+                    {aiReport?.artifacts && (
+                        <div className="print-section">
+                            <div className="print-section-header">Forensic Artifacts & IOCs</div>
+                            <div className="grid grid-cols-2 gap-3">
+                                {aiReport.artifacts.c2_domains && aiReport.artifacts.c2_domains.length > 0 && (
+                                    <div className="p-3 bg-[#111] border border-red-500/20 rounded-lg">
+                                        <div className="text-[9px] font-black text-red-400 uppercase tracking-wider mb-2">C2 Domains</div>
+                                        {aiReport.artifacts.c2_domains.map((d: string, i: number) => (
+                                            <div key={i} className="text-[10px] font-mono text-red-300 mb-0.5">• {d}</div>
+                                        ))}
+                                    </div>
+                                )}
+                                {aiReport.artifacts.c2_ips && aiReport.artifacts.c2_ips.length > 0 && (
+                                    <div className="p-3 bg-[#111] border border-red-500/20 rounded-lg">
+                                        <div className="text-[9px] font-black text-red-400 uppercase tracking-wider mb-2">C2 IP Addresses</div>
+                                        {aiReport.artifacts.c2_ips.map((ip: string, i: number) => (
+                                            <div key={i} className="text-[10px] font-mono text-red-300 mb-0.5">• {ip}</div>
+                                        ))}
+                                    </div>
+                                )}
+                                {aiReport.artifacts.dropped_files && aiReport.artifacts.dropped_files.length > 0 && (
+                                    <div className="p-3 bg-[#111] border border-white/10 rounded-lg">
+                                        <div className="text-[9px] font-black text-zinc-400 uppercase tracking-wider mb-2">Dropped Files</div>
+                                        {aiReport.artifacts.dropped_files.map((f: string, i: number) => (
+                                            <div key={i} className="text-[10px] font-mono text-zinc-400 mb-0.5">• {f}</div>
+                                        ))}
+                                    </div>
+                                )}
+                                {aiReport.artifacts.command_lines && aiReport.artifacts.command_lines.length > 0 && (
+                                    <div className="p-3 bg-[#111] border border-white/10 rounded-lg">
+                                        <div className="text-[9px] font-black text-zinc-400 uppercase tracking-wider mb-2">Suspicious Commands</div>
+                                        {aiReport.artifacts.command_lines.map((cmd: string, i: number) => (
+                                            <div key={i} className="text-[10px] font-mono text-zinc-400 mb-0.5 break-all">• {cmd}</div>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Recommended Actions */}
+                    {aiReport?.recommended_actions && aiReport.recommended_actions.length > 0 && (
+                        <div className="print-section">
+                            <div className="print-section-header">Recommended Actions</div>
+                            <div className="space-y-2">
+                                {aiReport.recommended_actions.map((action: any, i: number) => (
+                                    <div key={i} className="p-3 bg-yellow-500/5 border border-yellow-500/20 rounded-lg">
+                                        <div className="text-xs font-black text-yellow-400 uppercase tracking-wider mb-1">{action.action}</div>
+                                        <div className="text-[11px] text-zinc-300 font-mono">{action.reasoning}</div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Footer */}
+                    <div className="print-footer">
+                        <div className="text-[9px] text-zinc-600 font-mono text-center border-t border-white/5 pt-4 mt-8">
+                            Generated by VooDooBox Automated Malware Analysis Platform • {new Date().toLocaleString()}
+                        </div>
+                    </div>
+                </div>
             )}
         </div>
     );

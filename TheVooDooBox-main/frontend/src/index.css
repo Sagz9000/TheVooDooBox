@@ -198,8 +198,8 @@
 */
 @media print {
     @page {
-        size: A4 landscape;
-        margin: 0;
+        size: A4 portrait;
+        margin: 12mm 10mm;
     }
 
     body {
@@ -209,11 +209,55 @@
         color: white !important;
         overflow: visible !important;
         height: auto !important;
+        width: auto !important;
     }
 
-    /* Hide UI elements not needed in report */
-    .no-print {
+    /* Hide ALL interactive UI chrome */
+    .no-print,
+    header,
+    nav,
+    #split-0,
+    [id="split-container"]>div:first-child {
         display: none !important;
+    }
+
+    /* Hide the main tabbed content area (replaced by print-report) */
+    [id="split-container"] {
+        display: none !important;
+    }
+
+    /* Show the dedicated print layout */
+    .print-report {
+        display: block !important;
+        position: relative !important;
+        width: 100% !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        overflow: visible !important;
+    }
+
+    /* Print header */
+    .print-header {
+        margin-bottom: 24px;
+        padding-bottom: 16px;
+        border-bottom: 2px solid rgba(255, 255, 255, 0.1);
+    }
+
+    /* Print sections */
+    .print-section {
+        margin-bottom: 20px;
+        page-break-inside: avoid;
+    }
+
+    .print-section-header {
+        font-size: 11px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: 0.15em;
+        color: #a0a0a0;
+        margin-bottom: 8px;
+        padding-bottom: 4px;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.05);
     }
 
     /* Force background colors to print */
@@ -234,8 +278,13 @@
         max-height: none !important;
     }
 
-    /* Ensure graphs/Timeline don't break across pages awkwardly */
+    /* Page break helpers */
     .break-inside-avoid {
         page-break-inside: avoid;
+    }
+
+    /* Ensure grids render correctly in print */
+    .grid {
+        display: grid !important;
     }
 }

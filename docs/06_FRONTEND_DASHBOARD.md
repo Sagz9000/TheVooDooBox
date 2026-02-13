@@ -18,6 +18,7 @@ TheVooDooBox Frontend is a real-time React application designed to provide malwa
 The "Executive View." It provides an overview of the entire laboratory infrastructure.
 *   **VM Carousel**: Real-time power status and thumbnail previews of all Proxmox nodes.
 *   **Task History**: A filterable list of recent analysis sessions with their AI-generated verdicts.
+*   **Expanded Row Preview**: (New v5.1) Click any task row to instantly reveal an embedded mini-dashboard containing high-density telemetry stats, a session storyboard, and an activity flow preview.
 *   **Sample Submission**: A centralized portal to upload binaries or URLs for detonation.
 *   **Deep Search**: Integrated search bar allows analysts to find sessions by hash, filename, or verdict.
 *   **Deep Linking**: Every analysis session has a unique, shareable URL, facilitating instant collaboration.
@@ -26,16 +27,21 @@ The "Executive View." It provides an overview of the entire laboratory infrastru
 The core workspace for an active malware dissection.
 *   **Live Stream**: The VNC/SPICE console allowing direct interaction with the malware.
 *   **Telemetry Feed**: A high-speed scrolling list of kernel events (Processes, Files, Network).
-*   **Process Tree**: A dynamic visualization of the process lineage (Parent -> Child relationships).
-*   **Digital Signatures**: Real-time validation of executable signatures displayed directly in the process tree (Green shield for valid, Grey for unsigned).
+*   **Process Galaxy** (v5.4): A force-directed simulation (D3.js) of the execution chain. Unlike static trees, the "Galaxy" uses charge repulsion and collision detection to handle thousands of spawned processes without overlap.
+    *   **Node Sizing**: Stars (nodes) grow based on their event volume.
+    *   **Time Deltas**: Links display the execution delay (e.g., `+50ms`) between parent and child.
+    *   **Interactive Navigation**: Zoom, pan, and drag nodes to isolate specific sub-lineages.
+*   **Digital Signatures**: Real-time validation of executable signatures displayed directly in the galaxy (Green shield for valid, Grey for unsigned).
 *   **MCP Console**: Interface to trigger manual lab actions like snapshot rollbacks.
 
 ![Analysis Arena Telemetry](../TheVooDooBox-main/pictures/telemetry.png)
 
 ### 3. Report View (`ReportView.tsx`)
 The final forensic summary for a completed task.
-*   **Verdict Badge**: High-visibility Malicious/Suspicious/Benign classification.
+*   **Verdict Badge**: High-visibility Malicious/Suspicious/Benign classification with animated risk pulsing.
+*   **Resizable Forensic Sidebar**: (v5.3) A Split.js-powered interface allows analysts to resize the Intelligence and Evidence panels for better data density control.
 *   **Forensic Timeline**: A chronological reconstruction of the attack chain.
+*   **High-Fidelity PDF Export**: (v5.5) Generates professional forensic reports that exactly match the on-screen UX, including color-coded verdicts and the full MITRE ATT&CK Matrix.
 *   **IOC Export**: A copy-paste ready list of IPs, domains, and file hashes.
 
 ### 4. Analyst Toolkit (New)

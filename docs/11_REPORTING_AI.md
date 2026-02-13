@@ -11,7 +11,7 @@ The path from execution to report follows these logical stages:
 3.  **Context Enrichment**: Ghidra static findings (decompiled functions) are merged with the dynamic behavioral data.
 4.  **Threat Corroboration**: VirusTotal intelligence is fetched and injected to validate findings.
 5.  **AI Synthesis**: An LLM analyzes the hybrid context to produce a structured `ForensicReport`.
-6.  **Artifact Generation**: The system compiles a professional PDF for human review.
+6.  **Artifact Generation**: The system compiles a professional, high-fidelity PDF report specifically optimized for forensic review.
 
 ## 2. Telemetry Aggregation (`ai_analysis.rs`)
 
@@ -48,7 +48,14 @@ The AI is instructed to return a JSON object with:
 
 ## 4. Automated PDF Reporting (`reports.rs`)
 
-Once the AI report is finalized, the `genpdf` engine generates a forensic document.
+Once the AI report is finalized, the frontend utilizes a **High-Fidelity Browser-based Engine** to generate the forensic document.
+
+### High-Fidelity Print Engine (v5.5)
+The system has transitioned from a backend `genpdf` logic (which lacked visual styling) to a browser-based `@media print` approach. This ensures:
+- **Visual Parity**: The PDF exactly matches the "pixel-perfect" on-screen report.
+- **Color Coding**: Verdict badges and threat indicators preserve their clinical colors.
+- **MITRE Integration**: The full MITRE ATT&CK Matrix is rendered inline in the PDF.
+- **Layout Control**: Page breaks are intelligently managed to prevent artifact fragmentation.
 
 ### Report Components
 *   **Visual Branding**: Custom header with the VoodooBox logo and task metadata.
@@ -67,7 +74,7 @@ Once the AI report is finalized, the `genpdf` engine generates a forensic docume
 
 ![Generated PDF Report](../TheVooDooBox-main/pictures/aigeneratedindicatorreport.png)
 
-All reports are stored in the PostgreSQL `analysis_reports` table and the PDF files are saved locally to the `/reports` directory. Analysts can retrieve previous reports via:
-*   **UI**: Clicking "View Report" on any completed task.
+All reports are stored in the PostgreSQL `analysis_reports` table. While the structured data is persisted in the database, the **PDF Report** is generated on-demand to ensure it always utilizes the latest UI styling and enrichment data. Analysts can retrieve previous reports via:
+*   **UI**: Clicking "View Report" on any completed task and selecting the "PDF" export button.
 *   **API**: `GET /api/tasks/{task_id}/ai-report`
-*   **FileSystem**: Browsing the persisted PDF volumes.
+*   **On-Demand**: The high-fidelity PDF is generated directly in the analyst's browser to preserve UI-specific visualizations like the MITRE Matrix.

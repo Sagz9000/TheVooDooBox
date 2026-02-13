@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useMemo } from 'react';
+import React, { useEffect, useRef, useMemo, useCallback } from 'react';
 import * as d3 from 'd3';
 import { AgentEvent } from './voodooApi';
 
@@ -9,8 +9,8 @@ interface FishboneProps {
 }
 
 interface ProcessNode {
-    id: number; // process_id
-    pid: number; // The OS PID (for display)
+    id: number;
+    pid: number;
     name: string;
     children: ProcessNode[];
     events: AgentEvent[];
@@ -18,244 +18,369 @@ interface ProcessNode {
     startTime?: number;
 }
 
+// Force simulation node extends ProcessNode with D3 position fields
+interface SimNode extends d3.SimulationNodeDatum {
+    data: ProcessNode;
+    radius: number;
+}
+
+interface SimLink extends d3.SimulationLinkDatum<SimNode> {
+    timeDelta?: number;
+}
+
+// ── Color Palette ──
+const COLOR = {
+    root: '#666',
+    target: '#ae00ff',    // Voodoo Purple
+    shell: '#ff003c',     // Threat Red
+    standard: '#00ff99',  // Toxic Green
+    link: '#333',
+    linkActive: '#ae00ff44',
+    label: '#ccc',
+    sublabel: '#666',
+    timeDelta: '#555',
+    bg: '#0a0a0a',
+    glow: (c: string) => `${c}66`,
+};
+
+function nodeColor(name: string, type: string): string {
+    if (type === 'root') return COLOR.root;
+    const n = name.toLowerCase();
+    if (n.includes('sample') || n.includes('artifact')) return COLOR.target;
+    if (n.includes('cmd') || n.includes('powershell') || n.includes('wscript') || n.includes('cscript') || n.includes('mshta')) return COLOR.shell;
+    return COLOR.standard;
+}
+
+function formatDelta(ms: number): string {
+    if (ms <= 0) return '';
+    if (ms < 1000) return `+${ms}ms`;
+    if (ms < 60000) return `+${(ms / 1000).toFixed(1)}s`;
+    return `+${(ms / 60000).toFixed(1)}m`;
+}
+
+// ── Build Hierarchy ──
+function buildHierarchy(events: AgentEvent[]): ProcessNode | null {
+    if (!events || events.length === 0) return null;
+
+    const processMap = new Map<number, ProcessNode>();
+
+    const getOrCreate = (procId: number, pid: number, name: string): ProcessNode => {
+        if (!processMap.has(procId)) {
+            processMap.set(procId, {
+                id: procId, pid, name,
+                children: [], events: [], type: 'process'
+            });
+        }
+        return processMap.get(procId)!;
+    };
+
+    events.forEach(e => {
+        const pId = e.process_id || e.pid || 0;
+        const node = getOrCreate(pId, e.process_id || e.pid || 0, e.process_name || `Unknown (${pId})`);
+        node.events.push(e);
+        if (e.event_type === 'PROCESS_CREATE' && e.process_name) node.name = e.process_name;
+    });
+
+    // Start times
+    processMap.forEach(node => {
+        if (node.events.length > 0) {
+            const create = node.events.find(e => e.event_type === 'PROCESS_CREATE');
+            node.startTime = create ? create.timestamp : Math.min(...node.events.map(e => e.timestamp));
+        }
+    });
+
+    // Parent→Child
+    const roots: ProcessNode[] = [];
+    processMap.forEach((node, procId) => {
+        const create = node.events.find(e => e.event_type === 'PROCESS_CREATE');
+        const any = node.events[0];
+        const parentId = create?.parent_process_id || any?.parent_process_id;
+
+        if (parentId && processMap.has(parentId) && parentId !== procId) {
+            processMap.get(parentId)!.children.push(node);
+        } else {
+            roots.push(node);
+        }
+    });
+
+    if (roots.length === 0) return null;
+    if (roots.length === 1) {
+        roots[0].type = 'root';
+        return roots[0];
+    }
+
+    const contextStart = Math.min(...roots.map(r => r.startTime || Infinity));
+    return {
+        id: 0, pid: 0, name: 'Detonation Context',
+        children: roots, events: [], type: 'root',
+        startTime: contextStart === Infinity ? 0 : contextStart
+    };
+}
+
+// ── Flatten hierarchy into nodes & links for force simulation ──
+function flatten(root: ProcessNode): { nodes: SimNode[]; links: SimLink[] } {
+    const nodes: SimNode[] = [];
+    const links: SimLink[] = [];
+    const visited = new Set<number>();
+
+    function walk(proc: ProcessNode, depth: number) {
+        if (visited.has(proc.id)) return;
+        visited.add(proc.id);
+
+        const eventCount = proc.events.length;
+        const radius = proc.type === 'root' ? 10 : Math.max(5, Math.min(14, 4 + eventCount * 0.8));
+
+        const node: SimNode = { data: proc, radius };
+        nodes.push(node);
+
+        proc.children.forEach(child => {
+            const timeDelta = (child.startTime && proc.startTime) ? child.startTime - proc.startTime : undefined;
+            links.push({
+                source: proc.id,
+                target: child.id,
+                timeDelta: timeDelta && timeDelta > 0 ? timeDelta : undefined
+            });
+            walk(child, depth + 1);
+        });
+    }
+
+    walk(root, 0);
+    return { nodes, links };
+}
+
+// ────────────────────────────────────────────
+// COMPONENT
+// ────────────────────────────────────────────
 export default function FishboneDiagram({ events, width = 800, height = 400 }: FishboneProps) {
     const svgRef = useRef<SVGSVGElement>(null);
-    const gRef = useRef<SVGGElement | null>(null);
+    const simRef = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
 
-    // Process events into a hierarchy
-    const root = useMemo(() => {
-        if (!events || events.length === 0) return null;
+    const root = useMemo(() => buildHierarchy(events), [events]);
 
-        // 1. Identify distinct processes by process_id (or fallback to pid if process_id is missing)
-        // We use a Map<process_id, Node>
-        const processMap = new Map<number, ProcessNode>();
-
-        // Helper to get or create a node
-        const getOrCreateNode = (procId: number, pid: number, name: string): ProcessNode => {
-            if (!processMap.has(procId)) {
-                processMap.set(procId, {
-                    id: procId,
-                    pid: pid,
-                    name: name,
-                    children: [],
-                    events: [],
-                    type: 'process'
-                });
-            }
-            return processMap.get(procId)!;
-        };
-
-        // 2. Iterate events to build nodes and attach events
-        events.forEach(e => {
-            // Ensure we have a valid process_id. If 0 or undefined, we might need a fallback,
-            // but usually the agent sends process_id.
-            const pId = e.process_id || e.pid || 0; // Fallback to PID if process_id is missing
-            const node = getOrCreateNode(pId, e.process_id || e.pid || 0, e.process_name || `Unknown (${pId})`);
-            node.events.push(e);
-
-            // Update name if we find a better one (e.g., from PROCESS_CREATE)
-            if (e.event_type === 'PROCESS_CREATE' && e.process_name) {
-                node.name = e.process_name;
-            }
-        });
-
-        // 2.5 Calculate Start Times
-        processMap.forEach(node => {
-            if (node.events.length > 0) {
-                // Determine start time based on the earliest event
-                // If there's a PROCESS_CREATE, that's definitive. Otherwise min of all.
-                const createEvent = node.events.find(e => e.event_type === 'PROCESS_CREATE');
-                if (createEvent) {
-                    node.startTime = createEvent.timestamp;
-                } else {
-                    node.startTime = Math.min(...node.events.map(e => e.timestamp));
-                }
-            }
-        });
-
-        // 3. Build Relationships (Parent -> Child)
-        // We need to find the parent for each node.
-        // We can look at PROCESS_CREATE events to find the parent_process_id.
-        // Or we can just look at ANY event for that process, as they should all share the same parent_process_id
-        // (assuming the agent sends it consistently).
-
-        const roots: ProcessNode[] = [];
-
-        processMap.forEach((node, procId) => {
-            // Find a parent_process_id from the events of this process
-            // systematic way: find the PROCESS_CREATE event
-            const createEvent = node.events.find(e => e.event_type === 'PROCESS_CREATE');
-            // fallback: any event
-            const anyEvent = node.events[0];
-
-            // The parent_process_id from the event
-            const parentProcId = createEvent?.parent_process_id || anyEvent?.parent_process_id;
-
-            if (parentProcId && processMap.has(parentProcId) && parentProcId !== procId) {
-                // We found a parent in our map
-                const parent = processMap.get(parentProcId)!;
-                parent.children.push(node);
-            } else {
-                // No parent found in map -> It's a root (or orphan)
-                roots.push(node);
-            }
-        });
-
-        // 4. Create a single Virtual Root if multiple roots exist, or utilize the single root
-        let hierarchyRoot: ProcessNode;
-
-        if (roots.length === 0) {
-            return null; // Should not happen if events > 0
-        } else if (roots.length === 1) {
-            hierarchyRoot = roots[0];
-            hierarchyRoot.type = 'root'; // Mark as main root
-            // Ensure root has a start time for delta calcs if needed (e.g. from its first child?)
-            // If actual root, it has events.
-        } else {
-            // Multiple roots (e.g. system processes noise + actual malware)
-            // We create a virtual "Detonation" root
-            // Start time = min of all roots
-            const contextStart = roots.length > 0
-                ? Math.min(...roots.map(r => r.startTime || Infinity))
-                : Date.now();
-
-            hierarchyRoot = {
-                id: 0,
-                pid: 0,
-                name: "Detonation Context",
-                children: roots,
-                events: [],
-                type: 'root',
-                startTime: contextStart === Infinity ? 0 : contextStart
-            };
-        }
-
-        return d3.hierarchy(hierarchyRoot);
-    }, [events]);
-
-    useEffect(() => {
+    const drawGalaxy = useCallback(() => {
         if (!root || !svgRef.current) return;
 
+        // Cleanup previous sim
+        if (simRef.current) { simRef.current.stop(); simRef.current = null; }
+
         const svg = d3.select(svgRef.current);
-        svg.selectAll("*").remove(); // Clear previous render
+        svg.selectAll('*').remove();
 
-        const margin = { top: 20, right: 120, bottom: 20, left: 120 };
-        const innerWidth = width - margin.left - margin.right;
-        const innerHeight = height - margin.top - margin.bottom;
+        const { nodes, links } = flatten(root);
 
-        // Container for Zoom
-        const g = svg.append("g")
-            .attr("transform", `translate(${margin.left},${margin.top})`);
+        // Map: id → SimNode for link resolution
+        const nodeById = new Map<number, SimNode>();
+        nodes.forEach(n => nodeById.set(n.data.id, n));
 
-        gRef.current = g.node();
+        // Resolve links to actual references
+        const resolvedLinks: SimLink[] = links
+            .map(l => ({
+                source: nodeById.get(l.source as number)!,
+                target: nodeById.get(l.target as number)!,
+                timeDelta: l.timeDelta,
+            }))
+            .filter(l => l.source && l.target);
 
-        // Zoom Behavior
+        // ── Defs (gradients, glows) ──
+        const defs = svg.append('defs');
+
+        // Radial glow filter
+        const glowFilter = defs.append('filter').attr('id', 'galaxy-glow');
+        glowFilter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'blur');
+        glowFilter.append('feMerge').selectAll('feMergeNode')
+            .data(['blur', 'SourceGraphic'])
+            .enter().append('feMergeNode')
+            .attr('in', d => d);
+
+        // ── Container group for zoom/pan ──
+        const g = svg.append('g');
+
         const zoom = d3.zoom<SVGSVGElement, unknown>()
-            .scaleExtent([0.1, 4])
-            .on("zoom", (event) => {
-                g.attr("transform", event.transform);
-            });
+            .scaleExtent([0.15, 5])
+            .on('zoom', (event) => g.attr('transform', event.transform));
 
         svg.call(zoom)
-            .call(zoom.transform, d3.zoomIdentity.translate(margin.left, margin.top));
+            .call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2));
 
+        // ── Links ──
+        const linkSelection = g.selectAll('.galaxy-link')
+            .data(resolvedLinks)
+            .enter().append('line')
+            .attr('class', 'galaxy-link')
+            .attr('stroke', COLOR.link)
+            .attr('stroke-width', 1)
+            .attr('stroke-opacity', 0.4);
 
-        // Tree Layout - Horizontal
-        // Note: d3.tree() expects [height, width] for horizontal layouts if we swap x/y later
-        const treeLayout = d3.tree<ProcessNode>().size([innerHeight, innerWidth]);
-        const treeData = treeLayout(root);
+        // ── Time-delta labels on links ──
+        const timeLabelSelection = g.selectAll('.galaxy-time')
+            .data(resolvedLinks.filter(l => l.timeDelta))
+            .enter().append('text')
+            .attr('class', 'galaxy-time')
+            .attr('text-anchor', 'middle')
+            .attr('fill', COLOR.timeDelta)
+            .attr('font-size', '8px')
+            .attr('font-family', "'JetBrains Mono', monospace")
+            .text(d => formatDelta(d.timeDelta!));
 
-        // Links (Paths)
-        g.selectAll(".link")
-            .data(treeData.links())
-            .enter().append("path")
-            .attr("class", "link")
-            .attr("d", d3.linkHorizontal<any, any>()
-                .x(d => d.y)
-                .y(d => d.x)
-            )
-            .attr("fill", "none")
-            .attr("stroke", "#333")
-            .attr("stroke-width", 1.5)
-            .attr("opacity", 0.6);
+        // ── Node groups ──
+        const nodeSelection = g.selectAll('.galaxy-node')
+            .data(nodes)
+            .enter().append('g')
+            .attr('class', 'galaxy-node')
+            .style('cursor', 'pointer')
+            .call(d3.drag<SVGGElement, SimNode>()
+                .on('start', (event, d) => {
+                    if (!event.active) simulation.alphaTarget(0.3).restart();
+                    d.fx = d.x; d.fy = d.y;
+                })
+                .on('drag', (event, d) => {
+                    d.fx = event.x; d.fy = event.y;
+                })
+                .on('end', (event, d) => {
+                    if (!event.active) simulation.alphaTarget(0);
+                    d.fx = null; d.fy = null;
+                })
+            );
 
-        // Time Spread Labels
-        g.selectAll(".time-label")
-            .data(treeData.links())
-            .enter().append("text")
-            .attr("class", "time-label")
-            .attr("x", d => (d.source.y + d.target.y) / 2)
-            .attr("y", d => (d.source.x + d.target.x) / 2 - 4) // Slight offset above the link
-            .attr("text-anchor", "middle")
-            .style("fill", "#666")
-            .style("font-size", "9px")
-            .style("font-family", "'JetBrains Mono', monospace")
-            .text(d => {
-                const start = d.source.data.startTime;
-                const end = d.target.data.startTime;
-                if (start && end) {
-                    const diff = end - start;
-                    if (diff <= 0) return ""; // effectively instantaneous or weird order
-                    if (diff < 1000) return `+${diff}ms`;
-                    return `+${(diff / 1000).toFixed(2)}s`;
-                }
-                return "";
-            });
+        // Outer glow ring
+        nodeSelection.append('circle')
+            .attr('r', d => d.radius + 4)
+            .attr('fill', 'none')
+            .attr('stroke', d => COLOR.glow(nodeColor(d.data.name, d.data.type)))
+            .attr('stroke-width', 2)
+            .attr('stroke-opacity', 0.3)
+            .attr('filter', 'url(#galaxy-glow)');
 
-        // Nodes (Groups)
-        const nodes = g.selectAll(".node")
-            .data(treeData.descendants())
-            .enter().append("g")
-            .attr("class", d => "node" + (d.children ? " node--internal" : " node--leaf"))
-            .attr("transform", d => `translate(${d.y},${d.x})`);
+        // Core circle
+        nodeSelection.append('circle')
+            .attr('r', d => d.radius)
+            .attr('fill', d => nodeColor(d.data.name, d.data.type))
+            .attr('stroke', '#000')
+            .attr('stroke-width', 1.5);
 
-        // Node Visuals (Circle vs Hexagon? Let's stick to Circles for now)
-        nodes.append("circle")
-            .attr("r", d => d.data.type === 'root' ? 6 : 4)
-            .attr("fill", d => {
-                if (d.data.type === 'root') return '#555'; // Grey for virtual root
-                // Heuristic coloring
-                const name = d.data.name.toLowerCase();
-                if (name.includes('sample') || name.includes('artifact')) return '#ae00ff'; // Voodoo Purple (Target)
-                if (name.includes('cmd') || name.includes('powershell')) return '#ff003c'; // Threat Red (Shells)
-                return '#00ff99'; // Toxic Green (Standard)
-            })
-            .attr("stroke", "#000")
-            .attr("stroke-width", 1.5)
-            .attr("class", "transition-all duration-300 hover:r-6"); // simplistic hover effect class (controlled by CSS usually)
+        // Inner bright dot (star effect)
+        nodeSelection.append('circle')
+            .attr('r', d => Math.max(1.5, d.radius * 0.3))
+            .attr('fill', '#fff')
+            .attr('opacity', 0.6);
 
-        // Labels (Process Name)
-        nodes.append("text")
-            .attr("dy", -8)
-            .attr("x", 0)
-            .style("text-anchor", "middle")
-            .text(d => d.data.name)
-            .style("fill", "#ccc")
-            .style("font-size", "10px")
-            .style("font-family", "'JetBrains Mono', monospace")
-            .style("font-weight", "bold")
-            .style("pointer-events", "none")
-            .style("text-shadow", "0 2px 4px rgba(0,0,0,0.8)");
+        // Process name label
+        nodeSelection.append('text')
+            .attr('dy', d => -(d.radius + 6))
+            .attr('text-anchor', 'middle')
+            .attr('fill', COLOR.label)
+            .attr('font-size', '10px')
+            .attr('font-family', "'JetBrains Mono', monospace")
+            .attr('font-weight', 'bold')
+            .style('text-shadow', '0 2px 6px rgba(0,0,0,0.9)')
+            .style('pointer-events', 'none')
+            .text(d => d.data.name);
 
-        // Sub-labels (PID | Events)
-        nodes.append("text")
-            .attr("dy", 14)
-            .attr("x", 0)
-            .style("text-anchor", "middle")
+        // PID + event count sub-label
+        nodeSelection.append('text')
+            .attr('dy', d => d.radius + 14)
+            .attr('text-anchor', 'middle')
+            .attr('fill', COLOR.sublabel)
+            .attr('font-size', '8px')
+            .attr('font-family', "'JetBrains Mono', monospace")
+            .style('pointer-events', 'none')
             .text(d => {
                 if (d.data.type === 'root') return '';
                 return `PID:${d.data.pid} [${d.data.events.length}]`;
-            })
-            .style("fill", "#666")
-            .style("font-size", "8px")
-            .style("font-family", "'JetBrains Mono', monospace");
+            });
 
+        // ── Hover effects ──
+        nodeSelection.on('mouseover', function (_, d) {
+            d3.select(this).select('circle:nth-child(2)')
+                .transition().duration(200)
+                .attr('r', d.radius * 1.4)
+                .attr('stroke-width', 2.5);
+            d3.select(this).select('circle:first-child')
+                .transition().duration(200)
+                .attr('stroke-opacity', 0.8);
+
+            // Highlight connected links
+            linkSelection
+                .attr('stroke', l => {
+                    const s = l.source as SimNode;
+                    const t = l.target as SimNode;
+                    return (s.data.id === d.data.id || t.data.id === d.data.id) ? nodeColor(d.data.name, d.data.type) : COLOR.link;
+                })
+                .attr('stroke-opacity', l => {
+                    const s = l.source as SimNode;
+                    const t = l.target as SimNode;
+                    return (s.data.id === d.data.id || t.data.id === d.data.id) ? 0.8 : 0.15;
+                })
+                .attr('stroke-width', l => {
+                    const s = l.source as SimNode;
+                    const t = l.target as SimNode;
+                    return (s.data.id === d.data.id || t.data.id === d.data.id) ? 2 : 1;
+                });
+        }).on('mouseout', function (_, d) {
+            d3.select(this).select('circle:nth-child(2)')
+                .transition().duration(300)
+                .attr('r', d.radius)
+                .attr('stroke-width', 1.5);
+            d3.select(this).select('circle:first-child')
+                .transition().duration(300)
+                .attr('stroke-opacity', 0.3);
+
+            linkSelection
+                .attr('stroke', COLOR.link)
+                .attr('stroke-opacity', 0.4)
+                .attr('stroke-width', 1);
+        });
+
+        // ── Force Simulation ──
+        const simulation = d3.forceSimulation<SimNode>(nodes)
+            .force('link', d3.forceLink<SimNode, SimLink>(resolvedLinks)
+                .id(d => d.data.id)
+                .distance(d => {
+                    const src = d.source as SimNode;
+                    const tgt = d.target as SimNode;
+                    return 60 + src.radius + tgt.radius;
+                })
+                .strength(0.7)
+            )
+            .force('charge', d3.forceManyBody<SimNode>()
+                .strength(d => d.data.type === 'root' ? -400 : -200)
+                .distanceMax(350)
+            )
+            .force('collision', d3.forceCollide<SimNode>()
+                .radius(d => d.radius + 20)
+                .strength(0.9)
+            )
+            .force('center', d3.forceCenter(0, 0).strength(0.05))
+            .force('x', d3.forceX(0).strength(0.03))
+            .force('y', d3.forceY(0).strength(0.03))
+            .alpha(1)
+            .alphaDecay(0.02)
+            .on('tick', () => {
+                linkSelection
+                    .attr('x1', d => (d.source as SimNode).x!)
+                    .attr('y1', d => (d.source as SimNode).y!)
+                    .attr('x2', d => (d.target as SimNode).x!)
+                    .attr('y2', d => (d.target as SimNode).y!);
+
+                timeLabelSelection
+                    .attr('x', d => ((d.source as SimNode).x! + (d.target as SimNode).x!) / 2)
+                    .attr('y', d => ((d.source as SimNode).y! + (d.target as SimNode).y!) / 2 - 6);
+
+                nodeSelection.attr('transform', d => `translate(${d.x},${d.y})`);
+            });
+
+        simRef.current = simulation;
     }, [root, width, height]);
+
+    useEffect(() => {
+        drawGalaxy();
+        return () => { if (simRef.current) simRef.current.stop(); };
+    }, [drawGalaxy]);
 
     return (
         <div className="w-full h-full bg-[#0a0a0a] border border-white/5 rounded-lg overflow-hidden relative">
             <div className="absolute top-2 left-2 text-[10px] uppercase font-black tracking-widest text-zinc-500 z-10">
-                Activity Flow (Fishbone)
+                Process Galaxy
             </div>
             {(!events || events.length === 0) ? (
                 <div className="flex items-center justify-center h-full text-zinc-700 text-xs font-mono uppercase">
