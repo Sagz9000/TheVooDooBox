@@ -50,12 +50,15 @@ The AI is instructed to return a JSON object with:
 
 Once the AI report is finalized, the frontend utilizes a **High-Fidelity Browser-based Engine** to generate the forensic document.
 
-### High-Fidelity Print Engine (v5.5)
+### 1. High-Fidelity Print Engine (v5.5)
 The system has transitioned from a backend `genpdf` logic (which lacked visual styling) to a browser-based `@media print` approach. This ensures:
 - **Visual Parity**: The PDF exactly matches the "pixel-perfect" on-screen report.
 - **Color Coding**: Verdict badges and threat indicators preserve their clinical colors.
 - **MITRE Integration**: The full MITRE ATT&CK Matrix is rendered inline in the PDF.
 - **Layout Control**: Page breaks are intelligently managed to prevent artifact fragmentation.
+
+### 2. Legacy Text Engine (Rust)
+For automated ingestion or low-bandwidth scenarios, the original Rust-based text report generation (`reports.rs`) remains available via the "Text Report" export option. This provides a structured, unstyled summary of the analysis.
 
 ### Report Components
 *   **Visual Branding**: Custom header with the VoodooBox logo and task metadata.
@@ -75,6 +78,6 @@ The system has transitioned from a backend `genpdf` logic (which lacked visual s
 ![Generated PDF Report](../TheVooDooBox-main/pictures/aigeneratedindicatorreport.png)
 
 All reports are stored in the PostgreSQL `analysis_reports` table. While the structured data is persisted in the database, the **PDF Report** is generated on-demand to ensure it always utilizes the latest UI styling and enrichment data. Analysts can retrieve previous reports via:
-*   **UI**: Clicking "View Report" on any completed task and selecting the "PDF" export button.
+*   **UI**: Clicking "View Report" on any completed task and using the **Export Menu** (PDF or Text).
 *   **API**: `GET /api/tasks/{task_id}/ai-report`
 *   **On-Demand**: The high-fidelity PDF is generated directly in the analyst's browser to preserve UI-specific visualizations like the MITRE Matrix.
