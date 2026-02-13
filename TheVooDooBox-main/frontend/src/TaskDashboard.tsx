@@ -458,11 +458,22 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                                         {expandedTab === 'screenshots' && (
                                                             <div>
                                                                 <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-                                                                    {expandedScreenshots.length > 0 ? expandedScreenshots.map((url, idx) => (
+                                                                    {expandedScreenshots.length > 0 ? expandedScreenshots.map((filename, idx) => (
                                                                         <div key={idx} className="group relative aspect-video bg-black border border-white/10 rounded overflow-hidden cursor-pointer hover:border-brand-500/50 transition-all">
-                                                                            <img src={`${BASE_URL}/screenshots/${url}`} alt={`Screenshot ${idx}`} className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity" />
+                                                                            <img
+                                                                                src={voodooApi.getScreenshotUrl(filename, task.id)}
+                                                                                alt={`Screenshot ${idx}`}
+                                                                                className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                                                                                onError={(e) => {
+                                                                                    // Fallback: try without task ID if nested fails, or vice versa? 
+                                                                                    // For now, just logging. A robust app might try an alternative path.
+                                                                                    console.warn(`Failed to load screenshot: ${filename}`);
+                                                                                    e.currentTarget.style.display = 'none';
+                                                                                    e.currentTarget.parentElement!.innerText = 'Image Load Error';
+                                                                                }}
+                                                                            />
                                                                             <div className="absolute bottom-0 left-0 right-0 bg-black/80 p-1 text-[9px] font-mono text-center text-zinc-400 truncate">
-                                                                                {url}
+                                                                                {filename}
                                                                             </div>
                                                                         </div>
                                                                     )) : (
