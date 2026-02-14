@@ -384,6 +384,8 @@ pub struct Task {
     pub ghidra_status: Option<String>,
     pub verdict_manual: Option<bool>,
     pub sandbox_id: Option<String>,
+    pub remnux_status: Option<String>,
+    pub remnux_report: Option<serde_json::Value>,
 }
 
 async fn start_tcp_listener(
@@ -1185,7 +1187,7 @@ async fn update_task_verdict(
 #[get("/tasks")]
 async fn list_tasks(pool: web::Data<Pool<Postgres>>) -> impl Responder {
     let tasks = sqlx::query_as::<_, Task>(
-        "SELECT id, filename, original_filename, file_hash, status, verdict, risk_score, created_at, completed_at, ghidra_status, verdict_manual, sandbox_id FROM tasks ORDER BY created_at DESC"
+        "SELECT id, filename, original_filename, file_hash, status, verdict, risk_score, created_at, completed_at, ghidra_status, verdict_manual, sandbox_id, remnux_status, remnux_report FROM tasks ORDER BY created_at DESC"
     )
     .fetch_all(pool.get_ref())
     .await;

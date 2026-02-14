@@ -516,7 +516,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                                                     events={expandedEvents}
                                                                     width={1000}
                                                                     height={400}
-                                                                    mitreData={useMemo(() => {
+                                                                    mitreData={(() => {
                                                                         if (!aiReport || !aiReport.mitre_matrix) return undefined;
                                                                         const map = new Map<number, string[]>();
                                                                         Object.values(aiReport.mitre_matrix).flat().forEach((tech: any) => {
@@ -533,7 +533,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                                                             }
                                                                         });
                                                                         return map;
-                                                                    }, [aiReport])}
+                                                                    })()}
                                                                 />
                                                             </div>
                                                         )}

@@ -292,6 +292,62 @@ fn parse_sysmon_xml(xml: &str, hostname: &str) -> Option<AgentEvent> {
                 digital_signature: None,
             })
         },
+        "12" => { // Registry Object Added or Deleted
+            let pid = get_sysmon_field(xml, "ProcessId").parse().unwrap_or(0);
+            let image = get_sysmon_field(xml, "Image");
+            let target_obj = get_sysmon_field(xml, "TargetObject");
+            let event_action = get_sysmon_field(xml, "EventType"); // CreateKey, DeleteKey
+
+            let backend_type = if event_action.contains("Delete") { "REG_KEY_DELETE" } else { "REG_KEY_CREATE" };
+
+            Some(AgentEvent {
+                event_type: backend_type.to_string(),
+                process_id: pid,
+                parent_process_id: 0,
+                process_name: image,
+                details: format!("{}SYSMON: Registry {} | Path: {}", tag_prefix, event_action, target_obj),
+                decoded_details: None,
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                hostname: hostname.to_string(),
+                digital_signature: None,
+            })
+        },
+        "13" => { // Registry Value Set
+            let pid = get_sysmon_field(xml, "ProcessId").parse().unwrap_or(0);
+            let image = get_sysmon_field(xml, "Image");
+            let target_obj = get_sysmon_field(xml, "TargetObject");
+            let data = get_sysmon_field(xml, "Details");
+
+            Some(AgentEvent {
+                event_type: "REG_SET_VALUE".to_string(),
+                process_id: pid,
+                parent_process_id: 0,
+                process_name: image,
+                details: format!("{}SYSMON: Reg Set: {} = {}", tag_prefix, target_obj, data),
+                decoded_details: None,
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                hostname: hostname.to_string(),
+                digital_signature: None,
+            })
+        },
+        "14" => { // Registry Object Renamed
+            let pid = get_sysmon_field(xml, "ProcessId").parse().unwrap_or(0);
+            let image = get_sysmon_field(xml, "Image");
+            let target_obj = get_sysmon_field(xml, "TargetObject");
+            let new_name = get_sysmon_field(xml, "NewName");
+
+            Some(AgentEvent {
+                event_type: "REG_KEY_RENAME".to_string(),
+                process_id: pid,
+                parent_process_id: 0,
+                process_name: image,
+                details: format!("{}SYSMON: Reg Rename: {} -> {}", tag_prefix, target_obj, new_name),
+                decoded_details: None,
+                timestamp: chrono::Utc::now().timestamp_millis(),
+                hostname: hostname.to_string(),
+                digital_signature: None,
+            })
+        },
         _ => None
     }
 }
