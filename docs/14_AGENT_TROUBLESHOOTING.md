@@ -7,16 +7,16 @@ The agent is receiving the DOWNLOAD_EXEC command but disconnecting immediately w
 Based on logs:
 ```
 Agent connected: 172.26.0.1:60036
-[ORCHESTRATOR] Detonation command broadcasted: {"command":"DOWNLOAD_EXEC","url":"http://192.168.1.100:8080/uploads/..."}
+[ORCHESTRATOR] Detonation command broadcasted: {"command":"DOWNLOAD_EXEC","url":"http://192.168.50.196:8080/uploads/..."}
 Agent disconnected: 172.26.0.1:60036  ← Agent crashes/disconnects
 ```
 
-The agent is likely failing to download the binary from `http://192.168.1.100:8080/uploads/...`
+The agent is likely failing to download the binary from `http://192.168.50.196:8080/uploads/...`
 
 ## Possible Issues:
 
 ### 1. **Network Connectivity** (MOST LIKELY)
-   - The VM cannot reach `192.168.1.100:8080` from inside the guest
+   - The VM cannot reach `192.168.50.196:8080` from inside the guest
    - Firewall blocking port 8080
    - Incorrect network configuration in VM
 
@@ -33,8 +33,8 @@ The agent is likely failing to download the binary from `http://192.168.1.100:80
 
 ### Step 1: Verify Network Connectivity from VM
 1. RDP/SSH into VM 310
-2. Run: `Test-NetConnection -ComputerName 192.168.1.100 -Port 8080`
-3. Run: `Invoke-WebRequest -Uri "http://192.168.1.100:8080/vms/list" -UseBasicParsing`
+2. Run: `Test-NetConnection -ComputerName 192.168.50.196 -Port 8080`
+3. Run: `Invoke-WebRequest -Uri "http://192.168.50.196:8080/vms/list" -UseBasicParsing`
 
 ### Step 2: Check Agent Logs in VM
 1. Check if agent.exe is running: `Get-Process agent -ErrorAction SilentlyContinue`
@@ -45,11 +45,11 @@ The agent is likely failing to download the binary from `http://192.168.1.100:80
 1. In VM, open PowerShell
 2. Try manual download:
    ```powershell
-   Invoke-WebRequest -Uri "http://192.168.1.100:8080/uploads/<filename>" -OutFile "C:\test_download.exe"
+   Invoke-WebRequest -Uri "http://192.168.50.196:8080/uploads/<filename>" -OutFile "C:\test_download.exe"
    ```
 
 ### Step 4: Check Firewall Rules
-1. On host machine (192.168.1.100):
+1. On host machine (192.168.50.196):
    ```powershell
    Get-NetFirewallRule | Where-Object {$_.LocalPort -eq 8080}
    ```
@@ -75,7 +75,7 @@ The agent should retry downloads on failure.
 ## Immediate Action Items:
 
 1. **Check VM Network Configuration**
-   - Ensure VM can ping 192.168.1.100
+   - Ensure VM can ping 192.168.50.196
    - Ensure port 8080 is accessible
 
 2. **Rebuild Agent with Better Logging**
