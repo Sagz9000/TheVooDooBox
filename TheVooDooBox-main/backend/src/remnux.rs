@@ -32,6 +32,7 @@ fn build_mcp_client() -> (Client, String, String) {
 
 pub async fn trigger_scan(pool: Pool<Postgres>, task_id: String, filename: String, filepath: String) {
     println!("[REMNUX] Starting analysis for task: {} (file: {})", task_id, filename);
+    println!("[REMNUX] Local filepath provided: {}", filepath);
 
     // 1. Update status to "Staging"
     let _ = sqlx::query("UPDATE tasks SET remnux_status = 'Staging File' WHERE id = $1")
@@ -40,27 +41,29 @@ pub async fn trigger_scan(pool: Pool<Postgres>, task_id: String, filename: Strin
         .await;
 
     let (client, base_url, shared_dir) = build_mcp_client();
+    println!("[REMNUX] Build MCP Client: base_url={}, shared_dir={}", base_url, shared_dir);
 
     // 2. Copy file to shared NFS storage
     match stage_file_to_shared_storage(&shared_dir, &task_id, &filename, &filepath).await {
         Ok(remote_path) => {
-            println!("[REMNUX] File staged to shared storage: {}", remote_path);
+            println!("[REMNUX] File staged to shared storage. Container path: {}", remote_path);
             let _ = sqlx::query("UPDATE tasks SET remnux_status = 'Analyzing' WHERE id = $1")
                 .bind(&task_id)
                 .execute(&pool)
                 .await;
 
             // 3. Tell Voodoo Gateway to analyze the file via SSE Stream
+            println!("[REMNUX] Calling Gateway SSE stream at {}/analyze/stream", base_url);
             match call_analyze_stream(&pool, &client, &base_url, &remote_path, &task_id).await {
                 Ok(_) => {
-                    println!("[REMNUX] Streaming analysis completed for task: {}", task_id);
+                    println!("[REMNUX] Streaming analysis finished successfully for task: {}", task_id);
                     let _ = sqlx::query("UPDATE tasks SET remnux_status = 'Completed' WHERE id = $1")
                         .bind(&task_id)
                         .execute(&pool)
                         .await;
                 },
                 Err(e) => {
-                    eprintln!("[REMNUX] Analysis failed or interrupted: {}", e);
+                    eprintln!("[REMNUX] Analysis stream failed or interrupted: {}", e);
                     let error_msg = format!("Analysis Interrupted: {}", e);
                     let _ = sqlx::query("UPDATE tasks SET remnux_status = $1 WHERE id = $2")
                         .bind(&error_msg)
@@ -90,11 +93,13 @@ async fn stage_file_to_shared_storage(
     filepath: &str,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
     let task_dir = format!("{}/{}", shared_dir, task_id);
+    println!("[REMNUX] Creating shared task directory: {}", task_dir);
     fs::create_dir_all(&task_dir).await?;
 
     let dest_path = format!("{}/{}", task_dir, filename);
+    println!("[REMNUX] Copying {} to {}", filepath, dest_path);
     match fs::copy(filepath, &dest_path).await {
-        Ok(_) => println!("[REMNUX] Successfully copied to {}", dest_path),
+        Ok(bytes) => println!("[REMNUX] Successfully copied {} bytes to {}", bytes, dest_path),
         Err(e) => {
             eprintln!("[REMNUX] ERROR copying to shared storage: {}", e);
             return Err(e.into());

@@ -214,11 +214,23 @@ class MCPWorker {
 
     async runModularTools(file, res) {
         const tools = ['yara_scan', 'strings', 'pe_info', 'capa'];
+        console.log(`[WORKER-${this.id}] Beginning modular analysis for: ${file}`);
+        
+        // Safety Check: Verify file exists inside container
+        if (!fs.existsSync(file)) {
+            console.error(`[WORKER-${this.id}] ERROR: File not found at ${file}`);
+            this.sendSse(res, { module: "error", data: `File not found inside Remnux container: ${file}` });
+            res.end();
+            this.busy = false;
+            this.pool.notifyWorkerReady(this);
+            return;
+        }
+
         try {
             for (const tool of tools) {
                 if (!this.process || !this.busy) break;
                 
-                console.log(`[WORKER-${this.id}] Running modular tool: ${tool}`);
+                console.log(`[WORKER-${this.id}] Starting tool: ${tool}`);
                 this.sendSse(res, { module: "status", data: `Running ${tool}...` });
                 
                 const callId = `stream-${Date.now()}`;
@@ -228,10 +240,12 @@ class MCPWorker {
                 });
 
                 const result = await this.waitForCall(callId);
+                console.log(`[WORKER-${this.id}] Tool ${tool} completed.`);
                 this.sendSse(res, { module: tool, data: result });
             }
             this.sendSse(res, { module: "status", data: "Completed" });
         } catch (err) {
+            console.error(`[WORKER-${this.id}] Modular analysis error: ${err.message}`);
             this.sendSse(res, { module: "error", data: err.message });
         } finally {
             res.end();
