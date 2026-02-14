@@ -135,7 +135,10 @@ async fn call_analyze_stream(
     let mut buffer = String::new();
 
     while let Some(chunk_result) = stream.next().await {
-        let chunk = chunk_result?;
+        let chunk = match chunk_result {
+            Ok(c) => c,
+            Err(e) => return Err(format!("Stream chunk error: {}", e).into()),
+        };
         let text = String::from_utf8_lossy(&chunk);
         buffer.push_str(&text);
 
