@@ -120,7 +120,7 @@ function buildHierarchy(events: AgentEvent[], mitreData?: Map<number, string[]>)
 
     const contextStart = Math.min(...roots.map(r => r.startTime || Infinity));
     return {
-        id: 0, pid: 0, name: 'Detonation Context',
+        id: -999, pid: 0, name: 'Detonation Context',
         children: roots, events: [], type: 'root',
         startTime: contextStart === Infinity ? 0 : contextStart
     };
@@ -154,6 +154,7 @@ function flatten(root: ProcessNode): { nodes: SimNode[]; links: SimLink[] } {
     }
 
     walk(root, 0);
+    console.log("[Fishbone] flatten result: nodes:", nodes.length, "links:", links.length);
     return { nodes, links };
 }
 
@@ -164,13 +165,22 @@ export default function FishboneDiagram({ events, width = 800, height = 400, mit
     const svgRef = useRef<SVGSVGElement>(null);
     const simRef = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
 
-    const root = useMemo(() => buildHierarchy(events, mitreData), [events, mitreData]);
+    const root = useMemo(() => {
+        const r = buildHierarchy(events, mitreData);
+        console.log("[Fishbone] root built:", !!r, "events:", events.length);
+        return r;
+    }, [events, mitreData]);
 
     const drawGalaxy = useCallback(() => {
+        console.log("[Fishbone] drawGalaxy triggered. root:", !!root, "svgRef:", !!svgRef.current);
         if (!root || !svgRef.current) return;
 
         // Cleanup previous sim
-        if (simRef.current) { simRef.current.stop(); simRef.current = null; }
+        if (simRef.current) {
+            console.log("[Fishbone] Stopping previous simulation");
+            simRef.current.stop();
+            simRef.current = null;
+        }
 
         const svg = d3.select(svgRef.current);
         svg.selectAll('*').remove();
@@ -183,12 +193,19 @@ export default function FishboneDiagram({ events, width = 800, height = 400, mit
 
         // Resolve links to actual references
         const resolvedLinks: SimLink[] = links
-            .map(l => ({
-                source: nodeById.get(l.source as number)!,
-                target: nodeById.get(l.target as number)!,
-                timeDelta: l.timeDelta,
-            }))
-            .filter(l => l.source && l.target);
+            .map((l): SimLink | null => {
+                const src = nodeById.get(l.source as number);
+                const tgt = nodeById.get(l.target as number);
+                if (!src || !tgt) return null;
+                return {
+                    source: src,
+                    target: tgt,
+                    timeDelta: l.timeDelta,
+                };
+            })
+            .filter((l): l is SimLink => l !== null);
+
+        console.log("[Fishbone] resolvedLinks after filter:", resolvedLinks.length);
 
         // ── Defs (gradients, glows) ──
         const defs = svg.append('defs');
@@ -210,6 +227,11 @@ export default function FishboneDiagram({ events, width = 800, height = 400, mit
 
         svg.call(zoom)
             .call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2));
+
+        // ── TEST CIRCLE at (0,0) ──
+        g.append('circle').attr('r', 20).attr('fill', 'red').attr('opacity', 0.5);
+
+        console.log("[Fishbone] Rendering", nodes.length, "nodes and", resolvedLinks.length, "links");
 
         // ── Links ──
         const linkSelection = g.selectAll('.galaxy-link')
@@ -396,6 +418,7 @@ export default function FishboneDiagram({ events, width = 800, height = 400, mit
             .alpha(1)
             .alphaDecay(0.02)
             .on('tick', () => {
+                if (simulation.alpha() > 0.98) console.log("[Fishbone] Simulation tick running: alpha =", simulation.alpha().toFixed(3));
                 linkSelection
                     .attr('x1', (d: SimLink) => (d.source as SimNode).x!)
                     .attr('y1', (d: SimLink) => (d.source as SimNode).y!)
@@ -426,8 +449,18 @@ export default function FishboneDiagram({ events, width = 800, height = 400, mit
                 <div className="flex items-center justify-center h-full text-zinc-700 text-xs font-mono uppercase">
                     No Telemetry Data
                 </div>
+            ) : !root ? (
+                <div className="flex items-center justify-center h-full text-zinc-700 text-xs font-mono uppercase">
+                    Failed to build process tree
+                </div>
             ) : (
-                <svg ref={svgRef} width={width} height={height} className="block mx-auto cursor-grab active:cursor-grabbing" />
+                <svg
+                    ref={svgRef}
+                    width={width}
+                    height={height}
+                    viewBox={`0 0 ${width} ${height}`}
+                    className="block mx-auto cursor-grab active:cursor-grabbing"
+                />
             )}
         </div>
     );

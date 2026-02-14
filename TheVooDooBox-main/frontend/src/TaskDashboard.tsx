@@ -511,6 +511,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
 
                                                         {expandedTab === 'fishbone' && (
                                                             <div className="h-[400px]">
+                                                                {console.log("[TaskDashboard] Passing to Fishbone: events:", expandedEvents.length, "report:", !!aiReport)}
                                                                 <FishboneDiagram
                                                                     events={expandedEvents}
                                                                     width={1000}
