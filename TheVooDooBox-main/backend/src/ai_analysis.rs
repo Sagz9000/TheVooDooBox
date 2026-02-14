@@ -848,9 +848,11 @@ pub async fn generate_ai_report(
          --- RAG CONTEXT ---
          {}
          
-         OUTPUT FORMAT: JSON ONLY, matching `ForensicReport` schema.
-         Field `behavioral_timeline` must be an array of objects: {{ \"timestamp_offset\": \"+2s\", \"stage\": \"Persistence\", \"event_description\": \"...\", \"technical_context\": \"...\", \"related_pid\": 123 }}
-         Field `thinking` should contain your chain of thought.
+         OUTPUT FORMAT: JSON ONLY. 
+         - Do NOT include markdown code blocks (```json).
+         - Do NOT include any text before or after the JSON object.
+         - Ensure valid JSON matching the `ForensicReport` schema.
+         - Field `behavioral_timeline` must be an array of objects: {{ \"timestamp_offset\": \"+2s\", \"stage\": \"Persistence\", \"event_description\": \"...\", \"technical_context\": \"...\", \"related_pid\": 123 }}
          ",
          target_filename, file_hash, consolidated_insights, static_summary, vt_summary, digital_signature, rag_context
     );
@@ -963,6 +965,7 @@ pub async fn generate_ai_report(
                 if end > start {
                     let mut extracted = current_json[start..=end].to_string();
                     
+                    // CLEANING: Strip LLM Chatter often prepended/appended inside the JSON bounds or outside
                     // If it looks escaped, clean it manually
                     if extracted.contains("\\\"") {
                         extracted = extracted.replace("\\\"", "\"")
@@ -970,7 +973,7 @@ pub async fn generate_ai_report(
                                              .replace("\\r", "");
                     }
                     
-                    // Normalization Step: Consolidate label fixing here so it applies to both raw text and JSON fields
+                    // Normalization Step: Consolidate label fixing
                     extracted = extracted.replace("[Diagnostic Alpha]", "Benign")
                                          .replace("[Diagnostic Beta]", "Suspicious")
                                          .replace("[Diagnostic Gamma]", "Malicious")
@@ -1013,14 +1016,15 @@ pub async fn generate_ai_report(
             println!("[AI] JSON Parsing Failed. Attempting Regex Fallback and Salvage...");
             
             // Regex Extraction Patterns for Summary
-            let re_verdict = Regex::new(r"(?i)\*\*Verdict:\*\*\s*(Custom|Benign|Suspicious|Malicious|Diagnostic Alpha|Diagnostic Beta|Diagnostic Gamma)").unwrap();
-            let re_score = Regex::new(r"(?i)\*\*Threat Score:\*\*\s*(\d+)").unwrap();
-            let re_summary = Regex::new(r"(?i)\*\*Executive Summary:\*\*\s*(.*?)(\n\n|\n\*\*|$)").unwrap();
+            // Using (?is) for case-insensitivity and dot-all (multi-line matching)
+            let re_verdict = Regex::new(r"(?is)\bVerdict\b.*?\b(Benign|Suspicious|Malicious|Diagnostic Alpha|Diagnostic Beta|Diagnostic Gamma)\b").unwrap();
+            let re_score = Regex::new(r"(?is)\b(?:Threat\s+)?Score\b.*?\b(\d+)\b").unwrap();
+            let re_summary = Regex::new(r"(?is)\bExecutive\s+Summary\b.*?\r?\n(.*?)(?:\r?\n\r?\n|\bTimeline\b|\bFindings\b|###|$)").unwrap();
 
             let verdict_str = re_verdict.captures(&response_text)
                 .and_then(|c| c.get(1))
                 .map(|m| m.as_str())
-                .unwrap_or("Suspicious"); // Default to Suspicious on parse failure
+                .unwrap_or("Suspicious"); 
 
             let score = re_score.captures(&response_text)
                 .and_then(|c| c.get(1))
@@ -1031,14 +1035,20 @@ pub async fn generate_ai_report(
                 .and_then(|c| c.get(1))
                 .map(|m| m.as_str().trim().to_string())
                 .unwrap_or_else(|| {
-                    // Truncate raw response to avoid dumping a wall of JSON into the UI
-                    let raw = response_text.trim();
-                    if raw.starts_with('{') || raw.starts_with('"') {
-                        format!("[AI Parse Error] The model returned a malformed response ({} chars). Try re-running the analysis.", raw.len())
-                    } else if raw.len() > 500 {
-                        format!("{}...", &raw[..500])
+                    // Try a secondary, more aggressive summary extraction
+                    let re_alt_summary = Regex::new(r"(?is)Summary:\s*(.*?)(?:\n\n|$)").unwrap();
+                    if let Some(caps) = re_alt_summary.captures(&response_text) {
+                         caps.get(1).unwrap().as_str().trim().to_string()
                     } else {
-                        raw.to_string()
+                        // Truncate raw response
+                        let raw = response_text.trim();
+                        if raw.starts_with('{') || raw.starts_with('"') {
+                            format!("[AI Sync Failed] Parsing JSON failed. Raw length: {} chars. Check logs.", raw.len())
+                        } else if raw.len() > 500 {
+                            format!("{}...", &raw[..500])
+                        } else {
+                            raw.to_string()
+                        }
                     }
                 });
 

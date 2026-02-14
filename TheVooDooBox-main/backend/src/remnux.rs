@@ -50,19 +50,18 @@ pub async fn trigger_scan(pool: Pool<Postgres>, task_id: String, filename: Strin
                 .execute(&pool)
                 .await;
 
-            // 3. Tell Voodoo Gateway to analyze the file
-            match call_analyze_tool(&client, &base_url, &remote_path).await {
-                Ok(report) => {
-                    println!("[REMNUX] Analysis completed for task: {}", task_id);
-                    let _ = sqlx::query("UPDATE tasks SET remnux_status = 'Completed', remnux_report = $1 WHERE id = $2")
-                        .bind(serde_json::to_value(&report).unwrap_or(serde_json::json!({"error": "Failed to parse report"})))
+            // 3. Tell Voodoo Gateway to analyze the file via SSE Stream
+            match call_analyze_stream(&pool, &client, &base_url, &remote_path, &task_id).await {
+                Ok(_) => {
+                    println!("[REMNUX] Streaming analysis completed for task: {}", task_id);
+                    let _ = sqlx::query("UPDATE tasks SET remnux_status = 'Completed' WHERE id = $1")
                         .bind(&task_id)
                         .execute(&pool)
                         .await;
                 },
                 Err(e) => {
-                    eprintln!("[REMNUX] Analysis failed: {}", e);
-                    let error_msg = format!("Analysis Error: {}", e);
+                    eprintln!("[REMNUX] Analysis failed or interrupted: {}", e);
+                    let error_msg = format!("Analysis Interrupted: {}", e);
                     let _ = sqlx::query("UPDATE tasks SET remnux_status = $1 WHERE id = $2")
                         .bind(&error_msg)
                         .bind(&task_id)
@@ -107,68 +106,76 @@ async fn stage_file_to_shared_storage(
     Ok(remote_path)
 }
 
-/// Call the Voodoo Gateway analyze endpoint.
-async fn call_analyze_tool(
+/// Call the Voodoo Gateway analyze/stream endpoint.
+async fn call_analyze_stream(
+    pool: &Pool<Postgres>,
     client: &Client,
     base_url: &str,
     file_path: &str,
-) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
+    task_id: &str,
+) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use futures::StreamExt;
+    
     let req = ScanRequest {
         file: file_path.to_string(),
     };
 
-    let resp = client.post(&format!("{}/analyze", base_url))
+    let mut resp = client.post(&format!("{}/analyze/stream", base_url))
         .json(&req)
         .send()
         .await?;
 
-    if resp.status().is_success() {
+    if !resp.status().is_success() {
+        let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        println!("[REMNUX] Raw Gateway Response ({} chars): {:.500}...", body.len(), body);
+        return Err(format!("Gateway stream error ({}): {}", status, body).into());
+    }
 
-        // 1. Robust JSON Extraction: Find the first { and last }
-        let json_text = if let (Some(start), Some(end)) = (body.find('{'), body.rfind('}')) {
-            if end > start {
-                &body[start..=end]
-            } else {
-                &body
-            }
-        } else {
-            &body
-        };
+    let mut stream = resp.bytes_stream();
+    let mut buffer = String::new();
 
-        let mut json: serde_json::Value = serde_json::from_str(json_text).map_err(|e| {
-            format!("Failed to parse JSON response: {}. Body start: {:.100}", e, body)
-        })?;
+    while let Some(chunk_result) = stream.next().await {
+        let chunk = chunk_result?;
+        let text = String::from_utf8_lossy(&chunk);
+        buffer.push_str(&text);
 
-        // 2. MCP Unwrap: if it matches { "result": { "content": [ { "text": "..." } ] } }
-        if let Some(result) = json.get("result") {
-            if let Some(content) = result.get("content") {
-                if let Some(first) = content.as_array().and_then(|a| a.get(0)) {
-                    if let Some(inner_text) = first.get("text").and_then(|t| t.as_str()) {
-                        println!("[REMNUX] Detected MCP-wrapped response, unwrapping inner JSON...");
-                        // Try to parse the inner text as JSON
-                        if let Ok(inner_json) = serde_json::from_str::<serde_json::Value>(inner_text) {
-                            json = inner_json;
-                        } else {
-                            // If inner text isn't JSON, maybe it's the raw report text
-                            json = serde_json::json!({ "raw_text_report": inner_text });
-                        }
+        // Simple SSE parsing: look for "data: " lines
+        while let Some(pos) = buffer.find("\n\n") {
+            let message = buffer[..pos].to_string();
+            buffer = buffer[pos + 2..].to_string();
+
+            if message.starts_with("data: ") {
+                let json_str = &message[6..];
+                if let Ok(sse_data) = serde_json::from_str::<serde_json::Value>(json_str) {
+                    let module = sse_data["module"].as_str().unwrap_or("unknown");
+                    let data = &sse_data["data"];
+
+                    println!("[REMNUX] Stream update for {}: module={}", task_id, module);
+
+                    if module == "status" {
+                        let status_text = data.as_str().unwrap_or("Analyzing");
+                        let _ = sqlx::query("UPDATE tasks SET remnux_status = $1 WHERE id = $2")
+                            .bind(status_text)
+                            .bind(task_id)
+                            .execute(pool)
+                            .await;
+                    } else if module == "error" {
+                        return Err(data.as_str().unwrap_or("Unknown Gateway Error").into());
+                    } else {
+                        // Incremental update of the JSONB report
+                        // We use jsonb_set to merge the new module data into the existing report
+                        let _ = sqlx::query(
+                            "UPDATE tasks SET remnux_report = COALESCE(remnux_report, '{}'::jsonb) || $1::jsonb WHERE id = $2"
+                        )
+                        .bind(serde_json::json!({ module: data }))
+                        .bind(task_id)
+                        .execute(pool)
+                        .await;
                     }
                 }
             }
         }
-
-        // 3. Status Normalization: Check if the JSON itself contains an error
-        if let Some(error) = json.get("error") {
-            return Err(format!("Gateway reported error in JSON: {}", error).into());
-        }
-
-        Ok(json)
-    } else {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        eprintln!("[REMNUX] Gateway error ({}): {:.200}", status, body);
-        Err(format!("Voodoo Gateway error ({}): {}", status, body).into())
     }
+
+    Ok(())
 }

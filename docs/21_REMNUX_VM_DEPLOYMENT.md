@@ -166,7 +166,7 @@ class MCPWorker {
         }
     }
 
-    analyze(file, res) {
+    analyze(file, res, stream = false) {
         if (this.busy || !this.ready) return false;
         
         this.busy = true;
@@ -174,42 +174,107 @@ class MCPWorker {
         this.currentId = Date.now();
         this.buffer = ''; // Reset buffer for clean capture
 
-        console.log(`[WORKER-${this.id}] Starting Analysis: ${file}`);
-        
-        this.sendJson({
-             jsonrpc: "2.0", 
-             id: this.currentId, 
-             method: "tools/call",
-             params: { name: "analyze_file", arguments: { file } }
-        });
-
-        // Poll for completion (looking for response ID)
-        this.checkInterval = setInterval(() => this.checkCompletion(), 500);
+        if (stream) {
+            console.log(`[WORKER-${this.id}] Starting STREAMED Analysis: ${file}`);
+            res.writeHead(200, {
+                'Content-Type': 'text/event-stream',
+                'Cache-Control': 'no-cache',
+                'Connection': 'keep-alive'
+            });
+            this.runModularTools(file, res);
+        } else {
+            console.log(`[WORKER-${this.id}] Starting Monolithic Analysis: ${file}`);
+            this.sendJson({
+                 jsonrpc: "2.0", 
+                 id: this.currentId, 
+                 method: "tools/call",
+                 params: { name: "analyze_file", arguments: { file } }
+            });
+            this.checkInterval = setInterval(() => this.checkCompletion(), 500);
+        }
 
         // Timeout Watchdog
         this.timeoutTimer = setTimeout(() => {
             if (this.busy) {
                 console.error(`[WORKER-${this.id}] TIMEOUT on ${file} - Killing Worker.`);
-                // Send timeout response to client
-                if (this.currentRes) {
+                if (this.currentRes && !stream) {
                     this.currentRes.writeHead(504, { 'Content-Type': 'application/json' });
                     this.currentRes.end(JSON.stringify({ error: "Analysis Timeout (10m Limit)" }));
-                    this.currentRes = null;
+                } else if (stream) {
+                    this.sendSse(res, { module: "error", data: "Analysis Timeout" });
+                    res.end();
                 }
-                // Kill worker to ensure no lingering processes (loops, etc.)
+                this.currentRes = null;
                 if (this.process) this.process.kill(); 
-                // exit handler will restart it
             }
         }, ANALYSIS_TIMEOUT);
 
         return true;
     }
 
+    async runModularTools(file, res) {
+        const tools = ['yara_scan', 'strings', 'pe_info', 'capa'];
+        try {
+            for (const tool of tools) {
+                if (!this.process || !this.busy) break;
+                
+                console.log(`[WORKER-${this.id}] Running modular tool: ${tool}`);
+                this.sendSse(res, { module: "status", data: `Running ${tool}...` });
+                
+                const callId = `stream-${Date.now()}`;
+                this.sendJson({
+                    jsonrpc: "2.0", id: callId, method: "tools/call",
+                    params: { name: tool, arguments: { file } }
+                });
+
+                const result = await this.waitForCall(callId);
+                this.sendSse(res, { module: tool, data: result });
+            }
+            this.sendSse(res, { module: "status", data: "Completed" });
+        } catch (err) {
+            this.sendSse(res, { module: "error", data: err.message });
+        } finally {
+            res.end();
+            this.cleanup();
+            this.busy = false;
+            this.pool.notifyWorkerReady(this);
+        }
+    }
+
+    sendSse(res, obj) {
+        res.write(`data: ${JSON.stringify(obj)}\n\n`);
+    }
+
+    waitForCall(id) {
+        return new Promise((resolve, reject) => {
+            const start = Date.now();
+            const poll = setInterval(() => {
+                const lines = this.buffer.split('\n');
+                for (const line of lines) {
+                    if (line.includes(`"id":"${id}"`) || line.includes(`"id":${id}`)) {
+                        clearInterval(poll);
+                        try {
+                            const json = JSON.parse(line);
+                            resolve(json.result || json.error || json);
+                        } catch (e) {
+                            resolve({ raw: line });
+                        }
+                        this.buffer = ''; // Clear for next tool
+                        return;
+                    }
+                }
+                if (Date.now() - start > 300000) { // 5m tool timeout
+                    clearInterval(poll);
+                    reject(new Error(`Tool ${id} timed out`));
+                }
+            }, 500);
+        });
+    }
+
     checkCompletion() {
         if (!this.busy) return;
         
         // Simple string search is safer than trying to parse partial JSON
-        // We look for our specific Request ID in the output
         const lines = this.buffer.split('\n');
         for (let i = 0; i < lines.length; i++) {
             if (lines[i].includes(`"id":${this.currentId}`) || lines[i].includes(`"id":"${this.currentId}"`)) {
@@ -223,8 +288,6 @@ class MCPWorker {
                 
                 this.cleanup();
                 this.busy = false;
-                
-                // Notify pool we are free
                 this.pool.notifyWorkerReady(this);
                 return;
             }
@@ -251,7 +314,7 @@ class WorkerPool {
         }
     }
 
-    handleRequest(req, res) {
+    handleRequest(req, res, stream = false) {
         let body = '';
         req.on('data', chunk => body += chunk);
         req.on('end', () => {
@@ -260,10 +323,10 @@ class WorkerPool {
                 // Try to find a free worker
                 const worker = this.workers.find(w => !w.busy && w.ready);
                 if (worker) {
-                    worker.analyze(file, res);
+                    worker.analyze(file, res, stream);
                 } else {
                     console.log(`[POOL] All workers busy. Queued: ${file}`);
-                    this.queue.push({ file, res });
+                    this.queue.push({ file, res, stream });
                 }
              } catch (e) {
                  res.writeHead(400); res.end("Invalid JSON");
@@ -278,7 +341,7 @@ class WorkerPool {
             // Verify worker is actually ready (in case of race/restart)
             if (worker.ready && !worker.busy) {
                 console.log(`[POOL] Assigning queued job to WORKER-${worker.id}`);
-                worker.analyze(job.file, job.res);
+                worker.analyze(job.file, job.res, job.stream);
             } else {
                  // Should not happen, but put back in queue if worker died mid-assign
                  this.queue.unshift(job);
@@ -291,13 +354,19 @@ class WorkerPool {
 
 // Detect CPU Cores
 const CPU_COUNT = os.cpus().length;
-console.log(`[GATEWAY] Parallel Remnux Gateway v2.0 starting on ${CPU_COUNT} cores.`);
+console.log(`[GATEWAY] Parallel Remnux Gateway v2.1 (Streaming Enabled) starting on ${CPU_COUNT} cores.`);
 
 const pool = new WorkerPool(CPU_COUNT);
 
 http.createServer((req, res) => {
-    if (req.method === 'POST' && req.url === '/analyze') {
-        pool.handleRequest(req, res);
+    if (req.method === 'POST') {
+        if (req.url === '/analyze') {
+            pool.handleRequest(req, res, false);
+        } else if (req.url === '/analyze/stream') {
+            pool.handleRequest(req, res, true);
+        } else {
+            res.writeHead(404); res.end();
+        }
     } else {
         res.writeHead(404); res.end();
     }

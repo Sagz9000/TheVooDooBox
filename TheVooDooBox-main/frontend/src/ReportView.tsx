@@ -1817,83 +1817,132 @@ const RemnuxView = ({ report, status }: { report: any, status?: string }) => {
     useEffect(() => {
         if (!report) return;
 
-        // 1. Handle Double-Encoding from MCP
-        // The MCP returns { result: { content: [ { type: 'text', text: 'STRINGIFIED_JSON' } ] } }
+        // 1. Handle Double-Encoding from MCP (Monolithic)
         let data = report;
         if (data.result && data.result.content && data.result.content[0]?.text) {
             try {
-                data = JSON.parse(data.result.content[0].text);
+                const inner = JSON.parse(data.result.content[0].text);
+                data = inner.data || inner;
             } catch (e) {
                 console.error("[RemnuxView] Failed to parse inner JSON", e);
             }
         }
 
-        // 2. Normalize Data Structure
-        if (data.data) {
-            setParsedData(data.data);
-        } else {
-            setParsedData(data);
-        }
+        // 2. Normalize Modular Data
+        // If we have modular keys, we keep them as is and normalize them in the render phase
+        setParsedData(data);
     }, [report]);
 
     if (status === 'Not Started') return <EmptyState msg="Remnux analysis not requested or pending" />;
 
-    if (status === 'Uploading to VM' || status === 'Staging File' || status === 'Analyzing') {
+    if (status === 'Uploading to VM' || status === 'Staging File') {
         return (
             <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#080808] space-y-4">
                 <Loader2 className="text-brand-500 animate-spin" size={48} />
                 <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">{status}...</p>
-                <p className="text-zinc-600 text-[9px] font-mono">This may take up to 5 minutes for deep analysis (capa/floss)</p>
             </div>
         );
     }
 
     if (status?.includes('Error')) return <EmptyState msg={`Remnux Analysis Error: ${status}`} />;
-    if (!parsedData) return <EmptyState msg="Processing Remnux report data..." />;
+    if (!parsedData) return <EmptyState msg="Allocating Remnux Analysis Worker..." />;
 
-    const {
-        file,
-        detected_type,
-        triage_summary,
-        tools = [],
-        iocs = [],
-        action_required = [],
-        analysis_guidance
-    } = parsedData;
+    // --- Normalization Logic for Modular Data ---
+    const isModular = !!(parsedData.yara_scan || parsedData.strings || parsedData.pe_info || parsedData.capa);
+
+    let tools = parsedData.tools || [];
+    let iocs = parsedData.iocs || [];
+    let action_required = parsedData.action_required || [];
+    let detected_type = parsedData.detected_type || "Unknown";
+    let triage_summary = parsedData.triage_summary || "Analyzing...";
+
+    if (isModular) {
+        // Map modular results into the common structure
+        if (parsedData.yara_scan) {
+            const matches = parsedData.yara_scan.content || [];
+            action_required = matches.map((m: any) => ({
+                issue: m.rule || "YARA Match",
+                priority: "High",
+                remediation: `Rule: ${m.rule} matched in sample.`
+            }));
+        }
+
+        if (parsedData.pe_info) {
+            detected_type = "Portable Executable (PE)";
+            const info = parsedData.pe_info.content?.[0]?.text || "";
+            if (info) tools.push({ name: "PE Info", status: "clean", key_lines: info.split('\n').slice(0, 10) });
+        }
+
+        if (parsedData.strings) {
+            const lines = parsedData.strings.content?.[0]?.text || "";
+            if (lines) tools.push({ name: "Strings extraction", status: "clean", key_lines: lines.split('\n').slice(0, 20) });
+        }
+
+        if (parsedData.capa) {
+            const capa_text = parsedData.capa.content?.[0]?.text || "";
+            if (capa_text) {
+                const capabilities = capa_text.split('\n').filter((l: string) => l.includes('capability') || l.includes('matched')).slice(0, 15);
+                tools.push({ name: "Capa Behavioral", status: "suspicious", key_lines: capabilities });
+                triage_summary = "Behavioral analysis complete.";
+            }
+        }
+    }
+
+    const isPending = status !== 'Completed';
 
     return (
         <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6 bg-[#080808]">
             <div className="max-w-6xl mx-auto space-y-8">
 
                 {/* Header Section */}
-                <div>
-                    <h2 className="text-2xl font-black text-white tracking-tight uppercase mb-2 flex items-center gap-3">
-                        <ShieldAlert className="text-brand-500" />
-                        Remnux Linux Analysis
-                    </h2>
+                <div className="flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                        <h2 className="text-2xl font-black text-white tracking-tight uppercase flex items-center gap-3">
+                            <ShieldAlert className="text-brand-500" />
+                            Remnux Linux Analysis
+                        </h2>
+                        {isPending && (
+                            <div className="flex items-center gap-2 px-3 py-1 bg-brand-500/10 border border-brand-500/20 rounded-full animate-pulse">
+                                <span className="w-1.5 h-1.5 rounded-full bg-brand-500"></span>
+                                <span className="text-[9px] font-black text-brand-500 uppercase tracking-widest">Live Stream Active</span>
+                            </div>
+                        )}
+                    </div>
+
                     <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 bg-[#111] border border-white/5 rounded-lg">
                         <div>
                             <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">File Type</div>
-                            <div className="text-sm font-mono text-zinc-200">{detected_type || 'Unknown'}</div>
+                            <div className="text-sm font-mono text-zinc-200">{detected_type}</div>
                         </div>
                         <div className="text-right">
-                            <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Triage Summary</div>
-                            <div className="text-sm font-bold text-brand-400">{triage_summary || 'No summary available'}</div>
+                            <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-1">Status</div>
+                            <div className="text-sm font-bold text-brand-400">{status || triage_summary}</div>
                         </div>
                     </div>
                 </div>
+
+                {/* Progress Indicators for Modular */}
+                {isModular && isPending && (
+                    <div className="grid grid-cols-4 gap-2">
+                        {['yara_scan', 'strings', 'pe_info', 'capa'].map(t => (
+                            <div key={t} className={`px-3 py-2 rounded border text-[9px] font-black uppercase tracking-widest text-center ${parsedData[t] ? 'bg-green-500/10 border-green-500/30 text-green-500' : 'bg-white/5 border-white/10 text-zinc-600'}`}>
+                                {t.replace('_', ' ')} {parsedData[t] ? '✓' : '...'}
+                            </div>
+                        ))}
+                    </div>
+                )}
 
                 {/* Critical Actions / YARA Matches */}
                 {action_required.length > 0 && (
                     <div className="space-y-3">
                         <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
                             <Target size={14} className="text-red-500" />
-                            Critical Findings
+                            Security findings
                         </h3>
                         {action_required.map((action: any, i: number) => (
                             <div key={i} className="p-3 bg-red-500/10 border-l-2 border-red-500 rounded-r-lg">
                                 <div className="text-[11px] font-bold text-red-400 uppercase tracking-wide mb-1">
-                                    Priority {action.priority}: {action.issue}
+                                    {action.issue}
                                 </div>
                                 <div className="text-[10px] text-zinc-400 font-mono">
                                     {action.remediation}
@@ -1903,12 +1952,12 @@ const RemnuxView = ({ report, status }: { report: any, status?: string }) => {
                     </div>
                 )}
 
-                {/* IOCs Table */}
+                {/* IOCs Table (if present) */}
                 {iocs.length > 0 && (
                     <div className="space-y-3">
                         <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
                             <Globe size={14} className="text-blue-500" />
-                            Network & File Indicators
+                            Extracted Indicators
                         </h3>
                         <div className="bg-[#0c0c0c] border border-white/5 rounded-lg overflow-hidden">
                             <table className="w-full text-left">
@@ -1916,34 +1965,19 @@ const RemnuxView = ({ report, status }: { report: any, status?: string }) => {
                                     <tr>
                                         <th className="p-3 w-24">Type</th>
                                         <th className="p-3">Value</th>
-                                        <th className="p-3 w-32 hidden sm:table-cell">Confidence</th>
                                     </tr>
                                 </thead>
                                 <tbody className="text-xs font-mono divide-y divide-white/5">
                                     {iocs.slice(0, 50).map((ioc: any, i: number) => (
                                         <tr key={i} className="hover:bg-white/5 transition-colors">
                                             <td className="p-3">
-                                                <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase ${ioc.type === 'ipv4' ? 'bg-blue-500/20 text-blue-400' :
-                                                        ioc.type === 'domain' ? 'bg-purple-500/20 text-purple-400' :
-                                                            ioc.type === 'url' ? 'bg-orange-500/20 text-orange-400' :
-                                                                'bg-zinc-700/50 text-zinc-400'
-                                                    }`}>
+                                                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-zinc-800 text-zinc-400">
                                                     {ioc.type}
                                                 </span>
                                             </td>
                                             <td className="p-3 text-zinc-300 break-all select-all">{ioc.value}</td>
-                                            <td className="p-3 hidden sm:table-cell text-zinc-500">
-                                                {ioc.confidence ? `${(ioc.confidence * 100).toFixed(0)}%` : 'N/A'}
-                                            </td>
                                         </tr>
                                     ))}
-                                    {iocs.length > 50 && (
-                                        <tr>
-                                            <td colSpan={3} className="p-3 text-center text-[10px] text-zinc-500 uppercase font-black">
-                                                + {iocs.length - 50} more indicators hidden
-                                            </td>
-                                        </tr>
-                                    )}
                                 </tbody>
                             </table>
                         </div>
@@ -1951,51 +1985,46 @@ const RemnuxView = ({ report, status }: { report: any, status?: string }) => {
                 )}
 
                 {/* Tools Grid */}
-                <div className="space-y-3">
-                    <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
-                        <Terminal size={14} className="text-zinc-500" />
-                        Static Analysis Tools
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {tools.map((tool: any, i: number) => (
-                            <div key={i} className={`p-4 rounded-lg border flex flex-col gap-2 transition-all group ${tool.status === 'clean' ? 'bg-[#0c0c0c] border-white/5 hover:border-green-500/30' :
+                {tools.length > 0 && (
+                    <div className="space-y-3">
+                        <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
+                            <Terminal size={14} className="text-zinc-500" />
+                            Staged Analysis Output
+                        </h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {tools.map((tool: any, i: number) => (
+                                <div key={i} className={`p-4 rounded-lg border flex flex-col gap-2 transition-all group ${tool.status === 'clean' ? 'bg-[#0c0c0c] border-white/5 hover:border-green-500/30' :
                                     tool.status === 'suspicious' ? 'bg-orange-500/5 border-orange-500/20 hover:border-orange-500/50' :
-                                        tool.status === 'malicious' ? 'bg-red-500/5 border-red-500/20 hover:border-red-500/50' :
-                                            'bg-[#0c0c0c] border-white/5'
-                                }`}>
-                                <div className="flex items-center justify-between">
-                                    <div className="text-[11px] font-black uppercase tracking-wider text-zinc-300">{tool.name}</div>
-                                    <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${tool.status === 'clean' ? 'bg-green-500/10 text-green-500' :
-                                            tool.status === 'suspicious' ? 'bg-orange-500/10 text-orange-500' :
-                                                tool.status === 'malicious' ? 'bg-red-500/10 text-red-500' :
-                                                    'bg-zinc-800 text-zinc-500'
-                                        }`}>{tool.status}</div>
-                                </div>
-                                {tool.key_lines && tool.key_lines.length > 0 ? (
-                                    <div className="mt-2 text-[10px] font-mono text-zinc-500 bg-black/40 p-2 rounded max-h-32 overflow-y-auto custom-scrollbar">
-                                        {tool.key_lines.map((line: string, j: number) => (
-                                            <div key={j} className="truncate hover:text-zinc-300 transition-colors" title={line}>
-                                                {line}
-                                            </div>
-                                        ))}
+                                        'bg-red-500/5 border-red-500/20'
+                                    }`}>
+                                    <div className="flex items-center justify-between">
+                                        <div className="text-[11px] font-black uppercase tracking-wider text-zinc-300">{tool.name}</div>
+                                        <div className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase bg-zinc-800 text-zinc-500">{tool.status}</div>
                                     </div>
-                                ) : (
-                                    <div className="mt-auto pt-2 text-[9px] text-zinc-600 italic">No key findings reported.</div>
-                                )}
-                            </div>
-                        ))}
+                                    {tool.key_lines && tool.key_lines.length > 0 && (
+                                        <div className="mt-2 text-[10px] font-mono text-zinc-500 bg-black/40 p-2 rounded max-h-48 overflow-y-auto custom-scrollbar">
+                                            {tool.key_lines.map((line: string, j: number) => (
+                                                <div key={j} className="truncate hover:text-zinc-300 transition-colors">
+                                                    {line}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     </div>
-                </div>
+                )}
 
                 {/* Analysis Guidance */}
-                {analysis_guidance && (
+                {parsedData.analysis_guidance && (
                     <div className="p-4 bg-brand-900/10 border border-brand-500/20 rounded-lg">
                         <div className="flex items-center gap-2 mb-2">
                             <Sparkles size={14} className="text-brand-500" />
                             <div className="text-[10px] font-black text-brand-500 uppercase tracking-widest">AI Analyst Guidance</div>
                         </div>
                         <div className="text-xs text-brand-300/80 font-mono leading-relaxed whitespace-pre-wrap">
-                            {analysis_guidance}
+                            {parsedData.analysis_guidance}
                         </div>
                     </div>
                 )}
