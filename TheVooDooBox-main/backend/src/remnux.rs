@@ -35,7 +35,7 @@ fn build_mcp_client() -> (Client, String, String) {
     // Strip /sse suffix for tool calls (we post to /mcp/tools/call)
     let base_url = remnux_url.trim_end_matches("/sse").to_string();
 
-    println!("[REMNUX] MCP Base URL: {}, Shared Dir: {}", base_url, shared_dir);
+    println!("[REMNUX] Config - URL: {}, Token: ***, Shared Dir: {}", base_url, shared_dir);
 
     let client = Client::new();
     (client, base_url, shared_dir)
@@ -105,9 +105,14 @@ async fn stage_file_to_shared_storage(
 
     // Copy the file into the shared directory
     let dest_path = format!("{}/{}", task_dir, filename);
-    fs::copy(filepath, &dest_path).await?;
-
-    println!("[REMNUX] Copied {} -> {}", filepath, dest_path);
+    println!("[REMNUX] Copying {} to shared storage...", filepath);
+    match fs::copy(filepath, &dest_path).await {
+        Ok(_) => println!("[REMNUX] Successfully copied to {}", dest_path),
+        Err(e) => {
+            eprintln!("[REMNUX] ERROR copying to shared storage: {}", e);
+            return Err(e.into());
+        }
+    }
 
     // Return the path as the Remnux container sees it
     // NFS host mount: /mnt/voodoo_samples -> Docker volume: /home/remnux/files
@@ -134,6 +139,8 @@ async fn call_analyze_tool(
         .json(&call)
         .send()
         .await?;
+
+    println!("[REMNUX] MCP Response Status: {}", resp.status());
 
     if resp.status().is_success() {
         let mcp_resp: MCPResponse = resp.json().await?;
