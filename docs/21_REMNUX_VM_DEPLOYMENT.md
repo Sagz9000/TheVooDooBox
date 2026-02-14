@@ -22,11 +22,33 @@ We use a tiny Node.js gateway to bridge the complex MCP protocol to a simple RES
 ```javascript
 const { spawn } = require('child_process');
 const http = require('http');
+const fs = require('fs');
 
-// Start the MCP server in stdio mode
-const mcp = spawn('remnux-mcp-server', [], { 
-  shell: '/bin/bash', 
-  env: { ...process.env, PATH: process.env.PATH + ':/usr/local/bin' } 
+// RUNTIME FIX: Ensure the CWD exists (Volume mounts can hide build-time folders)
+const WORK_DIR = '/home/remnux/files/samples';
+if (!fs.existsSync(WORK_DIR)) {
+  console.log(`[GATEWAY] Creating working directory: ${WORK_DIR}`);
+  fs.mkdirSync(WORK_DIR, { recursive: true });
+}
+
+// Absolute Environment Hardening
+process.env.PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+process.env.SHELL = '/bin/bash';
+
+console.log('[GATEWAY] Environment PATH:', process.env.PATH);
+
+// Pre-flight check: Can Node.js spawn bash?
+const preflight = spawn('bash', ['--version']);
+preflight.stdout.on('data', (d) => console.log('[PREFLIGHT] Bash Version:', d.toString().split('\n')[0]));
+preflight.on('error', (err) => console.error('[PREFLIGHT] Failed to spawn bash:', err));
+
+console.log('[GATEWAY] Starting MCP Server (Direct Mode)...');
+
+// Start the MCP server directly using the patched CLI
+const mcp = spawn('node', ['/usr/lib/node_modules/@remnux/mcp-server/dist/cli.js'], { 
+  env: process.env,
+  shell: false, 
+  stdio: ['pipe', 'pipe', 'pipe']
 });
 
 let buffer = '';
@@ -37,10 +59,13 @@ mcp.stdin.write(JSON.stringify({
   params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "voodoo-bridge", version: "1.0" } }
 }) + '\n');
 
-// Global collector for stdout to handle multi-line/chunked JSON-RPC
+// Global collector for stdout
 mcp.stdout.on('data', (chunk) => {
   buffer += chunk.toString();
 });
+
+// Log server stderr for debugging (This is where the ENOENT likely shows up)
+mcp.stderr.on('data', (data) => console.error(`[MCP-STDERR] ${data}`));
 
 const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/analyze') {
@@ -50,13 +75,13 @@ const server = http.createServer((req, res) => {
       try {
         const { file } = JSON.parse(body);
         const id = Date.now();
+        console.log(`[GATEWAY] Analyzing: ${file}`);
         
         mcp.stdin.write(JSON.stringify({
           jsonrpc: "2.0", id, method: "tools/call",
           params: { name: "analyze_file", arguments: { file } }
         }) + '\n');
 
-        // Poll the buffer for the specific ID
         const checkBuffer = setInterval(() => {
           const lines = buffer.split('\n');
           for (let i = 0; i < lines.length; i++) {
@@ -64,13 +89,20 @@ const server = http.createServer((req, res) => {
               clearInterval(checkBuffer);
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(lines[i]);
-              // Clear the processed line to keep buffer small
               lines.splice(i, 1);
               buffer = lines.join('\n');
               return;
             }
           }
         }, 100);
+
+        // Timeout after 5 minutes
+        setTimeout(() => {
+          clearInterval(checkBuffer);
+          if (!res.writableEnded) {
+            res.writeHead(504); res.end("Analysis Timeout");
+          }
+        }, 300000);
 
       } catch (e) {
         res.writeHead(400); res.end("Invalid Request");
@@ -97,15 +129,26 @@ RUN mkdir -p /usr/lib/node_modules/@remnux/mcp-server/data && \
     echo '[]' > /usr/lib/node_modules/@remnux/mcp-server/data/tools-index.json
 
 # 3. Setup files directory
-RUN mkdir -p /home/remnux/files && chown remnux:remnux /home/remnux/files
+RUN mkdir -p /home/remnux/files/samples && chown -R remnux:remnux /home/remnux/files
+
+# NUCLEAR SOURCE PATCH 1: Force-inject PATH at the top of the MCP server code
+RUN sed -i '1a process.env.PATH = process.env.PATH || "\/usr\/local\/sbin:\/usr\/local\/bin:\/usr\/sbin:\/usr\/bin:\/sbin:\/bin";' /usr/lib/node_modules/@remnux/mcp-server/dist/cli.js
+
+# NUCLEAR SOURCE PATCH 2: Fix local.js to use absolute bash path and force PATH in spawn
+RUN sed -i 's/"bash", "-c"/"\/bin\/bash", "-c"/' /usr/lib/node_modules/@remnux/mcp-server/dist/connectors/local.js && \
+    sed -i '/const filteredEnv = {};/a filteredEnv.PATH = "\/usr\/local\/sbin:\/usr\/local\/bin:\/usr\/sbin:\/usr\/bin:\/sbin:\/bin";' /usr/lib/node_modules/@remnux/mcp-server/dist/connectors/local.js
 
 COPY voodoo-gateway.js /home/remnux/voodoo-gateway.js
-USER remnux
+
+# Ensure sh points to bash
+RUN ln -sf /usr/bin/bash /usr/bin/sh
+
+USER root
 WORKDIR /home/remnux
 EXPOSE 8090
 
-# 4. Start the Gateway with a full environment
-CMD ["/bin/bash", "-c", "export PATH=$PATH:/usr/local/bin && node voodoo-gateway.js"]
+# 4. Start the Gateway
+CMD ["node", "voodoo-gateway.js"]
 ```
 
 ### docker-compose.yml
