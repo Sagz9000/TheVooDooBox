@@ -26,7 +26,7 @@ struct MCPContent {
 /// Build an authenticated reqwest client with the Bearer token.
 fn build_mcp_client() -> (Client, String, String) {
     let remnux_url = env::var("REMNUX_MCP_URL")
-        .unwrap_or_else(|_| "http://10.10.20.50:8090/sse".to_string());
+        .unwrap_or_else(|_| "http://192.168.50.199:8090/sse".to_string());
     let token = env::var("REMNUX_MCP_TOKEN")
         .unwrap_or_else(|_| "voodoo-secret-token".to_string());
     let shared_dir = env::var("SHARED_MALWARE_DIR")
@@ -37,7 +37,10 @@ fn build_mcp_client() -> (Client, String, String) {
 
     println!("[REMNUX] Config - URL: {}, Token: ***, Shared Dir: {}", base_url, shared_dir);
 
-    let client = Client::new();
+    let client = Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| Client::new());
     (client, base_url, shared_dir)
 }
 

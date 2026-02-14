@@ -4,26 +4,40 @@ This guide details how to set up the Remnux MCP server on a dedicated Docker hos
 
 ## Network Overview
 
-| Component | IP | Network | Role |
-|---|---|---|---|
-| AI Server | `192.168.50.98` | Management VLAN | Ollama, ChromaDB |
-| App Server (VooDooBox) | `192.168.50.196` | Management VLAN | Orchestration, Frontend |
-| Remnux Docker Host | `10.10.20.50` | Dirty/Sandbox VLAN | Static analysis, YARA |
-| pfSense | — | All VLANs | Firewall (allow 192.168.50.196 → 10.10.20.50:8090) |
+| Component | IP Address | Notes |
+| :--- | :--- | :--- |
+| **App Server (VoodooBox)** | `192.168.50.196` | Hosts Backend & Frontend |
+| **Remnux Docker Host** | `192.168.50.199` | Runs the MCP Server container |
+| **AI Server** | `192.168.50.98` | Runs Ollama / Local AI |
 
-## 1. Remnux Server (10.10.20.50)
+### Docker Compose (On 192.168.50.199)
+Ensure `network_mode: "host"` is set so it binds to the VM's IP directly once `socat` is running.
 
-### Dockerfile
+## 1. Remnux Server (192.168.50.199)
 
 ```dockerfile
 FROM remnux/remnux-distro:noble
 USER root
+
+# 1. Install socat (for network bridging) and the MCP server
+RUN apt-get update && apt-get install -y socat curl && rm -rf /var/lib/apt/lists/*
+RUN npm install -g @remnux/mcp-server
+
+# 2. FIX: Create the missing tool catalog file that causes the crash
+# We create an empty JSON array to satisfy the server's requirement
+RUN mkdir -p /usr/lib/node_modules/@remnux/mcp-server/data && \
+    echo '[]' > /usr/lib/node_modules/@remnux/mcp-server/data/tools-index.json
+
+# 3. Setup permissions
 RUN mkdir -p /home/remnux/files && chown remnux:remnux /home/remnux/files
+
 USER remnux
 WORKDIR /home/remnux
 EXPOSE 8090
-# Replace 'voodoo-secret-token' with your own long random string
-CMD ["remnux-mcp-server", "--mode=local", "--transport=http", "--port=8090", "--host=0.0.0.0"]
+
+# 4. WORKAROUND: Force bind 0.0.0.0:8090 -> 127.0.0.1:3000
+# Removed log redirection to see server errors. Added socat verbose logging.
+CMD ["sh", "-c", "remnux-mcp-server --mode=local --transport=http & sleep 5 && socat -d -d TCP-LISTEN:8090,fork,bind=0.0.0.0 TCP:127.0.0.1:3000"]
 ```
 
 ### docker-compose.yml
@@ -37,6 +51,8 @@ services:
     restart: unless-stopped
     environment:
       - MCP_TOKEN=voodoo-secret-token
+      - PORT=8090
+      - HOST=0.0.0.0
     volumes:
       - /mnt/voodoo_samples:/home/remnux/files
 ```
