@@ -24,7 +24,7 @@ fn build_mcp_client() -> (Client, String, String) {
     println!("[REMNUX] Config - URL: {}, Shared Dir: {}", base_url, shared_dir);
 
     let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(300)) // Analysis can take a while
+        .timeout(std::time::Duration::from_secs(600)) // Analysis can take a while (increased to 10m)
         .build()
         .unwrap_or_else(|_| Client::new());
     (client, base_url, shared_dir)
