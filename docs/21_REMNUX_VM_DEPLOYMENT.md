@@ -73,7 +73,7 @@ const os = require('os');
 const MCP_SCRIPT = '/usr/lib/node_modules/@remnux/mcp-server/dist/cli.js';
 const PORT = 8090;
 const WORK_DIR = '/home/remnux/files/samples';
-const ANALYSIS_TIMEOUT = 600000; // 10 minutes
+const ANALYSIS_TIMEOUT = 900000; // Increased to 15 minutes for floss/capa
 
 // Hardened Environment
 const ENV = { ...process.env };
@@ -88,7 +88,7 @@ if (!fs.existsSync(WORK_DIR)) {
 
 /**
  * MCP Worker Class
- * Manages a single instance of the MCP Server (single-threaded).
+ * Manages a single instance of the MCP Server.
  */
 class MCPWorker {
     constructor(id, pool) {
@@ -110,46 +110,34 @@ class MCPWorker {
         console.log(`[WORKER-${this.id}] Booting MCP Server...`);
         this.process = spawn('node', [MCP_SCRIPT], { 
             env: ENV, 
-            shell: false,
+            shell: false, 
             stdio: ['pipe', 'pipe', 'pipe'] 
         });
 
-        // Capture Output
         this.process.stdout.on('data', (chunk) => {
             const data = chunk.toString();
             this.buffer += data;
-            // Check for initialization
             if (!this.ready && data.includes('"id":"init"')) {
                 console.log(`[WORKER-${this.id}] Initialized & Ready!`);
                 this.ready = true;
                 this.sendJson({ jsonrpc: "2.0", method: "notifications/initialized" });
-                this.buffer = ''; // Clear buffer to save RAM
-                
-                // If we were restarting and had a queue, the pool will auto-assign work
+                this.buffer = ''; 
                 this.pool.notifyWorkerReady(this);
             }
         });
 
-        this.process.stderr.on('data', (data) => {
-           // Optional: Log stderr if needed, but keep it quiet for now
-           // process.stderr.write(`[WORKER-${this.id} ERR] ${data}`);
-        });
-
-        // Handle Crashes/Exits
         this.process.on('exit', (code) => {
             console.error(`[WORKER-${this.id}] Died with code ${code}. Restarting...`);
             this.cleanup();
             if (this.currentRes) {
-                 this.currentRes.writeHead(500, { 'Content-Type': 'application/json' });
-                 this.currentRes.end(JSON.stringify({ error: "Analysis Worker Crashed" }));
+                 try { this.currentRes.end(); } catch(e){}
                  this.currentRes = null;
             }
             this.busy = false; 
             this.ready = false;
-            this.start(); // Auto-restart
+            setTimeout(() => this.start(), 1000);
         });
 
-        // Send Handshake
         this.sendJson({
             jsonrpc: "2.0", id: "init", method: "initialize",
             params: { 
@@ -172,7 +160,7 @@ class MCPWorker {
         this.busy = true;
         this.currentRes = res;
         this.currentId = Date.now();
-        this.buffer = ''; // Reset buffer for clean capture
+        this.buffer = '';
 
         if (stream) {
             console.log(`[WORKER-${this.id}] Starting STREAMED Analysis: ${file}`);
@@ -193,18 +181,10 @@ class MCPWorker {
             this.checkInterval = setInterval(() => this.checkCompletion(), 500);
         }
 
-        // Timeout Watchdog
         this.timeoutTimer = setTimeout(() => {
             if (this.busy) {
-                console.error(`[WORKER-${this.id}] TIMEOUT on ${file} - Killing Worker.`);
-                if (this.currentRes && !stream) {
-                    this.currentRes.writeHead(504, { 'Content-Type': 'application/json' });
-                    this.currentRes.end(JSON.stringify({ error: "Analysis Timeout (10m Limit)" }));
-                } else if (stream) {
-                    this.sendSse(res, { module: "error", data: "Analysis Timeout" });
-                    res.end();
-                }
-                this.currentRes = null;
+                console.error(`[WORKER-${this.id}] TIMEOUT on ${file}`);
+                if (stream) this.sendSse(res, { module: "error", data: "Analysis Timeout" });
                 if (this.process) this.process.kill(); 
             }
         }, ANALYSIS_TIMEOUT);
@@ -213,50 +193,101 @@ class MCPWorker {
     }
 
     async runModularTools(file, res) {
-        const tools = ['yara_scan', 'strings', 'pe_info', 'capa'];
-        console.log(`[WORKER-${this.id}] Beginning modular analysis for: ${file}`);
+        // --- Full Orchestration Suite (9 Stages) ---
+        const stages = [
+            { id: 'pe_info', command: `file "${file}"` },
+            { id: 'signsrch', command: `signsrch "${file}"` },
+            { id: 'yara_scan', command: `yara -w /usr/share/yara-rules/rules.yar "${file}"` },
+            { id: 'strings', command: `pestr "${file}"` },
+            { id: 'floss', command: `floss --no-static-strings "${file}"` },
+            { id: 'peframe', command: `peframe "${file}"` },
+            { id: 'manalyze', command: `manalyze --dump all "${file}"` },
+            { id: 'densityscout', command: `densityscout -n 0.1 "${file}"` },
+            { id: 'capa', command: `capa -vv "${file}"` }
+        ];
+
+        console.log(`[WORKER-${this.id}] Beginning Full Modular Orchestration (v2.8) for: ${file}`);
         
-        // Safety Check: Verify file exists inside container
         if (!fs.existsSync(file)) {
-            console.error(`[WORKER-${this.id}] ERROR: File not found at ${file}`);
-            this.sendSse(res, { module: "error", data: `File not found inside Remnux container: ${file}` });
-            res.end();
-            this.busy = false;
-            this.pool.notifyWorkerReady(this);
+            this.sendSse(res, { module: "error", data: `File not found: ${file}` });
+            this.finishJob();
             return;
         }
 
         try {
-            for (const tool of tools) {
+            for (const stage of stages) {
                 if (!this.process || !this.busy) break;
                 
-                console.log(`[WORKER-${this.id}] Starting tool: ${tool}`);
-                this.sendSse(res, { module: "status", data: `Running ${tool}...` });
+                console.log(`[WORKER-${this.id}] STAGE: ${stage.id}...`);
+                this.sendSse(res, { module: "status", data: `Running ${stage.id.toUpperCase()}...` });
                 
                 const callId = `stream-${Date.now()}`;
                 this.sendJson({
                     jsonrpc: "2.0", id: callId, method: "tools/call",
-                    params: { name: tool, arguments: { file } }
+                    params: { name: "run_tool", arguments: { command: stage.command } }
                 });
 
-                const result = await this.waitForCall(callId);
-                console.log(`[WORKER-${this.id}] Tool ${tool} completed.`);
-                this.sendSse(res, { module: tool, data: result });
+                const rawResult = await this.waitForCall(callId);
+                
+                // Normalization Logic
+                let textResult = '';
+                if (rawResult && rawResult.content && Array.isArray(rawResult.content)) {
+                    const textContent = rawResult.content[0]?.text || '';
+                    try {
+                        const inner = JSON.parse(textContent);
+                        if (inner.data) {
+                            textResult = (inner.data.stdout || '') + (inner.data.stderr || '');
+                        } else {
+                            textResult = textContent;
+                        }
+                    } catch (e) {
+                        textResult = textContent;
+                    }
+                } else if (rawResult && rawResult.data) {
+                    textResult = (rawResult.data.stdout || '') + (rawResult.data.stderr || '');
+                } else {
+                    textResult = JSON.stringify(rawResult);
+                }
+
+                if (!textResult.trim()) textResult = 'Tool completed with no output.';
+
+                // Formatting
+                let finalData = { content: [{ type: 'text', text: textResult }] };
+                
+                if (stage.id === 'yara_scan' && textResult !== 'Tool completed with no output.') {
+                    const lines = textResult.split('\n').filter(l => l.trim());
+                    finalData.content = lines.map(line => {
+                         const parts = line.split(' ');
+                         return { rule: parts[0], remediation: `Matched: ${line}` };
+                    });
+                }
+
+                this.sendSse(res, { module: stage.id, data: finalData });
             }
             this.sendSse(res, { module: "status", data: "Completed" });
+            console.log(`[WORKER-${this.id}] All 9 modular stages completed.`);
         } catch (err) {
-            console.error(`[WORKER-${this.id}] Modular analysis error: ${err.message}`);
+            console.error(`[WORKER-${this.id}] Orchestration Error: ${err.message}`);
             this.sendSse(res, { module: "error", data: err.message });
         } finally {
-            res.end();
-            this.cleanup();
-            this.busy = false;
-            this.pool.notifyWorkerReady(this);
+            setTimeout(() => this.finishJob(), 300);
         }
     }
 
+    finishJob() {
+        if (this.currentRes) {
+            this.currentRes.end();
+            this.currentRes = null;
+        }
+        this.cleanup();
+        this.busy = false;
+        this.pool.notifyWorkerReady(this);
+    }
+
     sendSse(res, obj) {
-        res.write(`data: ${JSON.stringify(obj)}\n\n`);
+        if (res && !res.writableEnded) {
+            res.write(`data: ${JSON.stringify(obj)}\n\n`);
+        }
     }
 
     waitForCall(id) {
@@ -269,17 +300,18 @@ class MCPWorker {
                         clearInterval(poll);
                         try {
                             const json = JSON.parse(line);
-                            resolve(json.result || json.error || json);
+                            if (json.error) resolve({ error: `MCP ${json.error.code}: ${json.error.message}` });
+                            else resolve(json.result);
                         } catch (e) {
                             resolve({ raw: line });
                         }
-                        this.buffer = ''; // Clear for next tool
+                        this.buffer = ''; 
                         return;
                     }
                 }
-                if (Date.now() - start > 300000) { // 5m tool timeout
+                if (Date.now() - start > 600000) { // 10m stage timeout
                     clearInterval(poll);
-                    reject(new Error(`Tool ${id} timed out`));
+                    resolve({ error: "Stage Timed Out" });
                 }
             }, 500);
         });
@@ -287,22 +319,15 @@ class MCPWorker {
 
     checkCompletion() {
         if (!this.busy) return;
-        
-        // Simple string search is safer than trying to parse partial JSON
         const lines = this.buffer.split('\n');
         for (let i = 0; i < lines.length; i++) {
             if (lines[i].includes(`"id":${this.currentId}`) || lines[i].includes(`"id":"${this.currentId}"`)) {
-                console.log(`[WORKER-${this.id}] Finished Analysis.`);
-                
                 if (this.currentRes) {
                     this.currentRes.writeHead(200, { 'Content-Type': 'application/json' });
                     this.currentRes.end(lines[i]);
                     this.currentRes = null;
                 }
-                
-                this.cleanup();
-                this.busy = false;
-                this.pool.notifyWorkerReady(this);
+                this.finishJob();
                 return;
             }
         }
@@ -316,7 +341,6 @@ class MCPWorker {
 
 /**
  * Worker Pool Class
- * Load balances requests across multiple workers.
  */
 class WorkerPool {
     constructor(size) {
@@ -334,12 +358,11 @@ class WorkerPool {
         req.on('end', () => {
              try {
                 const { file } = JSON.parse(body);
-                // Try to find a free worker
                 const worker = this.workers.find(w => !w.busy && w.ready);
                 if (worker) {
                     worker.analyze(file, res, stream);
                 } else {
-                    console.log(`[POOL] All workers busy. Queued: ${file}`);
+                    console.log(`[POOL] Queued: ${file}`);
                     this.queue.push({ file, res, stream });
                 }
              } catch (e) {
@@ -349,38 +372,27 @@ class WorkerPool {
     }
 
     notifyWorkerReady(worker) {
-        // If there's work in the queue, assign it immediately
         if (this.queue.length > 0) {
             const job = this.queue.shift();
-            // Verify worker is actually ready (in case of race/restart)
             if (worker.ready && !worker.busy) {
                 console.log(`[POOL] Assigning queued job to WORKER-${worker.id}`);
                 worker.analyze(job.file, job.res, job.stream);
             } else {
-                 // Should not happen, but put back in queue if worker died mid-assign
                  this.queue.unshift(job);
             }
         }
     }
 }
 
-// --- Main ---
-
-// Detect CPU Cores
 const CPU_COUNT = os.cpus().length;
-console.log(`[GATEWAY] Parallel Remnux Gateway v2.1 (Streaming Enabled) starting on ${CPU_COUNT} cores.`);
-
+console.log(`[GATEWAY] Parallel Remnux Gateway v2.8 (Full Suite) starting on ${CPU_COUNT} cores.`);
 const pool = new WorkerPool(CPU_COUNT);
 
 http.createServer((req, res) => {
     if (req.method === 'POST') {
-        if (req.url === '/analyze') {
-            pool.handleRequest(req, res, false);
-        } else if (req.url === '/analyze/stream') {
-            pool.handleRequest(req, res, true);
-        } else {
-            res.writeHead(404); res.end();
-        }
+        if (req.url === '/analyze') pool.handleRequest(req, res, false);
+        else if (req.url === '/analyze/stream') pool.handleRequest(req, res, true);
+        else { res.writeHead(404); res.end(); }
     } else {
         res.writeHead(404); res.end();
     }

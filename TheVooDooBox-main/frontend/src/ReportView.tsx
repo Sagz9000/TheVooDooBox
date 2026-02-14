@@ -1829,7 +1829,6 @@ const RemnuxView = ({ report, status }: { report: any, status?: string }) => {
         }
 
         // 2. Normalize Modular Data
-        // If we have modular keys, we keep them as is and normalize them in the render phase
         setParsedData(data);
     }, [report]);
 
@@ -1847,48 +1846,56 @@ const RemnuxView = ({ report, status }: { report: any, status?: string }) => {
     if (status?.includes('Error')) return <EmptyState msg={`Remnux Analysis Error: ${status}`} />;
     if (!parsedData) return <EmptyState msg="Allocating Remnux Analysis Worker..." />;
 
-    // --- Normalization Logic for Modular Data ---
-    const isModular = !!(parsedData.yara_scan || parsedData.strings || parsedData.pe_info || parsedData.capa);
-
-    let tools = parsedData.tools || [];
+    // --- Normalization Logic for Modular Data (v2.8 Dynamic) ---
+    let tools: any[] = [];
     let iocs = parsedData.iocs || [];
     let action_required = parsedData.action_required || [];
     let detected_type = parsedData.detected_type || "Unknown";
     let triage_summary = parsedData.triage_summary || "Analyzing...";
 
-    if (isModular) {
-        // Map modular results into the common structure
-        if (parsedData.yara_scan) {
-            const matches = parsedData.yara_scan.content || [];
-            action_required = matches.map((m: any) => ({
-                issue: m.rule || "YARA Match",
-                priority: "High",
-                remediation: `Rule: ${m.rule} matched in sample.`
-            }));
-        }
+    // 1. Handle "Special" Keys (Hardcoded Layouts)
+    if (parsedData.yara_scan) {
+        const matches = parsedData.yara_scan.content || [];
+        action_required = matches.map((m: any) => ({
+            issue: m.rule || "YARA Match",
+            priority: "High",
+            remediation: m.remediation || `Rule: ${m.rule} matched in sample.`
+        }));
+    }
 
-        if (parsedData.pe_info) {
-            detected_type = "Portable Executable (PE)";
-            const info = parsedData.pe_info.content?.[0]?.text || "";
-            if (info) tools.push({ name: "PE Info", status: "clean", key_lines: info.split('\n').slice(0, 10) });
-        }
+    if (parsedData.pe_info) {
+        detected_type = "Portable Executable (PE)";
+        const info = parsedData.pe_info.content?.[0]?.text || "";
+        if (info) tools.push({ name: "File Identification", status: "clean", key_lines: info.split('\n').slice(0, 10) });
+    }
 
-        if (parsedData.strings) {
-            const lines = parsedData.strings.content?.[0]?.text || "";
-            if (lines) tools.push({ name: "Strings extraction", status: "clean", key_lines: lines.split('\n').slice(0, 20) });
-        }
-
-        if (parsedData.capa) {
-            const capa_text = parsedData.capa.content?.[0]?.text || "";
-            if (capa_text) {
-                const capabilities = capa_text.split('\n').filter((l: string) => l.includes('capability') || l.includes('matched')).slice(0, 15);
-                tools.push({ name: "Capa Behavioral", status: "suspicious", key_lines: capabilities });
-                triage_summary = "Behavioral analysis complete.";
-            }
+    if (parsedData.capa) {
+        const capa_text = parsedData.capa.content?.[0]?.text || "";
+        if (capa_text) {
+            const capabilities = capa_text.split('\n').filter((l: string) => l.includes('capability') || l.includes('matched')).slice(0, 15);
+            tools.push({ name: "Capa Behavioral", status: "suspicious", key_lines: capabilities });
+            triage_summary = "Behavioral analysis complete.";
         }
     }
 
+    // 2. Dynamic Discovery (Everything else that looks like tool output)
+    const specialKeys = ['yara_scan', 'pe_info', 'capa', 'iocs', 'action_required', 'detected_type', 'triage_summary', 'analysis_guidance'];
+    Object.keys(parsedData).forEach(key => {
+        if (!specialKeys.includes(key) && parsedData[key]?.content) {
+            const rawText = parsedData[key].content[0]?.text || "";
+            if (rawText) {
+                const isSuspicious = rawText.toLowerCase().includes('suspicious') || rawText.toLowerCase().includes('malicious') || rawText.toLowerCase().includes('warning');
+                tools.push({
+                    name: key.replace('_', ' ').split(' ').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' '),
+                    status: isSuspicious ? 'suspicious' : 'clean',
+                    key_lines: rawText.split('\n').slice(0, 20)
+                });
+            }
+        }
+    });
+
     const isPending = status !== 'Completed';
+    const allStages = ['pe_info', 'signsrch', 'yara_scan', 'strings', 'floss', 'peframe', 'manalyze', 'densityscout', 'capa'];
 
     return (
         <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6 bg-[#080808]">
@@ -1921,12 +1928,13 @@ const RemnuxView = ({ report, status }: { report: any, status?: string }) => {
                     </div>
                 </div>
 
-                {/* Progress Indicators for Modular */}
-                {isModular && isPending && (
-                    <div className="grid grid-cols-4 gap-2">
-                        {['yara_scan', 'strings', 'pe_info', 'capa'].map(t => (
-                            <div key={t} className={`px-3 py-2 rounded border text-[9px] font-black uppercase tracking-widest text-center ${parsedData[t] ? 'bg-green-500/10 border-green-500/30 text-green-500' : 'bg-white/5 border-white/10 text-zinc-600'}`}>
-                                {t.replace('_', ' ')} {parsedData[t] ? '✓' : '...'}
+                {/* Progress Indicators for Modular (Full Suite) */}
+                {isPending && (
+                    <div className="grid grid-cols-3 md:grid-cols-9 gap-2">
+                        {allStages.map(t => (
+                            <div key={t} className={`px-2 py-2 rounded border text-[8px] font-black uppercase tracking-tighter text-center transition-all ${parsedData[t] ? 'bg-green-500/10 border-green-500/30 text-green-500' : 'bg-white/5 border-white/10 text-zinc-600'}`}>
+                                {t.replace('_', ' ')}
+                                <div className="mt-1 font-mono">{parsedData[t] ? '✓' : '...'}</div>
                             </div>
                         ))}
                     </div>
@@ -1952,46 +1960,14 @@ const RemnuxView = ({ report, status }: { report: any, status?: string }) => {
                     </div>
                 )}
 
-                {/* IOCs Table (if present) */}
-                {iocs.length > 0 && (
-                    <div className="space-y-3">
-                        <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
-                            <Globe size={14} className="text-blue-500" />
-                            Extracted Indicators
-                        </h3>
-                        <div className="bg-[#0c0c0c] border border-white/5 rounded-lg overflow-hidden">
-                            <table className="w-full text-left">
-                                <thead className="bg-[#111] text-[9px] uppercase font-bold text-zinc-500">
-                                    <tr>
-                                        <th className="p-3 w-24">Type</th>
-                                        <th className="p-3">Value</th>
-                                    </tr>
-                                </thead>
-                                <tbody className="text-xs font-mono divide-y divide-white/5">
-                                    {iocs.slice(0, 50).map((ioc: any, i: number) => (
-                                        <tr key={i} className="hover:bg-white/5 transition-colors">
-                                            <td className="p-3">
-                                                <span className="px-2 py-0.5 rounded text-[9px] font-black uppercase bg-zinc-800 text-zinc-400">
-                                                    {ioc.type}
-                                                </span>
-                                            </td>
-                                            <td className="p-3 text-zinc-300 break-all select-all">{ioc.value}</td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                )}
-
-                {/* Tools Grid */}
+                {/* Tools Grid (Dynamic) */}
                 {tools.length > 0 && (
                     <div className="space-y-3">
                         <h3 className="text-xs font-black text-white uppercase tracking-wider flex items-center gap-2">
                             <Terminal size={14} className="text-zinc-500" />
                             Staged Analysis Output
                         </h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                             {tools.map((tool: any, i: number) => (
                                 <div key={i} className={`p-4 rounded-lg border flex flex-col gap-2 transition-all group ${tool.status === 'clean' ? 'bg-[#0c0c0c] border-white/5 hover:border-green-500/30' :
                                     tool.status === 'suspicious' ? 'bg-orange-500/5 border-orange-500/20 hover:border-orange-500/50' :
@@ -1999,12 +1975,14 @@ const RemnuxView = ({ report, status }: { report: any, status?: string }) => {
                                     }`}>
                                     <div className="flex items-center justify-between">
                                         <div className="text-[11px] font-black uppercase tracking-wider text-zinc-300">{tool.name}</div>
-                                        <div className="text-[9px] font-bold px-1.5 py-0.5 rounded uppercase bg-zinc-800 text-zinc-500">{tool.status}</div>
+                                        <div className={`text-[9px] font-bold px-1.5 py-0.5 rounded uppercase ${tool.status === 'clean' ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-400'}`}>
+                                            {tool.status}
+                                        </div>
                                     </div>
                                     {tool.key_lines && tool.key_lines.length > 0 && (
-                                        <div className="mt-2 text-[10px] font-mono text-zinc-500 bg-black/40 p-2 rounded max-h-48 overflow-y-auto custom-scrollbar">
+                                        <div className="mt-2 text-[10px] font-mono text-zinc-500 bg-black/40 p-2 rounded h-48 overflow-y-auto custom-scrollbar">
                                             {tool.key_lines.map((line: string, j: number) => (
-                                                <div key={j} className="truncate hover:text-zinc-300 transition-colors">
+                                                <div key={j} className="truncate hover:text-zinc-300 transition-colors py-0.5 border-b border-white/[0.02]">
                                                     {line}
                                                 </div>
                                             ))}
