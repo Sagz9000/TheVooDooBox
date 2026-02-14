@@ -18,20 +18,29 @@ Ensure `network_mode: "host"` is set so it binds to the VM's IP directly once `s
 We use a tiny Node.js gateway to bridge the complex MCP protocol to a simple REST API (`POST /analyze`).
 
 ### voodoo-gateway.js
-Create this file in your build directory:
 
 ```javascript
 const { spawn } = require('child_process');
 const http = require('http');
 
 // Start the MCP server in stdio mode
-const mcp = spawn('remnux-mcp-server');
+const mcp = spawn('remnux-mcp-server', [], { 
+  shell: '/bin/bash', 
+  env: { ...process.env, PATH: process.env.PATH + ':/usr/local/bin' } 
+});
+
+let buffer = '';
 
 // MCP Handshake on startup
 mcp.stdin.write(JSON.stringify({
   jsonrpc: "2.0", id: 0, method: "initialize",
   params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "voodoo-bridge", version: "1.0" } }
 }) + '\n');
+
+// Global collector for stdout to handle multi-line/chunked JSON-RPC
+mcp.stdout.on('data', (chunk) => {
+  buffer += chunk.toString();
+});
 
 const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/analyze') {
@@ -41,26 +50,35 @@ const server = http.createServer((req, res) => {
       try {
         const { file } = JSON.parse(body);
         const id = Date.now();
+        
         mcp.stdin.write(JSON.stringify({
           jsonrpc: "2.0", id, method: "tools/call",
           params: { name: "analyze_file", arguments: { file } }
         }) + '\n');
 
-        const onData = (data) => {
-          const response = data.toString();
-          if (response.includes(`"id":${id}`)) {
-            mcp.stdout.removeListener('data', onData);
-            res.writeHead(200, { 'Content-Type': 'application/json' });
-            res.end(response);
+        // Poll the buffer for the specific ID
+        const checkBuffer = setInterval(() => {
+          const lines = buffer.split('\n');
+          for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes(`"id":${id}`)) {
+              clearInterval(checkBuffer);
+              res.writeHead(200, { 'Content-Type': 'application/json' });
+              res.end(lines[i]);
+              // Clear the processed line to keep buffer small
+              lines.splice(i, 1);
+              buffer = lines.join('\n');
+              return;
+            }
           }
-        };
-        mcp.stdout.on('data', onData);
+        }, 100);
+
       } catch (e) {
         res.writeHead(400); res.end("Invalid Request");
       }
     });
   }
 });
+
 server.listen(8090, '0.0.0.0', () => console.log('Voodoo Gateway listening on 8090'));
 ```
 
@@ -86,8 +104,8 @@ USER remnux
 WORKDIR /home/remnux
 EXPOSE 8090
 
-# 4. Start the Gateway
-CMD ["node", "voodoo-gateway.js"]
+# 4. Start the Gateway with a full environment
+CMD ["/bin/bash", "-c", "export PATH=$PATH:/usr/local/bin && node voodoo-gateway.js"]
 ```
 
 ### docker-compose.yml
