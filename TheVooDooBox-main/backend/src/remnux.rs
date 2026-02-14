@@ -62,7 +62,9 @@ pub async fn trigger_scan(pool: Pool<Postgres>, task_id: String, filename: Strin
                 },
                 Err(e) => {
                     eprintln!("[REMNUX] Analysis failed: {}", e);
-                    let _ = sqlx::query("UPDATE tasks SET remnux_status = 'Analysis Error' WHERE id = $1")
+                    let error_msg = format!("Analysis Error: {}", e);
+                    let _ = sqlx::query("UPDATE tasks SET remnux_status = $1 WHERE id = $2")
+                        .bind(&error_msg)
                         .bind(&task_id)
                         .execute(&pool)
                         .await;
@@ -71,7 +73,9 @@ pub async fn trigger_scan(pool: Pool<Postgres>, task_id: String, filename: Strin
         },
         Err(e) => {
             eprintln!("[REMNUX] File staging failed: {}", e);
-            let _ = sqlx::query("UPDATE tasks SET remnux_status = 'Staging Error' WHERE id = $1")
+            let error_msg = format!("Staging Error: {}", e);
+            let _ = sqlx::query("UPDATE tasks SET remnux_status = $1 WHERE id = $2")
+                .bind(&error_msg)
                 .bind(&task_id)
                 .execute(&pool)
                 .await;
