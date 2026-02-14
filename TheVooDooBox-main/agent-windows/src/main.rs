@@ -384,6 +384,8 @@ unsafe fn monitor_sysmon(evt_tx: mpsc::UnboundedSender<AgentEvent>, hostname: St
         let mut returned = 0;
         
         while EvtNext(subscription, 1, &mut event_handle, 1000, 0, &mut returned) != 0 {
+            // DEBUG: Log that an event handle was received
+            println!("[DEBUG_SYSMON] Event handle received.");
             // Render Event to XML
             let mut buffer_used = 0;
             let mut property_count = 0;
@@ -394,6 +396,7 @@ unsafe fn monitor_sysmon(evt_tx: mpsc::UnboundedSender<AgentEvent>, hostname: St
                 let xml = String::from_utf16_lossy(&buffer);
                 // Try parsing
                 if let Some(event) = parse_sysmon_xml(&xml, &hostname) {
+                    println!("[DEBUG_SYSMON] Successfully parsed event ID: {} (Type: {})", get_xml_tag_inner(&xml, "EventID"), event.event_type);
                     let _ = evt_tx.send(event);
                 } else {
                      // DEBUG: If we can't parse it, send it raw so we can see WHY
