@@ -6,9 +6,10 @@ This guide details how to set up the Remnux MCP server on a dedicated Docker hos
 
 | Component | IP | Network | Role |
 |---|---|---|---|
-| AI Server (VooDooBox) | `192.168.50.98` | Management VLAN | Orchestration, AI |
+| AI Server | `192.168.50.98` | Management VLAN | Ollama, ChromaDB |
+| App Server (VooDooBox) | `192.168.50.196` | Management VLAN | Orchestration, Frontend |
 | Remnux Docker Host | `10.10.20.50` | Dirty/Sandbox VLAN | Static analysis, YARA |
-| pfSense | — | All VLANs | Firewall (allow 192.168.50.98 → 10.10.20.50:8080) |
+| pfSense | — | All VLANs | Firewall (allow 192.168.50.196 → 10.10.20.50:8090) |
 
 ## 1. Remnux Server (10.10.20.50)
 
@@ -20,9 +21,9 @@ USER root
 RUN mkdir -p /home/remnux/files && chown remnux:remnux /home/remnux/files
 USER remnux
 WORKDIR /home/remnux
-EXPOSE 8080
+EXPOSE 8090
 # Replace 'voodoo-secret-token' with your own long random string
-CMD ["remnux-mcp-server", "--mode=local", "--transport=http", "--port=8080", "--host=0.0.0.0"]
+CMD ["remnux-mcp-server", "--mode=local", "--transport=http", "--port=8090", "--host=0.0.0.0"]
 ```
 
 ### docker-compose.yml
@@ -52,7 +53,7 @@ docker-compose up -d
 Both servers must mount the same NFS share:
 
 ```bash
-# On AI Server (192.168.50.98):
+# On App Server (192.168.50.196):
 mount 192.168.50.10:/volume/samples /mnt/voodoo_samples
 
 # On Remnux Host (10.10.20.50):
@@ -67,16 +68,16 @@ mount 192.168.50.10:/volume/samples /mnt/voodoo_samples
 |---|---|
 | Action | Pass |
 | Interface | Management (192.168.50.x) |
-| Source | `192.168.50.98` |
+| Source | `192.168.50.196` |
 | Destination | `10.10.20.50` |
-| Port | `8080` |
+| Port | `8090` |
 
 ## 4. VooDooBox Integration
 
 In your main `docker-compose.yaml`, the following environment variables are set on the `hyper-bridge` service:
 
 ```env
-REMNUX_MCP_URL=http://10.10.20.50:8080/sse
+REMNUX_MCP_URL=http://10.10.20.50:8090/sse
 REMNUX_MCP_TOKEN=voodoo-secret-token
 SHARED_MALWARE_DIR=/mnt/voodoo_samples
 ```
@@ -92,6 +93,6 @@ volumes:
 
 1. User uploads `suspect.exe` via the web UI.
 2. Backend copies sample to `/mnt/voodoo_samples/<task_id>/suspect.exe`.
-3. Backend calls Remnux MCP at `http://10.10.20.50:8080/mcp/tools/call` with `Authorization: Bearer voodoo-secret-token`.
+3. Backend calls Remnux MCP at `http://10.10.20.50:8090/mcp/tools/call` with `Authorization: Bearer voodoo-secret-token`.
 4. Remnux reads the file from its volume mount at `/home/remnux/files/<task_id>/suspect.exe`.
 5. Results are returned via MCP and stored in the `tasks` table.

@@ -18,7 +18,7 @@ services:
       - DATABASE_URL=postgres://voodoobox:${POSTGRES_PASSWORD}@db:5432/voodoobox_telemetry
       - RUST_LOG=debug
       - HOST_IP=${HOST_IP}
-      - REMNUX_MCP_URL=http://10.10.20.50:8080/sse
+      - REMNUX_MCP_URL=http://10.10.20.50:8090/sse
       - REMNUX_MCP_TOKEN=voodoo-secret-token
       - SHARED_MALWARE_DIR=/mnt/voodoo_samples
     depends_on:
