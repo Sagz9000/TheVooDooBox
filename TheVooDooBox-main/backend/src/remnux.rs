@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use sqlx::{Pool, Postgres};
 use std::env;
 use reqwest::Client;
-use std::path::Path;
+
 use tokio::fs;
 
 #[derive(Serialize, Deserialize, Debug)]

@@ -1,6 +1,6 @@
 use genpdf::{elements, style, Element, Alignment};
 use crate::ai_analysis::{ForensicReport, AnalysisContext, AIReport};
-use serde_json;
+
 
 fn get_asset_path(relative: &str) -> String {
     let paths = vec![

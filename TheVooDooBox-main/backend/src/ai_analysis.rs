@@ -831,7 +831,7 @@ pub async fn generate_ai_report(
     }
     
     // Add RAG Context to prompt
-    let rag_section = if !rag_context.is_empty() {
+    let _rag_section = if !rag_context.is_empty() {
         rag_context
     } else {
         match analysis_mode {

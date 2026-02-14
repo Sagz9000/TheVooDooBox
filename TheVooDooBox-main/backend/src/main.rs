@@ -2402,6 +2402,8 @@ async fn init_db() -> Pool<Postgres> {
     let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS file_hash TEXT DEFAULT ''").execute(&pool).await;
     let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS ghidra_status TEXT DEFAULT 'Not Started'").execute(&pool).await;
     let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS verdict_manual BOOLEAN DEFAULT FALSE").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remnux_status TEXT DEFAULT 'Not Started'").execute(&pool).await;
+    let _ = sqlx::query("ALTER TABLE tasks ADD COLUMN IF NOT EXISTS remnux_report JSONB").execute(&pool).await;
 
     println!("[DATABASE] Task table migrations complete.");
 
