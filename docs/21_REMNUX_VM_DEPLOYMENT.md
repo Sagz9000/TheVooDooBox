@@ -15,29 +15,79 @@ Ensure `network_mode: "host"` is set so it binds to the VM's IP directly once `s
 
 ## 1. Remnux Server (192.168.50.199)
 
+We use a tiny Node.js gateway to bridge the complex MCP protocol to a simple REST API (`POST /analyze`).
+
+### voodoo-gateway.js
+Create this file in your build directory:
+
+```javascript
+const { spawn } = require('child_process');
+const http = require('http');
+
+// Start the MCP server in stdio mode
+const mcp = spawn('remnux-mcp-server');
+
+// MCP Handshake on startup
+mcp.stdin.write(JSON.stringify({
+  jsonrpc: "2.0", id: 0, method: "initialize",
+  params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "voodoo-bridge", version: "1.0" } }
+}) + '\n');
+
+const server = http.createServer((req, res) => {
+  if (req.method === 'POST' && req.url === '/analyze') {
+    let body = '';
+    req.on('data', chunk => body += chunk);
+    req.on('end', () => {
+      try {
+        const { file } = JSON.parse(body);
+        const id = Date.now();
+        mcp.stdin.write(JSON.stringify({
+          jsonrpc: "2.0", id, method: "tools/call",
+          params: { name: "analyze_file", arguments: { file } }
+        }) + '\n');
+
+        const onData = (data) => {
+          const response = data.toString();
+          if (response.includes(`"id":${id}`)) {
+            mcp.stdout.removeListener('data', onData);
+            res.writeHead(200, { 'Content-Type': 'application/json' });
+            res.end(response);
+          }
+        };
+        mcp.stdout.on('data', onData);
+      } catch (e) {
+        res.writeHead(400); res.end("Invalid Request");
+      }
+    });
+  }
+});
+server.listen(8090, '0.0.0.0', () => console.log('Voodoo Gateway listening on 8090'));
+```
+
+### Dockerfile
+
 ```dockerfile
 FROM remnux/remnux-distro:noble
 USER root
 
-# 1. Install socat (for network bridging) and the MCP server
-RUN apt-get update && apt-get install -y socat curl && rm -rf /var/lib/apt/lists/*
+# 1. Install dependencies
+RUN apt-get update && apt-get install -y curl && rm -rf /var/lib/apt/lists/*
 RUN npm install -g @remnux/mcp-server
 
-# 2. FIX: Create the missing tool catalog file that causes the crash
-# We create an empty JSON array to satisfy the server's requirement
+# 2. Fix missing catalog
 RUN mkdir -p /usr/lib/node_modules/@remnux/mcp-server/data && \
     echo '[]' > /usr/lib/node_modules/@remnux/mcp-server/data/tools-index.json
 
-# 3. Setup permissions
+# 3. Setup files directory
 RUN mkdir -p /home/remnux/files && chown remnux:remnux /home/remnux/files
 
+COPY voodoo-gateway.js /home/remnux/voodoo-gateway.js
 USER remnux
 WORKDIR /home/remnux
 EXPOSE 8090
 
-# 4. WORKAROUND: Force bind 0.0.0.0:8090 -> 127.0.0.1:3000
-# Removed log redirection to see server errors. Added socat verbose logging.
-CMD ["sh", "-c", "remnux-mcp-server --mode=local --transport=http & sleep 5 && socat -d -d TCP-LISTEN:8090,fork,bind=0.0.0.0 TCP:127.0.0.1:3000"]
+# 4. Start the Gateway
+CMD ["node", "voodoo-gateway.js"]
 ```
 
 ### docker-compose.yml
@@ -47,12 +97,8 @@ services:
   remnux-mcp:
     build: .
     container_name: remnux-mcp
-    network_mode: "host"  # Binds directly to 10.10.20.50
+    network_mode: "host"
     restart: unless-stopped
-    environment:
-      - MCP_TOKEN=voodoo-secret-token
-      - PORT=8090
-      - HOST=0.0.0.0
     volumes:
       - /mnt/voodoo_samples:/home/remnux/files
 ```

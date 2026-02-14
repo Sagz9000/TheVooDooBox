@@ -6,39 +6,25 @@ use std::path::Path;
 use tokio::fs;
 
 #[derive(Serialize, Deserialize, Debug)]
-struct MCPCall {
-    tool: String,
-    arguments: serde_json::Value,
+struct ScanRequest {
+    file: String,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct MCPResponse {
-    content: Vec<MCPContent>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct MCPContent {
-    #[serde(rename = "type")]
-    content_type: String,
-    text: Option<String>,
-}
-
-/// Build an authenticated reqwest client with the Bearer token.
+/// Build an authenticated reqwest client. 
+/// NOTE: The Voodoo Gateway handles MCP state internally.
 fn build_mcp_client() -> (Client, String, String) {
     let remnux_url = env::var("REMNUX_MCP_URL")
-        .unwrap_or_else(|_| "http://192.168.50.199:8090/sse".to_string());
-    let token = env::var("REMNUX_MCP_TOKEN")
-        .unwrap_or_else(|_| "voodoo-secret-token".to_string());
+        .unwrap_or_else(|_| "http://192.168.50.199:8090".to_string());
     let shared_dir = env::var("SHARED_MALWARE_DIR")
         .unwrap_or_else(|_| "/mnt/voodoo_samples".to_string());
 
-    // Strip /sse suffix for tool calls (we post to /mcp/tools/call)
+    // URL should be the base gateway URL (e.g., http://192.168.50.199:8090)
     let base_url = remnux_url.trim_end_matches("/sse").to_string();
 
-    println!("[REMNUX] Config - URL: {}, Token: ***, Shared Dir: {}", base_url, shared_dir);
+    println!("[REMNUX] Config - URL: {}, Shared Dir: {}", base_url, shared_dir);
 
     let client = Client::builder()
-        .timeout(std::time::Duration::from_secs(30))
+        .timeout(std::time::Duration::from_secs(300)) // Analysis can take a while
         .build()
         .unwrap_or_else(|_| Client::new());
     (client, base_url, shared_dir)
@@ -54,9 +40,8 @@ pub async fn trigger_scan(pool: Pool<Postgres>, task_id: String, filename: Strin
         .await;
 
     let (client, base_url, shared_dir) = build_mcp_client();
-    let token = env::var("REMNUX_MCP_TOKEN").unwrap_or_else(|_| "voodoo-secret-token".to_string());
 
-    // 2. Copy file to shared NFS storage (instead of base64 upload)
+    // 2. Copy file to shared NFS storage
     match stage_file_to_shared_storage(&shared_dir, &task_id, &filename, &filepath).await {
         Ok(remote_path) => {
             println!("[REMNUX] File staged to shared storage: {}", remote_path);
@@ -65,8 +50,8 @@ pub async fn trigger_scan(pool: Pool<Postgres>, task_id: String, filename: Strin
                 .execute(&pool)
                 .await;
 
-            // 3. Tell Remnux MCP to analyze the file at the shared path
-            match call_analyze_tool(&client, &base_url, &token, &remote_path).await {
+            // 3. Tell Voodoo Gateway to analyze the file
+            match call_analyze_tool(&client, &base_url, &remote_path).await {
                 Ok(report) => {
                     println!("[REMNUX] Analysis completed for task: {}", task_id);
                     let _ = sqlx::query("UPDATE tasks SET remnux_status = 'Completed', remnux_report = $1 WHERE id = $2")
@@ -95,20 +80,16 @@ pub async fn trigger_scan(pool: Pool<Postgres>, task_id: String, filename: Strin
 }
 
 /// Copy the sample into the shared NFS directory so Remnux can access it.
-/// Returns the path as seen by the Remnux container (inside /home/remnux/files/).
 async fn stage_file_to_shared_storage(
     shared_dir: &str,
     task_id: &str,
     filename: &str,
     filepath: &str,
 ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
-    // Create task-specific subdirectory: /mnt/voodoo_samples/<task_id>/
     let task_dir = format!("{}/{}", shared_dir, task_id);
     fs::create_dir_all(&task_dir).await?;
 
-    // Copy the file into the shared directory
     let dest_path = format!("{}/{}", task_dir, filename);
-    println!("[REMNUX] Copying {} to shared storage...", filepath);
     match fs::copy(filepath, &dest_path).await {
         Ok(_) => println!("[REMNUX] Successfully copied to {}", dest_path),
         Err(e) => {
@@ -118,45 +99,31 @@ async fn stage_file_to_shared_storage(
     }
 
     // Return the path as the Remnux container sees it
-    // NFS host mount: /mnt/voodoo_samples -> Docker volume: /home/remnux/files
     let remote_path = format!("/home/remnux/files/{}/{}", task_id, filename);
     Ok(remote_path)
 }
 
-/// Call the Remnux MCP analyze_file tool with Bearer authentication.
+/// Call the Voodoo Gateway analyze endpoint.
 async fn call_analyze_tool(
     client: &Client,
     base_url: &str,
-    token: &str,
     file_path: &str,
 ) -> Result<serde_json::Value, Box<dyn std::error::Error + Send + Sync>> {
-    let call = MCPCall {
-        tool: "analyze_file".to_string(),
-        arguments: serde_json::json!({
-            "filename": file_path
-        }),
+    let req = ScanRequest {
+        file: file_path.to_string(),
     };
 
-    let resp = client.post(&format!("{}/mcp/tools/call", base_url))
-        .header("Authorization", format!("Bearer {}", token))
-        .json(&call)
+    let resp = client.post(&format!("{}/analyze", base_url))
+        .json(&req)
         .send()
         .await?;
 
-    println!("[REMNUX] MCP Response Status: {}", resp.status());
-
     if resp.status().is_success() {
-        let mcp_resp: MCPResponse = resp.json().await?;
-        if let Some(content) = mcp_resp.content.first() {
-            if let Some(text) = &content.text {
-                // Return as JSON if possible, otherwise wrap raw text
-                return Ok(serde_json::from_str(text).unwrap_or(serde_json::json!({ "raw_output": text })));
-            }
-        }
-        Ok(serde_json::json!({ "status": "completed", "message": "No text output returned" }))
+        let json: serde_json::Value = resp.json().await?;
+        Ok(json)
     } else {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
-        Err(format!("MCP Analysis error ({}): {}", status, body).into())
+        Err(format!("Voodoo Gateway error ({}): {}", status, body).into())
     }
 }
