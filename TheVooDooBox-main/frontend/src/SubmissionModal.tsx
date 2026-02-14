@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, Upload, Globe, Clock, Monitor, CheckCircle, AlertCircle, Zap } from 'lucide-react';
+import { X, Upload, Globe, Clock, Monitor, CheckCircle, AlertCircle, Zap, Brain } from 'lucide-react';
 import { ViewModel } from './voodooApi';
 
 interface SubmissionModalProps {
@@ -16,6 +16,7 @@ export interface SubmissionData {
     url?: string;
     duration: number; // in minutes
     mode: 'quick' | 'deep';
+    ai_strategy?: string; // 'global' | 'hybrid' | 'local_only' | 'cloud_only'
 }
 
 export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSelected }: SubmissionModalProps) {
@@ -26,6 +27,7 @@ export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSel
     const [analysisMode, setAnalysisMode] = useState<'quick' | 'deep'>('quick');
     const [selectedVm, setSelectedVm] = useState<{ node: string, vmid: number } | null>(null);
     const [isDragging, setIsDragging] = useState(false);
+    const [aiStrategy, setAiStrategy] = useState<string>('global');
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Sync preSelected when modal opens
@@ -80,6 +82,7 @@ export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSel
             url: urlInput || undefined,
             duration,
             mode: analysisMode,
+            ai_strategy: aiStrategy !== 'global' ? aiStrategy : undefined,
             vmid: selectedVm?.vmid,
             node: selectedVm?.node
         });
@@ -265,6 +268,28 @@ export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSel
                                 {analysisMode === 'quick'
                                     ? "Standard heuristic analysis. Fast (1-2 mins). Good for initial triage."
                                     : "Full Vector Search & MITRE Mapping. Slower (5-10 mins). Best for complex threats."}
+                            </div>
+                        </div>
+
+                        {/* AI Strategy Override */}
+                        <div className="space-y-3">
+                            <label className="text-[9px] md:text-[10px] text-security-muted font-black uppercase tracking-widest block flex items-center gap-2">
+                                <Brain size={12} className="text-purple-500" />
+                                AI Strategy
+                            </label>
+                            <select
+                                value={aiStrategy}
+                                onChange={(e) => setAiStrategy(e.target.value)}
+                                className="w-full bg-security-panel border border-security-border rounded-lg px-3 py-2.5 text-[10px] text-white font-black uppercase tracking-widest cursor-pointer focus:border-brand-500 transition-colors appearance-none"
+                                style={{ backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E")`, backgroundRepeat: 'no-repeat', backgroundPosition: 'right 12px center' }}
+                            >
+                                <option value="global">⚡ Use Global Setting</option>
+                                <option value="hybrid">⚡ Hybrid (Local → Cloud)</option>
+                                <option value="local_only">🔒 Local Only (Air-Gapped)</option>
+                                <option value="cloud_only">☁️ Cloud Only (Full Power)</option>
+                            </select>
+                            <div className="text-[8px] text-security-muted leading-relaxed px-1">
+                                Override the global AI strategy for this submission only.
                             </div>
                         </div>
 

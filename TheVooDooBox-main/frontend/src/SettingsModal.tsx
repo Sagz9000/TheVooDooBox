@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Settings, Cpu, Globe, Key, Save, AlertCircle, CheckCircle, Eye, EyeOff } from 'lucide-react';
+import { X, Settings, Cpu, Globe, Key, Save, AlertCircle, CheckCircle, Eye, EyeOff, Zap, Lock, Cloud } from 'lucide-react';
 import { voodooApi } from './voodooApi';
 
 interface SettingsModalProps {
@@ -16,11 +16,13 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
     const [showKey, setShowKey] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
+    const [aiMode, setAiMode] = useState<string>('hybrid');
 
     useEffect(() => {
         if (isOpen) {
             voodooApi.getAIConfig().then(config => {
                 setProvider(config.provider.toLowerCase());
+                if (config.ai_mode) setAiMode(config.ai_mode);
             }).catch(err => console.error("Failed to fetch AI config", err));
 
             // Initial defaults from env-like behavior
@@ -41,6 +43,7 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
                 ollama_url: ollamaUrl || undefined,
                 ollama_model: ollamaModel || undefined
             });
+            await voodooApi.setAIMode(aiMode);
             setStatus({ type: 'success', message: 'Configuration Synchronized' });
             onConfigUpdated(provider);
             setTimeout(() => {
@@ -104,6 +107,48 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
                                 <Cpu size={28} />
                                 <div className="text-xs font-black uppercase tracking-widest">Local Llama.cpp</div>
                                 <div className="text-[9px] opacity-60 font-medium">Private AI Infrastructure</div>
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* AI Strategy */}
+                    <div>
+                        <label className="text-[10px] text-security-muted font-black uppercase tracking-widest mb-4 block">
+                            Analysis Strategy
+                        </label>
+                        <div className="grid grid-cols-3 gap-3">
+                            <button
+                                onClick={() => setAiMode('hybrid')}
+                                className={`p-4 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${aiMode === 'hybrid'
+                                    ? 'bg-purple-500/10 border-purple-500 text-purple-400 shadow-[0_0_15px_rgba(168,85,247,0.1)]'
+                                    : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
+                                    }`}
+                            >
+                                <Zap size={22} />
+                                <div className="text-[10px] font-black uppercase tracking-widest">Hybrid</div>
+                                <div className="text-[8px] opacity-60 font-medium text-center">Local Map → Cloud Reduce</div>
+                            </button>
+                            <button
+                                onClick={() => setAiMode('local_only')}
+                                className={`p-4 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${aiMode === 'local_only'
+                                    ? 'bg-emerald-500/10 border-emerald-500 text-emerald-400 shadow-[0_0_15px_rgba(16,185,129,0.1)]'
+                                    : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
+                                    }`}
+                            >
+                                <Lock size={22} />
+                                <div className="text-[10px] font-black uppercase tracking-widest">Local Only</div>
+                                <div className="text-[8px] opacity-60 font-medium text-center">Air-Gapped / Zero Cost</div>
+                            </button>
+                            <button
+                                onClick={() => setAiMode('cloud_only')}
+                                className={`p-4 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${aiMode === 'cloud_only'
+                                    ? 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.1)]'
+                                    : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
+                                    }`}
+                            >
+                                <Cloud size={22} />
+                                <div className="text-[10px] font-black uppercase tracking-widest">Cloud Only</div>
+                                <div className="text-[8px] opacity-60 font-medium text-center">Full Gemini Power</div>
                             </button>
                         </div>
                     </div>

@@ -6,6 +6,7 @@ interface FishboneProps {
     events: AgentEvent[];
     width?: number;
     height?: number;
+    mitreData?: Map<number, string[]>;
 }
 
 interface ProcessNode {
@@ -16,15 +17,22 @@ interface ProcessNode {
     events: AgentEvent[];
     type: 'root' | 'process';
     startTime?: number;
+    techniques?: string[];
 }
 
 // Force simulation node extends ProcessNode with D3 position fields
 interface SimNode extends d3.SimulationNodeDatum {
     data: ProcessNode;
     radius: number;
+    x?: number;
+    y?: number;
+    fx?: number | null;
+    fy?: number | null;
 }
 
 interface SimLink extends d3.SimulationLinkDatum<SimNode> {
+    source: number | SimNode;
+    target: number | SimNode;
     timeDelta?: number;
 }
 
@@ -59,7 +67,7 @@ function formatDelta(ms: number): string {
 }
 
 // ── Build Hierarchy ──
-function buildHierarchy(events: AgentEvent[]): ProcessNode | null {
+function buildHierarchy(events: AgentEvent[], mitreData?: Map<number, string[]>): ProcessNode | null {
     if (!events || events.length === 0) return null;
 
     const processMap = new Map<number, ProcessNode>();
@@ -68,15 +76,16 @@ function buildHierarchy(events: AgentEvent[]): ProcessNode | null {
         if (!processMap.has(procId)) {
             processMap.set(procId, {
                 id: procId, pid, name,
-                children: [], events: [], type: 'process'
+                children: [], events: [], type: 'process',
+                techniques: mitreData?.get(pid) || []
             });
         }
         return processMap.get(procId)!;
     };
 
     events.forEach(e => {
-        const pId = e.process_id || e.pid || 0;
-        const node = getOrCreate(pId, e.process_id || e.pid || 0, e.process_name || `Unknown (${pId})`);
+        const pId = e.process_id || 0;
+        const node = getOrCreate(pId, e.process_id || 0, e.process_name || `Unknown (${pId})`);
         node.events.push(e);
         if (e.event_type === 'PROCESS_CREATE' && e.process_name) node.name = e.process_name;
     });
@@ -151,11 +160,11 @@ function flatten(root: ProcessNode): { nodes: SimNode[]; links: SimLink[] } {
 // ────────────────────────────────────────────
 // COMPONENT
 // ────────────────────────────────────────────
-export default function FishboneDiagram({ events, width = 800, height = 400 }: FishboneProps) {
+export default function FishboneDiagram({ events, width = 800, height = 400, mitreData }: FishboneProps) {
     const svgRef = useRef<SVGSVGElement>(null);
     const simRef = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
 
-    const root = useMemo(() => buildHierarchy(events), [events]);
+    const root = useMemo(() => buildHierarchy(events, mitreData), [events, mitreData]);
 
     const drawGalaxy = useCallback(() => {
         if (!root || !svgRef.current) return;
@@ -190,14 +199,14 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
         glowFilter.append('feMerge').selectAll('feMergeNode')
             .data(['blur', 'SourceGraphic'])
             .enter().append('feMergeNode')
-            .attr('in', d => d);
+            .attr('in', (d: any) => d);
 
         // ── Container group for zoom/pan ──
         const g = svg.append('g');
 
         const zoom = d3.zoom<SVGSVGElement, unknown>()
             .scaleExtent([0.15, 5])
-            .on('zoom', (event) => g.attr('transform', event.transform));
+            .on('zoom', (event: any) => g.attr('transform', event.transform));
 
         svg.call(zoom)
             .call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2));
@@ -220,7 +229,7 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
             .attr('fill', COLOR.timeDelta)
             .attr('font-size', '8px')
             .attr('font-family', "'JetBrains Mono', monospace")
-            .text(d => formatDelta(d.timeDelta!));
+            .text((d: SimLink) => formatDelta(d.timeDelta!));
 
         // ── Node groups ──
         const nodeSelection = g.selectAll('.galaxy-node')
@@ -229,14 +238,14 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
             .attr('class', 'galaxy-node')
             .style('cursor', 'pointer')
             .call(d3.drag<SVGGElement, SimNode>()
-                .on('start', (event, d) => {
+                .on('start', (event: any, d: SimNode) => {
                     if (!event.active) simulation.alphaTarget(0.3).restart();
                     d.fx = d.x; d.fy = d.y;
                 })
-                .on('drag', (event, d) => {
+                .on('drag', (event: any, d: SimNode) => {
                     d.fx = event.x; d.fy = event.y;
                 })
-                .on('end', (event, d) => {
+                .on('end', (event: any, d: SimNode) => {
                     if (!event.active) simulation.alphaTarget(0);
                     d.fx = null; d.fy = null;
                 })
@@ -244,29 +253,29 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
 
         // Outer glow ring
         nodeSelection.append('circle')
-            .attr('r', d => d.radius + 4)
+            .attr('r', (d: SimNode) => d.radius + 4)
             .attr('fill', 'none')
-            .attr('stroke', d => COLOR.glow(nodeColor(d.data.name, d.data.type)))
+            .attr('stroke', (d: SimNode) => COLOR.glow(nodeColor(d.data.name, d.data.type)))
             .attr('stroke-width', 2)
             .attr('stroke-opacity', 0.3)
             .attr('filter', 'url(#galaxy-glow)');
 
         // Core circle
         nodeSelection.append('circle')
-            .attr('r', d => d.radius)
-            .attr('fill', d => nodeColor(d.data.name, d.data.type))
+            .attr('r', (d: SimNode) => d.radius)
+            .attr('fill', (d: SimNode) => nodeColor(d.data.name, d.data.type))
             .attr('stroke', '#000')
             .attr('stroke-width', 1.5);
 
         // Inner bright dot (star effect)
         nodeSelection.append('circle')
-            .attr('r', d => Math.max(1.5, d.radius * 0.3))
+            .attr('r', (d: SimNode) => Math.max(1.5, d.radius * 0.3))
             .attr('fill', '#fff')
             .attr('opacity', 0.6);
 
         // Process name label
         nodeSelection.append('text')
-            .attr('dy', d => -(d.radius + 6))
+            .attr('dy', (d: SimNode) => -(d.radius + 6))
             .attr('text-anchor', 'middle')
             .attr('fill', COLOR.label)
             .attr('font-size', '10px')
@@ -274,23 +283,54 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
             .attr('font-weight', 'bold')
             .style('text-shadow', '0 2px 6px rgba(0,0,0,0.9)')
             .style('pointer-events', 'none')
-            .text(d => d.data.name);
+            .text((d: SimNode) => d.data.name);
 
         // PID + event count sub-label
         nodeSelection.append('text')
-            .attr('dy', d => d.radius + 14)
+            .attr('dy', (d: SimNode) => d.radius + 14)
             .attr('text-anchor', 'middle')
             .attr('fill', COLOR.sublabel)
             .attr('font-size', '8px')
             .attr('font-family', "'JetBrains Mono', monospace")
             .style('pointer-events', 'none')
-            .text(d => {
+            .text((d: SimNode) => {
                 if (d.data.type === 'root') return '';
                 return `PID:${d.data.pid} [${d.data.events.length}]`;
             });
 
+        // MITRE Badges
+        nodeSelection.each(function (this: SVGGElement, d: SimNode) {
+            if (d.data.techniques && d.data.techniques.length > 0) {
+                const g = d3.select(this as SVGGElement);
+                const badges = d.data.techniques.slice(0, 3); // Max 3 badges
+
+                badges.forEach((techId: string, i: number) => {
+                    const bg = g.append('g')
+                        .attr('transform', `translate(${(i * 24) - ((badges.length * 24) / 2) + 12}, ${d.radius + 24})`);
+
+                    bg.append('rect')
+                        .attr('x', -10)
+                        .attr('y', -5)
+                        .attr('width', 20)
+                        .attr('height', 10)
+                        .attr('rx', 2)
+                        .attr('fill', '#ae00ff33')
+                        .attr('stroke', '#ae00ff')
+                        .attr('stroke-width', 0.5);
+
+                    bg.append('text')
+                        .attr('dy', 2)
+                        .attr('text-anchor', 'middle')
+                        .attr('font-size', '6px')
+                        .attr('font-family', 'monospace')
+                        .attr('fill', '#ae00ff')
+                        .text(techId);
+                });
+            }
+        });
+
         // ── Hover effects ──
-        nodeSelection.on('mouseover', function (_, d) {
+        nodeSelection.on('mouseover', function (this: SVGGElement, _: any, d: SimNode) {
             d3.select(this).select('circle:nth-child(2)')
                 .transition().duration(200)
                 .attr('r', d.radius * 1.4)
@@ -301,22 +341,22 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
 
             // Highlight connected links
             linkSelection
-                .attr('stroke', l => {
+                .attr('stroke', (l: SimLink) => {
                     const s = l.source as SimNode;
                     const t = l.target as SimNode;
                     return (s.data.id === d.data.id || t.data.id === d.data.id) ? nodeColor(d.data.name, d.data.type) : COLOR.link;
                 })
-                .attr('stroke-opacity', l => {
+                .attr('stroke-opacity', (l: SimLink) => {
                     const s = l.source as SimNode;
                     const t = l.target as SimNode;
                     return (s.data.id === d.data.id || t.data.id === d.data.id) ? 0.8 : 0.15;
                 })
-                .attr('stroke-width', l => {
+                .attr('stroke-width', (l: SimLink) => {
                     const s = l.source as SimNode;
                     const t = l.target as SimNode;
                     return (s.data.id === d.data.id || t.data.id === d.data.id) ? 2 : 1;
                 });
-        }).on('mouseout', function (_, d) {
+        }).on('mouseout', function (this: SVGGElement, _: any, d: SimNode) {
             d3.select(this).select('circle:nth-child(2)')
                 .transition().duration(300)
                 .attr('r', d.radius)
@@ -334,8 +374,8 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
         // ── Force Simulation ──
         const simulation = d3.forceSimulation<SimNode>(nodes)
             .force('link', d3.forceLink<SimNode, SimLink>(resolvedLinks)
-                .id(d => d.data.id)
-                .distance(d => {
+                .id((d: SimNode) => d.data.id)
+                .distance((d: SimLink) => {
                     const src = d.source as SimNode;
                     const tgt = d.target as SimNode;
                     return 60 + src.radius + tgt.radius;
@@ -343,11 +383,11 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
                 .strength(0.7)
             )
             .force('charge', d3.forceManyBody<SimNode>()
-                .strength(d => d.data.type === 'root' ? -400 : -200)
+                .strength((d: SimNode) => d.data.type === 'root' ? -400 : -200)
                 .distanceMax(350)
             )
             .force('collision', d3.forceCollide<SimNode>()
-                .radius(d => d.radius + 20)
+                .radius((d: SimNode) => d.radius + 20)
                 .strength(0.9)
             )
             .force('center', d3.forceCenter(0, 0).strength(0.05))
@@ -357,16 +397,16 @@ export default function FishboneDiagram({ events, width = 800, height = 400 }: F
             .alphaDecay(0.02)
             .on('tick', () => {
                 linkSelection
-                    .attr('x1', d => (d.source as SimNode).x!)
-                    .attr('y1', d => (d.source as SimNode).y!)
-                    .attr('x2', d => (d.target as SimNode).x!)
-                    .attr('y2', d => (d.target as SimNode).y!);
+                    .attr('x1', (d: SimLink) => (d.source as SimNode).x!)
+                    .attr('y1', (d: SimLink) => (d.source as SimNode).y!)
+                    .attr('x2', (d: SimLink) => (d.target as SimNode).x!)
+                    .attr('y2', (d: SimLink) => (d.target as SimNode).y!);
 
                 timeLabelSelection
-                    .attr('x', d => ((d.source as SimNode).x! + (d.target as SimNode).x!) / 2)
-                    .attr('y', d => ((d.source as SimNode).y! + (d.target as SimNode).y!) / 2 - 6);
+                    .attr('x', (d: SimLink) => ((d.source as SimNode).x! + (d.target as SimNode).x!) / 2)
+                    .attr('y', (d: SimLink) => ((d.source as SimNode).y! + (d.target as SimNode).y!) / 2 - 6);
 
-                nodeSelection.attr('transform', d => `translate(${d.x},${d.y})`);
+                nodeSelection.attr('transform', (d: SimNode) => `translate(${d.x},${d.y})`);
             });
 
         simRef.current = simulation;

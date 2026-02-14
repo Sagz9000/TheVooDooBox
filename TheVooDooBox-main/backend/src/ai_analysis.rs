@@ -365,6 +365,7 @@ pub struct AnalysisContext {
     pub manual_tags: Vec<TelemetryTag>,
     pub related_samples: Vec<crate::memory::BehavioralFingerprint>,
     pub digital_signature: Option<String>,
+    pub remnux_report: Option<serde_json::Value>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Default)]
@@ -514,6 +515,13 @@ pub async fn generate_ai_report(
         .await?;
     let target_filename = task_row.0;
     let file_hash = task_row.1;
+
+    // 2a. Fetch Remnux Report (if available)
+    let remnux_report: Option<serde_json::Value> = sqlx::query_scalar("SELECT remnux_report FROM tasks WHERE id = $1")
+        .bind(task_id)
+        .fetch_optional(pool)
+        .await
+        .unwrap_or(None);
     
     // Fetch VT Data (Cached or Fresh)
     let vt_data = crate::virustotal::get_cached_or_fetch(pool, &file_hash).await;
@@ -630,6 +638,7 @@ pub async fn generate_ai_report(
     context.analyst_notes = analyst_notes;
     context.manual_tags = manual_tags;
     context.digital_signature = Some(digital_signature.clone());
+    context.remnux_report = remnux_report;
 
     // 4. Fetch Static Data (Ghidra)
     let mut static_data = fetch_ghidra_analysis(task_id, pool).await;
@@ -964,7 +973,7 @@ OUTPUT SCHEMA (JSON ONLY):
         signature = digital_signature
     );
 
-    // 7. Call AI Provider via Manager
+    // 7. Call AI Provider via Manager (Mode-Aware)
     let system_prompt_str = "You are a Senior Malware Researcher. Output strictly follows the JSON schema. \
         Avoid preamble, avoid markdown fences if possible, just output the JSON object. \
         Correlate telemetry to code patterns.".to_string();
@@ -973,8 +982,12 @@ OUTPUT SCHEMA (JSON ONLY):
         role: "user".to_string(),
         content: prompt,
     }];
+
+    // Read the current AI Mode for routing
+    let current_ai_mode = ai_manager.get_ai_mode().await;
+    println!("[AI] Generating report with AI Mode: {:?}", current_ai_mode);
     
-    let mut response_text = match ai_manager.ask(history, system_prompt_str).await {
+    let mut response_text = match ai_manager.ask_with_mode(history, system_prompt_str, &current_ai_mode, "reduce").await {
         Ok(text) => text,
         Err(e) => return Err(format!("AI Provider failed: {}", e).into()),
     };
@@ -1548,5 +1561,6 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
         manual_tags: vec![],
         related_samples: vec![],
         digital_signature: None,
+        remnux_report: None,
     }
 }

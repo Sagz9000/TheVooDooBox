@@ -11,11 +11,39 @@ pub enum ProviderType {
     Ollama,
 }
 
+#[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
+pub enum AIMode {
+    Hybrid,
+    LocalOnly,
+    CloudOnly,
+}
+
+impl AIMode {
+    pub fn from_str(s: &str) -> Self {
+        match s.to_lowercase().as_str() {
+            "hybrid" => AIMode::Hybrid,
+            "local" | "localonly" | "local_only" => AIMode::LocalOnly,
+            "cloud" | "cloudonly" | "cloud_only" => AIMode::CloudOnly,
+            _ => AIMode::Hybrid,
+        }
+    }
+
+    pub fn to_str(&self) -> &'static str {
+        match self {
+            AIMode::Hybrid => "hybrid",
+            AIMode::LocalOnly => "local_only",
+            AIMode::CloudOnly => "cloud_only",
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct AIManager {
     provider: Arc<RwLock<Box<dyn AIProvider>>>,
     gemini_key: Arc<RwLock<String>>,
     ollama_url: Arc<RwLock<String>>,
+    ollama_model: Arc<RwLock<String>>,
+    ai_mode: Arc<RwLock<AIMode>>,
 }
 
 impl AIManager {
@@ -30,6 +58,8 @@ impl AIManager {
             provider: Arc::new(RwLock::new(provider)),
             gemini_key: Arc::new(RwLock::new(gemini_key)),
             ollama_url: Arc::new(RwLock::new(ollama_url)),
+            ollama_model: Arc::new(RwLock::new("llama-server".to_string())),
+            ai_mode: Arc::new(RwLock::new(AIMode::Hybrid)),
         }
     }
 
@@ -48,6 +78,10 @@ impl AIManager {
             let mut o_url = self.ollama_url.write().await;
             *o_url = url;
         }
+        if let Some(ref model) = ollama_model {
+            let mut o_model = self.ollama_model.write().await;
+            *o_model = model.clone();
+        }
         
         let mut provider_lock = self.provider.write().await;
         match provider_type {
@@ -65,6 +99,17 @@ impl AIManager {
         }
     }
 
+    // --- AI Mode ---
+    pub async fn set_ai_mode(&self, mode: AIMode) {
+        println!("[AI] Switching AI Mode to: {:?}", mode);
+        let mut m = self.ai_mode.write().await;
+        *m = mode;
+    }
+
+    pub async fn get_ai_mode(&self) -> AIMode {
+        self.ai_mode.read().await.clone()
+    }
+
     pub async fn get_current_provider_name(&self) -> String {
         let provider = self.provider.read().await;
         provider.name().to_string()
@@ -73,6 +118,58 @@ impl AIManager {
     pub async fn ask(&self, history: Vec<crate::ai::provider::ChatMessage>, system_prompt: String) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let provider = self.provider.read().await;
         provider.ask(history, system_prompt).await
+    }
+
+    /// Ask using a specific provider, bypassing the active one.
+    /// Used by the Hybrid pipeline to route Map→Local, Reduce→Cloud.
+    async fn ask_provider(
+        &self,
+        target: &str, // "local" or "cloud"
+        history: Vec<crate::ai::provider::ChatMessage>,
+        system_prompt: String,
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        match target {
+            "cloud" => {
+                let g_key = self.gemini_key.read().await;
+                if g_key.is_empty() {
+                    return Err("Gemini API key not configured. Cannot use Cloud provider.".into());
+                }
+                let cloud_provider = GeminiProvider::new(g_key.clone());
+                cloud_provider.ask(history, system_prompt).await
+            }
+            _ => {
+                // "local" - use Ollama
+                let o_url = self.ollama_url.read().await;
+                let o_model = self.ollama_model.read().await;
+                let local_provider = OllamaProvider::new(o_url.clone(), o_model.clone());
+                local_provider.ask(history, system_prompt).await
+            }
+        }
+    }
+
+    /// Mode-aware ask: routes to the correct provider based on AIMode.
+    /// For Hybrid, this is equivalent to calling with either "local" or "cloud" directly.
+    pub async fn ask_with_mode(
+        &self,
+        history: Vec<crate::ai::provider::ChatMessage>,
+        system_prompt: String,
+        mode: &AIMode,
+        phase: &str, // "map" or "reduce"
+    ) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
+        let target = match mode {
+            AIMode::Hybrid => {
+                match phase {
+                    "map" => "local",
+                    "reduce" => "cloud",
+                    _ => "cloud",
+                }
+            }
+            AIMode::LocalOnly => "local",
+            AIMode::CloudOnly => "cloud",
+        };
+        
+        println!("[AI] {} phase using {} provider (Mode: {:?})", phase, target, mode);
+        self.ask_provider(target, history, system_prompt).await
     }
 
     pub fn map_reduce_ask(
@@ -96,6 +193,10 @@ impl AIManager {
             
             let total_chunks = chunks.len();
             let _ = tx.send(Ok(StreamEvent::Thought(format!("Input split into {} chunks for Deep Thought analysis...", total_chunks)))).await;
+
+            // Read AI Mode for routing
+            let ai_mode = manager.get_ai_mode().await;
+            let _ = tx.send(Ok(StreamEvent::Thought(format!("AI Strategy: {:?}", ai_mode)))).await;
 
             let mut aggregated_insights = String::new();
 
@@ -121,9 +222,8 @@ impl AIManager {
                     content: map_prompt,
                 }];
 
-                // Call provider
-                let provider = manager.provider.read().await;
-                match provider.ask(map_history, "You are a sub-process forensic engine. Output concise findings only.".to_string()).await {
+                // Route MAP phase through mode-aware provider
+                match manager.ask_with_mode(map_history, "You are a sub-process forensic engine. Output concise findings only.".to_string(), &ai_mode, "map").await {
                     Ok(result) => {
                         let clean_result = result.trim();
                         if !clean_result.eq_ignore_ascii_case("CLEAR") && !clean_result.is_empty() {
@@ -160,14 +260,8 @@ impl AIManager {
                 content: reduce_prompt,
             }];
 
-            let provider = manager.provider.read().await;
-            
-            // We use the original system prompt for the final reduce to ensure proper JSON formatting
-            // But we need to pass it in. For now, let's assume valid JSON output request.
-            // Actually, we should probably take system_prompt as arg.
-            // Simplified: User instructions are in prompt_instruction.
-            
-            match provider.ask(reduce_history, "You are a Senior Malware Researcher. Output strict JSON.".to_string()).await {
+            // Route REDUCE phase through mode-aware provider
+            match manager.ask_with_mode(reduce_history, "You are a Senior Malware Researcher. Output strict JSON.".to_string(), &ai_mode, "reduce").await {
                 Ok(final_response) => {
                      let _ = tx.send(Ok(StreamEvent::Final(final_response))).await;
                 },

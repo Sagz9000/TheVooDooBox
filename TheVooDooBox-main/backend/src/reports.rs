@@ -1,5 +1,6 @@
 use genpdf::{elements, style, Element, Alignment};
 use crate::ai_analysis::{ForensicReport, AnalysisContext, AIReport};
+use serde_json;
 
 fn get_asset_path(relative: &str) -> String {
     let paths = vec![
@@ -127,6 +128,10 @@ pub fn generate_pdf_file(_task_id: &String, report: &ForensicReport, context: &A
         Box::new(elements::Paragraph::new("Malware Family").styled(style::Style::new().bold())),
         Box::new(elements::Paragraph::new(report.malware_family.clone().unwrap_or_else(|| "Unknown".to_string())))
     ]);
+    let _ = risk_panel.push_row(vec![
+        Box::new(elements::Paragraph::new("Digital Signature").styled(style::Style::new().bold())),
+        Box::new(elements::Paragraph::new(context.digital_signature.clone().unwrap_or_else(|| "Not Checked".to_string())).styled(style::Style::new().italic().with_font_size(8)))
+    ]);
     
     doc.push(risk_panel);
     doc.push(elements::Break::new(1.0));
@@ -184,6 +189,33 @@ pub fn generate_pdf_file(_task_id: &String, report: &ForensicReport, context: &A
         ]);
 
         doc.push(vt_table);
+        doc.push(elements::Break::new(2.0));
+    }
+
+    // --- REMNUX STATIC ANALYSIS ---
+    if let Some(remnux) = &context.remnux_report {
+        doc.push(elements::Paragraph::new("Static Analysis (Remnux)").styled(summary_style));
+        doc.push(elements::Break::new(0.5));
+
+        // remnux is a serde_json::Value representing MCPResponse { content: [ { type, text } ] }
+        if let Some(content_array) = remnux.get("content").and_then(|c| c.as_array()) {
+            for item in content_array {
+                if let Some(text) = item.get("text").and_then(|t| t.as_str()) {
+                     // Check if it's empty or just whitespace
+                     if text.trim().is_empty() { continue; }
+
+                     // Use a monospaced-like look if possible, or just standard text
+                     // genpdf doesn't have a built-in code block, so we use a Paragraph with specific style
+                     // We might want to split by lines to handle formatting better, but Paragraph handles wrapping.
+                     
+                     let analysis_style = style::Style::new().with_font_size(9).with_color(style::Color::Rgb(60, 60, 60));
+                     doc.push(elements::Paragraph::new(text).styled(analysis_style));
+                     doc.push(elements::Break::new(0.5));
+                }
+            }
+        } else {
+             doc.push(elements::Paragraph::new("Reflective analysis data explicitly requested but main content block is missing or malformed.").styled(style::Style::new().italic().with_font_size(9)));
+        }
         doc.push(elements::Break::new(2.0));
     }
 

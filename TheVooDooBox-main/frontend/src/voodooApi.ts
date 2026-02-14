@@ -105,6 +105,22 @@ export interface Tag {
     comment?: string;
 }
 
+export interface AnalysisTask {
+    id: string;
+    filename: string;
+    original_filename?: string;
+    file_hash?: string;
+    status: string;
+    verdict: string | null;
+    risk_score: number | null;
+    created_at: number;
+    completed_at: number | null;
+    sandbox_id: string | null;
+    // Remnux Integration
+    remnux_status?: string;
+    remnux_report?: any; // Generic for now, can be structured later
+}
+
 // Dynamically determine the base URL based on the current host
 // If accessed via localhost, use localhost:8080
 // If accessed via IP or domain, use the same host with port 8080
@@ -135,7 +151,7 @@ export const voodooApi = {
         return resp.json();
     },
 
-    fetchTasks: async (): Promise<any[]> => {
+    fetchTasks: async (): Promise<AnalysisTask[]> => {
         const resp = await fetch(`${BASE_URL}/tasks`);
         if (!resp.ok) throw new Error("Failed to fetch tasks");
         return resp.json();
@@ -276,6 +292,34 @@ export const voodooApi = {
             body: JSON.stringify({ verdict })
         });
         return resp.ok;
+    },
+
+    connectTaskProgress: (onProgress: (event: TaskProgressEvent) => void): WebSocket => {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        // Remove protocol if present in BASE_URL to get host
+        const host = BASE_URL.replace(/^http(s)?:\/\//, '');
+        const wsUrl = `${protocol}//${host}/ws/progress`;
+
+        console.log(`[WS] Connecting to Progress Stream: ${wsUrl}`);
+        const ws = new WebSocket(wsUrl);
+
+        ws.onmessage = (event) => {
+            try {
+                const data: TaskProgressEvent = JSON.parse(event.data);
+                // Ensure data has the expected structure before calling callback
+                if (data && data.task_id && data.stage) {
+                    onProgress(data);
+                }
+            } catch (e) {
+                console.error('[WS] Failed to parse progress event:', e);
+            }
+        };
+
+        ws.onopen = () => console.log('[WS] Progress Stream Connected');
+        ws.onerror = (e) => console.error('[WS] Progress Stream Error:', e);
+        ws.onclose = () => console.log('[WS] Progress Stream Closed');
+
+        return ws;
     },
 
     purgeAll: async () => {
@@ -451,7 +495,7 @@ export const voodooApi = {
         if (!resp.ok) throw new Error("Failed to get tags");
         return resp.json();
     },
-    getAIConfig: async (): Promise<{ provider: string }> => {
+    getAIConfig: async (): Promise<{ provider: string, ai_mode?: string }> => {
         const resp = await fetch(`${BASE_URL}/vms/ai/config`);
         if (!resp.ok) throw new Error("Failed to fetch AI configuration");
         return resp.json();
@@ -465,5 +509,29 @@ export const voodooApi = {
         });
         if (!resp.ok) throw new Error("Failed to update AI configuration");
         return resp.json();
+    },
+
+    getAIMode: async (): Promise<{ ai_mode: string }> => {
+        const resp = await fetch(`${BASE_URL}/vms/ai/mode`);
+        if (!resp.ok) throw new Error("Failed to fetch AI mode");
+        return resp.json();
+    },
+
+    setAIMode: async (mode: string) => {
+        const resp = await fetch(`${BASE_URL}/vms/ai/mode`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode })
+        });
+        if (!resp.ok) throw new Error("Failed to update AI mode");
+        return resp.json();
     }
 };
+
+export interface TaskProgressEvent {
+    task_id: string;
+    stage: string;
+    message: string;
+    percent: number;
+    timestamp: number;
+}

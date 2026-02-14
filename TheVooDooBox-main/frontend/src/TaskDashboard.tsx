@@ -15,7 +15,7 @@ import {
     Clock,
     Search
 } from 'lucide-react';
-import { voodooApi, AgentEvent, BASE_URL } from './voodooApi';
+import { voodooApi, AgentEvent, BASE_URL, TaskProgressEvent, ForensicReport } from './voodooApi';
 import GhidraConsole from './GhidraConsole';
 import FishboneDiagram from './FishboneDiagram';
 
@@ -31,6 +31,8 @@ interface AnalysisTask {
     created_at: number;
     completed_at: number | null;
     sandbox_id: string | null;
+    remnux_status?: string;
+    remnux_report?: any;
 }
 
 const NOISE_FILTER_PROCESSES = [
@@ -69,8 +71,26 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
     const [expandedScreenshots, setExpandedScreenshots] = useState<string[]>([]);
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
     const [activeGhidraTask, setActiveGhidraTask] = useState<{ id: string, filename: string } | null>(null);
+    const [progressMap, setProgressMap] = useState<Record<string, TaskProgressEvent>>({});
+    const [aiReport, setAiReport] = useState<ForensicReport | null>(null);
 
+    useEffect(() => {
+        const ws = voodooApi.connectTaskProgress((event) => {
+            setProgressMap(prev => ({
+                ...prev,
+                [event.task_id]: event
+            }));
 
+            // Auto-refresh task list on completion
+            if (event.percent === 100) {
+                setTimeout(() => fetchTasks(), 1000);
+            }
+        });
+
+        return () => {
+            ws.close();
+        };
+    }, []);
 
 
     const [expandedTab, setExpandedTab] = useState<'timeline' | 'fishbone' | 'screenshots'>('timeline');
@@ -91,12 +111,14 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
             setExpandedTaskId(null);
             setRawEvents([]);
             setExpandedScreenshots([]);
+            setAiReport(null);
             return;
         }
 
         setExpandedTaskId(task.id);
         setRawEvents([]);
         setExpandedScreenshots([]);
+        setAiReport(null);
         setIsLoadingDetails(true);
 
         try {
@@ -108,6 +130,14 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
             const relevantScreenshots = await voodooApi.listScreenshots(task.id);
             console.log(`[TaskDashboard] screenshots found: ${relevantScreenshots.length}`);
             setExpandedScreenshots(relevantScreenshots);
+
+            // Fetch AI Report for MITRE data
+            try {
+                const report = await voodooApi.getAIAnalysis(allEvents);
+                setAiReport(report);
+            } catch (err) {
+                console.error("[TaskDashboard] Failed to fetch AI report", err);
+            }
 
         } catch (e) {
             console.error("Failed to fetch expanded details", e);
@@ -334,15 +364,45 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
                                                 </div>
 
                                                 <div className="col-span-2">
-                                                    <div className={`text-[10px] font-black uppercase flex items-center gap-1.5 ${task.status === 'Completed' || task.status === 'Analysis Complete' ? 'text-brand-500' :
-                                                        task.status.includes('Failed') ? 'text-threat-critical' :
-                                                            'text-yellow-500 animate-pulse'
-                                                        }`}>
-                                                        <div className={`w-1.5 h-1.5 rounded-full ${task.status === 'Completed' || task.status === 'Analysis Complete' ? 'bg-brand-500' :
-                                                            task.status.includes('Failed') ? 'bg-threat-critical' :
-                                                                'bg-yellow-500'
-                                                            }`}></div>
-                                                        <span className="cursor-text select-text truncate" title={task.status}>{task.status}</span>
+                                                    <div className={`text-[10px] font-black uppercase flex flex-col gap-1 w-full`}>
+                                                        <div className={`flex items-center gap-1.5 ${task.status === 'Completed' || task.status === 'Analysis Complete' ? 'text-brand-500' :
+                                                            task.status.includes('Failed') ? 'text-threat-critical' :
+                                                                'text-yellow-500 animate-pulse'
+                                                            }`}>
+                                                            <div className={`w-1.5 h-1.5 rounded-full ${task.status === 'Completed' || task.status === 'Analysis Complete' ? 'bg-brand-500' :
+                                                                task.status.includes('Failed') ? 'bg-threat-critical' :
+                                                                    'bg-yellow-500'
+                                                                }`}></div>
+                                                            <span className="cursor-text select-text truncate flex-1" title={task.status}>
+                                                                {progressMap[task.id] && task.status !== 'Completed' && !task.status.includes('Failed')
+                                                                    ? `EXE: ${progressMap[task.id].message}`
+                                                                    : `EXE: ${task.status}`}
+                                                            </span>
+                                                            {progressMap[task.id] && task.status !== 'Completed' && !task.status.includes('Failed') && (
+                                                                <span className="text-[9px] opacity-80">{progressMap[task.id].percent}%</span>
+                                                            )}
+                                                        </div>
+
+                                                        {progressMap[task.id] && task.status !== 'Completed' && !task.status.includes('Failed') && (
+                                                            <div className="w-full h-0.5 bg-zinc-800 rounded-full overflow-hidden mb-1">
+                                                                <div
+                                                                    className="h-full bg-brand-500 transition-all duration-300 ease-out"
+                                                                    style={{ width: `${progressMap[task.id].percent}%` }}
+                                                                ></div>
+                                                            </div>
+                                                        )}
+                                                        {task.remnux_status && task.remnux_status !== 'Not Started' && (
+                                                            <div className={`flex items-center gap-1.5 ${task.remnux_status === 'Completed' ? 'text-blue-400' :
+                                                                task.remnux_status.includes('Error') ? 'text-red-400' :
+                                                                    'text-blue-500/60 animate-pulse'
+                                                                }`}>
+                                                                <div className={`w-1.5 h-1.5 rounded-full ${task.remnux_status === 'Completed' ? 'bg-blue-400' :
+                                                                    task.remnux_status.includes('Error') ? 'bg-red-400' :
+                                                                        'bg-blue-500/60'
+                                                                    }`}></div>
+                                                                <span className="cursor-text select-text truncate" title={task.remnux_status}>UX: {task.remnux_status}</span>
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
 
@@ -451,7 +511,29 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission }: { onSe
 
                                                         {expandedTab === 'fishbone' && (
                                                             <div className="h-[400px]">
-                                                                <FishboneDiagram events={expandedEvents} width={1000} height={400} />
+                                                                <FishboneDiagram
+                                                                    events={expandedEvents}
+                                                                    width={1000}
+                                                                    height={400}
+                                                                    mitreData={useMemo(() => {
+                                                                        if (!aiReport || !aiReport.mitre_matrix) return undefined;
+                                                                        const map = new Map<number, string[]>();
+                                                                        Object.values(aiReport.mitre_matrix).flat().forEach((tech: any) => {
+                                                                            if (tech.evidence) {
+                                                                                tech.evidence.forEach((ev: string) => {
+                                                                                    const match = ev.match(/PID[:\s]+(\d+)/i);
+                                                                                    if (match && match[1]) {
+                                                                                        const pid = parseInt(match[1]);
+                                                                                        const existing = map.get(pid) || [];
+                                                                                        if (!existing.includes(tech.id)) existing.push(tech.id);
+                                                                                        map.set(pid, existing);
+                                                                                    }
+                                                                                });
+                                                                            }
+                                                                        });
+                                                                        return map;
+                                                                    }, [aiReport])}
+                                                                />
                                                             </div>
                                                         )}
 

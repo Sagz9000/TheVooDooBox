@@ -29,9 +29,10 @@ import {
     Share2,
     Target
 } from 'lucide-react';
-import { AgentEvent, voodooApi, ForensicReport, Tag } from './voodooApi';
+import { AgentEvent, voodooApi, ForensicReport, Tag, AnalysisTask } from './voodooApi';
 import AIInsightPanel from './AIInsightPanel';
 import AnalystNotepad from './AnalystNotepad';
+import NeuralReport from './NeuralReport';
 import Split from './lib/split';
 
 interface Props {
@@ -76,8 +77,9 @@ const NOISE_FILTER_PROCESSES = [
 
 export default function ReportView({ taskId, events: globalEvents, onBack }: Props) {
     const [selectedPid, setSelectedPid] = useState<number | null>(null);
-    const [activeTab, setActiveTab] = useState<'timeline' | 'network' | 'web' | 'files' | 'registry' | 'console' | 'ghidra' | 'tactics' | 'intelligence' | 'screenshots' | 'notes' | 'decoder'>('timeline');
+    const [activeTab, setActiveTab] = useState<'neural' | 'timeline' | 'network' | 'web' | 'files' | 'registry' | 'console' | 'ghidra' | 'tactics' | 'intelligence' | 'screenshots' | 'notes' | 'decoder' | 'remnux'>('neural');
     const [localEvents, setLocalEvents] = useState<AgentEvent[]>([]);
+    const [task, setTask] = useState<AnalysisTask | null>(null);
     const [ghidraFindings, setGhidraFindings] = useState<any[]>([]);
     const [screenshots, setScreenshots] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
@@ -208,6 +210,12 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                 console.error("[TelemetryReport] Failed to load history:", err);
                 setLoading(false);
             });
+
+            // Fetch Task Details for Remnux Report
+            voodooApi.fetchTasks().then(tasks => {
+                const currentTask = tasks.find(t => t.id === taskId);
+                if (currentTask) setTask(currentTask);
+            }).catch(err => console.error("[ReportView] Failed to fetch task details:", err));
         }
     }, [taskId, consoleSearch]);
 
@@ -573,8 +581,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                 <button
                                     onClick={() => setExportMenuOpen(!exportMenuOpen)}
                                     className={`flex items-center gap-2 px-3 py-1.5 rounded-md transition-all shadow-lg uppercase font-black tracking-wider text-[10px] ${aiReport
-                                            ? 'bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 shadow-brand-500/40'
-                                            : 'bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300'
+                                        ? 'bg-brand-600 hover:bg-brand-500 text-white border border-brand-400/50 shadow-brand-500/40'
+                                        : 'bg-zinc-800 text-zinc-500 border border-white/5 shadow-none hover:bg-zinc-700 hover:text-zinc-300'
                                         }`}
                                     title="Export Report"
                                 >
@@ -724,6 +732,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             ref={navRef}
                             className="flex items-center px-12 overflow-x-auto overflow-y-hidden custom-scrollbar whitespace-nowrap scroll-smooth min-h-[48px] relative z-20"
                         >
+                            <TabButton active={activeTab === 'neural'} onClick={() => setActiveTab('neural')} icon={<Sparkles size={14} />} label="Neural Report" />
                             <TabButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} icon={<List size={14} />} label="Timeline" count={timelineEvents.length} />
                             <TabButton active={activeTab === 'screenshots'} onClick={() => setActiveTab('screenshots')} icon={<Image size={14} />} label="Screenshots" count={screenshots.length} />
                             <TabButton active={activeTab === 'network'} onClick={() => setActiveTab('network')} icon={<Globe size={14} />} label="Network" count={networkEvents.length} />
@@ -732,7 +741,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                             <TabButton active={activeTab === 'registry'} onClick={() => setActiveTab('registry')} icon={<Server size={14} />} label="Registry" count={registryEvents.length} />
                             <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Static Findings" count={ghidraFindings.length} />
                             <TabButton active={activeTab === 'tactics'} onClick={() => setActiveTab('tactics')} icon={<Target size={14} />} label="MITRE Matrix" />
-                            <TabButton active={activeTab === 'intelligence'} onClick={() => setActiveTab('intelligence')} icon={<Sparkles size={14} />} label="Neural Correlation Engine" />
+                            <TabButton active={activeTab === 'intelligence'} icon={<Sparkles size={14} />} label="Neural Correlation Engine" onClick={() => setActiveTab('intelligence')} />
+                            <TabButton active={activeTab === 'remnux'} icon={<ShieldAlert size={14} />} label="Remnux Analysis" onClick={() => setActiveTab('remnux')} count={task?.remnux_status === 'Completed' ? 1 : 0} />
                             <TabButton active={activeTab === 'notes'} onClick={() => setActiveTab('notes')} icon={<Pencil size={14} />} label="Notes" />
                             <TabButton active={activeTab === 'decoder'} onClick={() => setActiveTab('decoder')} icon={<Binary size={14} />} label="Decoder" />
                             <TabButton active={activeTab === 'console'} onClick={() => setActiveTab('console')} icon={<Terminal size={14} />} label="Raw Feed" count={stats.count} />
@@ -753,6 +763,16 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
 
                     {/* Tab Content Area */}
                     <div className="flex-1 overflow-hidden relative bg-[#080808]">
+                        {activeTab === 'neural' && (
+                            <NeuralReport
+                                aiReport={aiReport}
+                                events={events}
+                                ghidraFindings={ghidraFindings}
+                                task={task}
+                                taskId={taskId}
+                                onNavigateTab={(tab: string) => setActiveTab(tab as any)}
+                            />
+                        )}
                         {activeTab === 'timeline' && (
                             <TimelineView
                                 events={timelineEvents}
@@ -907,6 +927,9 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                         )}
                         {activeTab === 'web' && (
                             <WebView events={webEvents} taskId={taskId || undefined} />
+                        )}
+                        {activeTab === 'remnux' && (
+                            <RemnuxView report={task?.remnux_report} status={task?.remnux_status} />
                         )}
                         {activeTab === 'decoder' && (
                             <DecoderView />
@@ -1784,6 +1807,61 @@ const GhidraFindingsView = ({ findings }: { findings: any[] }) => {
                         <span className="text-[10px] font-black uppercase tracking-[0.2em]">Select function to inspect</span>
                     </div>
                 )}
+            </div>
+        </div>
+    );
+};
+const RemnuxView = ({ report, status }: { report: any, status?: string }) => {
+    if (status === 'Not Started') return <EmptyState msg="Remnux analysis not requested or pending" />;
+    if (status === 'Uploading to VM' || status === 'Analyzing') {
+        return (
+            <div className="absolute inset-0 flex flex-col items-center justify-center bg-[#080808] space-y-4">
+                <Loader2 className="text-brand-500 animate-spin" size={48} />
+                <p className="text-zinc-500 text-[10px] font-black uppercase tracking-widest">{status}...</p>
+            </div>
+        );
+    }
+    if (status?.includes('Error')) return <EmptyState msg={`Remnux Analysis Error: ${status}`} />;
+    if (!report) return <EmptyState msg="No Remnux report data found" />;
+
+    // Helper to render report fields (handles both raw text and structured JSON)
+    const renderContent = () => {
+        if (report.raw_output) {
+            return (
+                <div className="p-6 font-mono text-xs text-zinc-300 whitespace-pre-wrap leading-relaxed bg-black/40 rounded-lg border border-white/5">
+                    {report.raw_output}
+                </div>
+            );
+        }
+        return (
+            <div className="space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {Object.entries(report).map(([key, value]) => (
+                        <div key={key} className="bg-[#0c0c0c] border border-white/5 rounded-lg p-4 group hover:border-brand-500/30 transition-colors">
+                            <div className="text-[9px] font-black text-brand-500 uppercase tracking-widest mb-2">{key.replace(/_/g, ' ')}</div>
+                            <div className="text-xs text-zinc-300 font-mono break-all">
+                                {typeof value === 'object' ? JSON.stringify(value, null, 2) : String(value)}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+        );
+    };
+
+    return (
+        <div className="absolute inset-0 overflow-y-auto custom-scrollbar p-6 bg-[#080808]">
+            <div className="max-w-5xl mx-auto">
+                <div className="mb-8 flex items-center justify-between">
+                    <div>
+                        <h2 className="text-2xl font-black text-white tracking-tight uppercase mb-1 flex items-center gap-3">
+                            <ShieldAlert className="text-brand-500" />
+                            Remnux Linux Analysis
+                        </h2>
+                        <p className="text-zinc-500 text-sm font-mono">Behavioral and static insights from isolated Linux VM container.</p>
+                    </div>
+                </div>
+                {renderContent()}
             </div>
         </div>
     );

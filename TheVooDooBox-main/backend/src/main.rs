@@ -15,6 +15,8 @@ mod ai;
 mod ai_analysis;
 mod reports;
 mod virustotal; // Registered
+mod remnux;
+mod progress_stream;
 mod notes;
 mod memory;
 mod action_manager;
@@ -547,6 +549,7 @@ async fn submit_sample(
     manager: web::Data<Arc<AgentManager>>,
     client: web::Data<proxmox::ProxmoxClient>,
     pool: web::Data<Pool<Postgres>>,
+    progress_broadcaster: web::Data<Arc<progress_stream::ProgressBroadcaster>>,
     mut payload: Multipart,
 ) -> Result<HttpResponse, actix_web::Error> {
     let mut filename = String::new();
@@ -688,6 +691,15 @@ async fn submit_sample(
         trigger_ghidra_background(ghidra_filename, ghidra_task_id, ghidra_pool).await;
     });
 
+    // Trigger Remnux Analysis (Parallel Background)
+    let remnux_filename = filename.clone();
+    let remnux_task_id = task_id.clone();
+    let remnux_pool = pool.get_ref().clone();
+    let remnux_filepath = format!("./uploads/{}", filename);
+    actix_web::rt::spawn(async move {
+        remnux::trigger_scan(remnux_pool, remnux_task_id, remnux_filename, remnux_filepath).await;
+    });
+
     // Spawn Analysis Job
     let manager = manager.get_ref().clone(); 
     let client = client.get_ref().clone();
@@ -696,9 +708,10 @@ async fn submit_sample(
     let url_clone = download_url.clone();
     let task_id_clone = task_id.clone();
     let mode_clone = analysis_mode.clone();
+    let progress_bc: Arc<progress_stream::ProgressBroadcaster> = progress_broadcaster.get_ref().clone();
     
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), analysis_duration_seconds, target_vmid, target_node, false, mode_clone).await;
+        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), analysis_duration_seconds, target_vmid, target_node, false, mode_clone, progress_bc).await;
     });
     
     Ok(HttpResponse::Ok().json(serde_json::json!({
@@ -723,7 +736,8 @@ async fn orchestrate_sandbox(
     manual_vmid: Option<u64>,
     manual_node: Option<String>,
     is_url_task: bool,
-    analysis_mode: String
+    analysis_mode: String,
+    progress: Arc<progress_stream::ProgressBroadcaster>,
 ) {
 
     // 1. Identify Sandbox VM
@@ -788,10 +802,12 @@ async fn orchestrate_sandbox(
     // Update Status: Preparing
     let _ = sqlx::query("UPDATE tasks SET status='Preparing Environment' WHERE id=$1")
         .bind(&task_id).execute(&pool).await;
+    progress.send_progress(&task_id, "preparing", "Preparing sandbox environment", 5);
 
     // 2. Revert to 'clean' snapshot
     println!("[ORCHESTRATOR] Step 1: Reverting to '{}' snapshot...", snapshot);
     let _ = sqlx::query("UPDATE tasks SET status='Reverting Sandbox' WHERE id=$1").bind(&task_id).execute(&pool).await;
+    progress.send_progress(&task_id, "reverting", "Reverting to clean snapshot", 10);
     if let Err(e) = client.rollback_snapshot(node, vmid, snapshot).await {
         println!("[ORCHESTRATOR] Warning: Snapshot rollback failed: {}. Attempting to Stop/Start instead.", e);
         let _ = client.vm_action(node, vmid, "stop").await;
@@ -804,6 +820,7 @@ async fn orchestrate_sandbox(
     // 3. Start VM
     println!("[ORCHESTRATOR] Step 2: Starting VM...");
     let _ = sqlx::query("UPDATE tasks SET status='Starting VM' WHERE id=$1").bind(&task_id).execute(&pool).await;
+    progress.send_progress(&task_id, "starting_vm", "Booting sandbox VM", 15);
     
     // Environment selection or validation could happen here
     let orchestration_start = std::time::Instant::now();
@@ -815,6 +832,7 @@ async fn orchestrate_sandbox(
     // 4. Wait for Agent Handshake
     println!("[ORCHESTRATOR] Step 3: Waiting for Agent connection (max 90s)...");
     let _ = sqlx::query("UPDATE tasks SET status='Waiting for Agent' WHERE id=$1").bind(&task_id).execute(&pool).await;
+    progress.send_progress(&task_id, "waiting_agent", "Waiting for agent handshake", 25);
     
     let mut bound_session_id: Option<String> = None;
     
@@ -868,10 +886,12 @@ async fn orchestrate_sandbox(
     // 5. DETONATION PHASE: Send payload only to the bound session
     println!("[ORCHESTRATOR] Step 3.1: Sending detonation command to agent...");
     let _ = sqlx::query("UPDATE tasks SET status='Detonating Sample' WHERE id=$1").bind(&task_id).execute(&pool).await;
+    progress.send_progress(&task_id, "detonating", "Executing payload in sandbox", 40);
     
     // Update Status: Running
     let _ = sqlx::query("UPDATE tasks SET status='Running' WHERE id=$1")
         .bind(&task_id).execute(&pool).await;
+    progress.send_progress(&task_id, "running", "Monitoring telemetry collection", 50);
 
     // 5. Send Payload
     let cmd = if is_url_task {
@@ -900,9 +920,11 @@ async fn orchestrate_sandbox(
     
     // 7. Cleanup - STOP VM IMMEDIATELY after analysis duration
     println!("[ORCHESTRATOR] Step 5: Analysis Complete. Waiting 5s for trailing telemetry...");
+    progress.send_progress(&task_id, "collecting", "Collecting trailing telemetry", 75);
     tokio::time::sleep(Duration::from_secs(5)).await;
 
     println!("[ORCHESTRATOR] Step 6: Stopping and reverting VM...");
+    progress.send_progress(&task_id, "stopping_vm", "Cleaning up sandbox", 80);
     if let Err(e) = client.vm_action(node, vmid, "stop").await {
         println!("[ORCHESTRATOR] Warning: Failed to stop VM {}: {}", vmid, e);
     }
@@ -917,6 +939,7 @@ async fn orchestrate_sandbox(
 
     // 8. Generate AI Report (can take up to 10 minutes - VM is already stopped)
     println!("[ORCHESTRATOR] Step 7: Generating AI Analysis Report (Mode: {})...", analysis_mode);
+    progress.send_progress(&task_id, "ai_analysis", "Generating AI forensic report", 85);
     if let Err(e) = ai_analysis::generate_ai_report(&task_id, &pool, &ai_manager, manager.clone(), true, &analysis_mode).await {
         println!("[ORCHESTRATOR] Failed to generate AI report: {}", e);
     } else {
@@ -929,6 +952,7 @@ async fn orchestrate_sandbox(
         .bind(Utc::now().timestamp_millis())
         .execute(&pool)
         .await;
+    progress.send_progress(&task_id, "completed", "Analysis complete", 100);
 
     // Clear active task binding for this session
     {
@@ -993,6 +1017,7 @@ pub async fn pivot_upload(
     manager: web::Data<Arc<AgentManager>>,
     client: web::Data<proxmox::ProxmoxClient>,
     pool: web::Data<Pool<Postgres>>,
+    progress_broadcaster: web::Data<Arc<progress_stream::ProgressBroadcaster>>,
     mut payload: Multipart,
 ) -> Result<HttpResponse, actix_web::Error> {
     // This is similar to submit_sample but used for pivoting
@@ -1062,9 +1087,10 @@ pub async fn pivot_upload(
     let ai_manager = ai_manager.get_ref().clone();
     let url_clone = download_url.clone();
     let task_id_clone = task_id.clone();
+    let progress_bc: Arc<progress_stream::ProgressBroadcaster> = progress_broadcaster.get_ref().clone();
     
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), 300, None, None, false, "quick".to_string()).await; // Pivot uses default 300s, quick mode
+        orchestrate_sandbox(client, manager, pool, ai_manager, task_id_clone, url_clone, original_filename.clone(), 300, None, None, false, "quick".to_string(), progress_bc).await;
     });
 
     Ok(HttpResponse::Ok().json(serde_json::json!({ "status": "pivoted", "task_id": task_id })))
@@ -1076,6 +1102,7 @@ async fn exec_url(
     manager: web::Data<Arc<AgentManager>>,
     client: web::Data<proxmox::ProxmoxClient>,
     pool: web::Data<Pool<Postgres>>,
+    progress_broadcaster: web::Data<Arc<progress_stream::ProgressBroadcaster>>,
     req: web::Json<UrlRequest>
 ) -> impl Responder {
     // Create Task Record for URL Analysis
@@ -1114,9 +1141,10 @@ async fn exec_url(
     let url = req.url.clone();
     let task_id_clone = task_id.clone();
     let node = req.node.clone();
+    let progress_bc: Arc<progress_stream::ProgressBroadcaster> = progress_broadcaster.get_ref().clone();
     
     actix_web::rt::spawn(async move {
-        orchestrate_sandbox(client_clone, manager_clone, pool_clone, ai_manager, task_id_clone, url, "URL_Detonation".to_string(), duration, vmid, node, true, "quick".to_string()).await;
+        orchestrate_sandbox(client_clone, manager_clone, pool_clone, ai_manager, task_id_clone, url, "URL_Detonation".to_string(), duration, vmid, node, true, "quick".to_string(), progress_bc).await;
     });
 
     HttpResponse::Ok().json(serde_json::json!({ 
@@ -1411,7 +1439,37 @@ async fn set_ai_config(
 #[get("/vms/ai/config")]
 async fn get_ai_config(ai_manager: web::Data<AIManager>) -> impl Responder {
     let provider_name = ai_manager.get_current_provider_name().await;
-    HttpResponse::Ok().json(serde_json::json!({ "provider": provider_name }))
+    let ai_mode = ai_manager.get_ai_mode().await;
+    HttpResponse::Ok().json(serde_json::json!({
+        "provider": provider_name,
+        "ai_mode": ai_mode.to_str()
+    }))
+}
+
+#[derive(Deserialize)]
+struct AIModeRequest {
+    mode: String,
+}
+
+#[post("/vms/ai/mode")]
+async fn set_ai_mode(
+    req: web::Json<AIModeRequest>,
+    ai_manager: web::Data<AIManager>
+) -> impl Responder {
+    let mode = crate::ai::manager::AIMode::from_str(&req.mode);
+    ai_manager.set_ai_mode(mode.clone()).await;
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": "success",
+        "ai_mode": mode.to_str()
+    }))
+}
+
+#[get("/vms/ai/mode")]
+async fn get_ai_mode_handler(ai_manager: web::Data<AIManager>) -> impl Responder {
+    let mode = ai_manager.get_ai_mode().await;
+    HttpResponse::Ok().json(serde_json::json!({
+        "ai_mode": mode.to_str()
+    }))
 }
 
 #[post("/vms/ai/chat")]
@@ -2550,6 +2608,9 @@ async fn main() -> std::io::Result<()> {
 
     let broadcaster = Arc::new(stream::Broadcaster::new());
     let broadcaster_data = web::Data::new(broadcaster.clone());
+
+    let progress_broadcaster = Arc::new(progress_stream::ProgressBroadcaster::new());
+    let progress_broadcaster_data = web::Data::new(progress_broadcaster.clone());
     
     let agent_manager = Arc::new(AgentManager::new());
     let agent_manager_data = web::Data::new(agent_manager.clone());
@@ -2576,6 +2637,7 @@ async fn main() -> std::io::Result<()> {
             .app_data(agent_manager_data.clone())
             .app_data(pool_data.clone())
             .app_data(ai_manager.clone()) // AI Manager
+            .app_data(progress_broadcaster_data.clone())
             .service(health_check)
             .service(list_all_vms)
             .service(vm_control)
@@ -2618,7 +2680,10 @@ async fn main() -> std::io::Result<()> {
             .service(actix_files::Files::new("/screenshots", "./screenshots").show_files_listing())
             .service(set_ai_config)
             .service(get_ai_config)
+            .service(set_ai_mode)
+            .service(get_ai_mode_handler)
             .route("/ws", web::get().to(stream::ws_route))
+            .route("/ws/progress", web::get().to(progress_stream::ws_progress_route))
     })
     .bind(("0.0.0.0", 8080))?
     .run()
