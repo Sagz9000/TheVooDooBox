@@ -67,104 +67,241 @@ We use a tiny Node.js gateway to bridge the complex MCP protocol to a simple RES
 const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
+const os = require('os');
 
-// RUNTIME FIX: Ensure the CWD exists
+// --- Configuration ---
+const MCP_SCRIPT = '/usr/lib/node_modules/@remnux/mcp-server/dist/cli.js';
+const PORT = 8090;
 const WORK_DIR = '/home/remnux/files/samples';
+const ANALYSIS_TIMEOUT = 600000; // 10 minutes
+
+// Hardened Environment
+const ENV = { ...process.env };
+ENV.PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
+ENV.SHELL = '/bin/bash';
+
+// Ensure Work Dir exists
 if (!fs.existsSync(WORK_DIR)) {
   console.log(`[GATEWAY] Creating working directory: ${WORK_DIR}`);
   fs.mkdirSync(WORK_DIR, { recursive: true });
 }
 
-// Absolute Environment Hardening
-process.env.PATH = '/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin';
-process.env.SHELL = '/bin/bash';
+/**
+ * MCP Worker Class
+ * Manages a single instance of the MCP Server (single-threaded).
+ */
+class MCPWorker {
+    constructor(id, pool) {
+        this.id = id;
+        this.pool = pool;
+        this.busy = false;
+        this.process = null;
+        this.buffer = '';
+        this.currentRes = null;
+        this.currentId = null;
+        this.checkInterval = null;
+        this.timeoutTimer = null;
+        this.ready = false;
 
-console.log('[GATEWAY] Environment PATH:', process.env.PATH);
+        this.start();
+    }
 
-const mcp = spawn('node', ['/usr/lib/node_modules/@remnux/mcp-server/dist/cli.js'], { 
-  env: process.env,
-  shell: false, 
-  stdio: ['pipe', 'pipe', 'pipe']
-});
+    start() {
+        console.log(`[WORKER-${this.id}] Booting MCP Server...`);
+        this.process = spawn('node', [MCP_SCRIPT], { 
+            env: ENV, 
+            shell: false,
+            stdio: ['pipe', 'pipe', 'pipe'] 
+        });
 
-let buffer = '';
-let initialized = false;
-
-// 1. MCP Handshake: We MUST wait for initialized before starting tools
-mcp.stdin.write(JSON.stringify({
-  jsonrpc: "2.0", id: "init", method: "initialize",
-  params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "voodoo-bridge", version: "1.0" } }
-}) + '\n');
-
-mcp.stdout.on('data', (chunk) => {
-  const data = chunk.toString();
-  buffer += data;
-  
-  if (!initialized && data.includes('"id":"init"')) {
-    console.log('[GATEWAY] MCP Server Initialized & Ready!');
-    initialized = true;
-    mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + '\n');
-  }
-  
-  // Real-time debug logging
-  process.stdout.write(`[MCP-STDOUT] Received ${data.length} bytes\n`);
-});
-
-mcp.stderr.on('data', (data) => process.stderr.write(`[MCP-STDERR] ${data}`));
-
-const server = http.createServer((req, res) => {
-  if (req.method === 'POST' && req.url === '/analyze') {
-    let body = '';
-    req.on('data', chunk => body += chunk);
-    req.on('end', () => {
-      if (!initialized) {
-        res.writeHead(503); return res.end("MCP Server not ready");
-      }
-      try {
-        const { file } = JSON.parse(body);
-        const id = Date.now();
-        console.log(`[GATEWAY] STARTING ANALYSIS [ID:${id}]: ${file}`);
-        
-        mcp.stdin.write(JSON.stringify({
-          jsonrpc: "2.0", id, method: "tools/call",
-          params: { name: "analyze_file", arguments: { file } }
-        }) + '\n');
-
-        const checkBuffer = setInterval(() => {
-          const lines = buffer.split('\n');
-          for (let i = 0; i < lines.length; i++) {
-            // Robust check for ID (handle number or string IDs)
-            if (lines[i].includes(`"id":${id}`) || lines[i].includes(`"id":"${id}"`)) {
-              clearInterval(checkBuffer);
-              console.log(`[GATEWAY] FINISHED ANALYSIS [ID:${id}]`);
-              res.writeHead(200, { 'Content-Type': 'application/json' });
-              res.end(lines[i]);
-              lines.splice(i, 1);
-              buffer = lines.join('\n');
-              return;
+        // Capture Output
+        this.process.stdout.on('data', (chunk) => {
+            const data = chunk.toString();
+            this.buffer += data;
+            // Check for initialization
+            if (!this.ready && data.includes('"id":"init"')) {
+                console.log(`[WORKER-${this.id}] Initialized & Ready!`);
+                this.ready = true;
+                this.sendJson({ jsonrpc: "2.0", method: "notifications/initialized" });
+                this.buffer = ''; // Clear buffer to save RAM
+                
+                // If we were restarting and had a queue, the pool will auto-assign work
+                this.pool.notifyWorkerReady(this);
             }
-          }
-        }, 500);
+        });
 
-        // Timeout after 10 minutes (malware analysis is slow)
-        setTimeout(() => {
-          clearInterval(checkBuffer);
-          if (!res.writableEnded) {
-            console.error(`[GATEWAY] TIMEOUT [ID:${id}] - Tool likely still running (capa/floss?)`);
-            res.writeHead(504); res.end("Analysis Timeout - Check logs for progress");
-          }
-        }, 600000);
+        this.process.stderr.on('data', (data) => {
+           // Optional: Log stderr if needed, but keep it quiet for now
+           // process.stderr.write(`[WORKER-${this.id} ERR] ${data}`);
+        });
 
-      } catch (e) {
-        res.writeHead(400); res.end("Invalid Request");
-      }
-    });
-  } else {
-    res.writeHead(404); res.end();
-  }
-});
+        // Handle Crashes/Exits
+        this.process.on('exit', (code) => {
+            console.error(`[WORKER-${this.id}] Died with code ${code}. Restarting...`);
+            this.cleanup();
+            if (this.currentRes) {
+                 this.currentRes.writeHead(500, { 'Content-Type': 'application/json' });
+                 this.currentRes.end(JSON.stringify({ error: "Analysis Worker Crashed" }));
+                 this.currentRes = null;
+            }
+            this.busy = false; 
+            this.ready = false;
+            this.start(); // Auto-restart
+        });
 
-server.listen(8090, '0.0.0.0', () => console.log('Voodoo Gateway listening on 8090'));
+        // Send Handshake
+        this.sendJson({
+            jsonrpc: "2.0", id: "init", method: "initialize",
+            params: { 
+                protocolVersion: "2024-11-05", 
+                capabilities: {}, 
+                clientInfo: { name: `voodoo-worker-${this.id}`, version: "1.0" } 
+            }
+        });
+    }
+
+    sendJson(obj) {
+        if (this.process && this.process.stdin.writable) {
+            this.process.stdin.write(JSON.stringify(obj) + '\n');
+        }
+    }
+
+    analyze(file, res) {
+        if (this.busy || !this.ready) return false;
+        
+        this.busy = true;
+        this.currentRes = res;
+        this.currentId = Date.now();
+        this.buffer = ''; // Reset buffer for clean capture
+
+        console.log(`[WORKER-${this.id}] Starting Analysis: ${file}`);
+        
+        this.sendJson({
+             jsonrpc: "2.0", 
+             id: this.currentId, 
+             method: "tools/call",
+             params: { name: "analyze_file", arguments: { file } }
+        });
+
+        // Poll for completion (looking for response ID)
+        this.checkInterval = setInterval(() => this.checkCompletion(), 500);
+
+        // Timeout Watchdog
+        this.timeoutTimer = setTimeout(() => {
+            if (this.busy) {
+                console.error(`[WORKER-${this.id}] TIMEOUT on ${file} - Killing Worker.`);
+                // Send timeout response to client
+                if (this.currentRes) {
+                    this.currentRes.writeHead(504, { 'Content-Type': 'application/json' });
+                    this.currentRes.end(JSON.stringify({ error: "Analysis Timeout (10m Limit)" }));
+                    this.currentRes = null;
+                }
+                // Kill worker to ensure no lingering processes (loops, etc.)
+                if (this.process) this.process.kill(); 
+                // exit handler will restart it
+            }
+        }, ANALYSIS_TIMEOUT);
+
+        return true;
+    }
+
+    checkCompletion() {
+        if (!this.busy) return;
+        
+        // Simple string search is safer than trying to parse partial JSON
+        // We look for our specific Request ID in the output
+        const lines = this.buffer.split('\n');
+        for (let i = 0; i < lines.length; i++) {
+            if (lines[i].includes(`"id":${this.currentId}`) || lines[i].includes(`"id":"${this.currentId}"`)) {
+                console.log(`[WORKER-${this.id}] Finished Analysis.`);
+                
+                if (this.currentRes) {
+                    this.currentRes.writeHead(200, { 'Content-Type': 'application/json' });
+                    this.currentRes.end(lines[i]);
+                    this.currentRes = null;
+                }
+                
+                this.cleanup();
+                this.busy = false;
+                
+                // Notify pool we are free
+                this.pool.notifyWorkerReady(this);
+                return;
+            }
+        }
+    }
+
+    cleanup() {
+        if (this.checkInterval) clearInterval(this.checkInterval);
+        if (this.timeoutTimer) clearTimeout(this.timeoutTimer);
+    }
+}
+
+/**
+ * Worker Pool Class
+ * Load balances requests across multiple workers.
+ */
+class WorkerPool {
+    constructor(size) {
+        this.workers = [];
+        this.queue = [];
+        console.log(`[POOL] Spawning ${size} workers...`);
+        for (let i = 0; i < size; i++) {
+            this.workers.push(new MCPWorker(i, this));
+        }
+    }
+
+    handleRequest(req, res) {
+        let body = '';
+        req.on('data', chunk => body += chunk);
+        req.on('end', () => {
+             try {
+                const { file } = JSON.parse(body);
+                // Try to find a free worker
+                const worker = this.workers.find(w => !w.busy && w.ready);
+                if (worker) {
+                    worker.analyze(file, res);
+                } else {
+                    console.log(`[POOL] All workers busy. Queued: ${file}`);
+                    this.queue.push({ file, res });
+                }
+             } catch (e) {
+                 res.writeHead(400); res.end("Invalid JSON");
+             }
+        });
+    }
+
+    notifyWorkerReady(worker) {
+        // If there's work in the queue, assign it immediately
+        if (this.queue.length > 0) {
+            const job = this.queue.shift();
+            // Verify worker is actually ready (in case of race/restart)
+            if (worker.ready && !worker.busy) {
+                console.log(`[POOL] Assigning queued job to WORKER-${worker.id}`);
+                worker.analyze(job.file, job.res);
+            } else {
+                 // Should not happen, but put back in queue if worker died mid-assign
+                 this.queue.unshift(job);
+            }
+        }
+    }
+}
+
+// --- Main ---
+
+// Detect CPU Cores
+const CPU_COUNT = os.cpus().length;
+console.log(`[GATEWAY] Parallel Remnux Gateway v2.0 starting on ${CPU_COUNT} cores.`);
+
+const pool = new WorkerPool(CPU_COUNT);
+
+http.createServer((req, res) => {
+    if (req.method === 'POST' && req.url === '/analyze') {
+        pool.handleRequest(req, res);
+    } else {
+        res.writeHead(404); res.end();
+    }
+}).listen(PORT, '0.0.0.0', () => console.log(`[GATEWAY] Listening on port ${PORT}`));
 ```
 
 ### Dockerfile
