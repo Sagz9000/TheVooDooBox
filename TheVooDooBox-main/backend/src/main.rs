@@ -423,7 +423,12 @@ async fn start_tcp_listener(
                                 if let Ok(mut evt) = serde_json::from_str::<RawAgentEvent>(trimmed) {
                                     // NOISE FILTERING
                                     let p_name = evt.process_name.to_lowercase();
-                                    if NOISE_PROCESSES.iter().any(|&n| p_name.contains(n)) {
+                                    
+                                    // CRITCAL FIX: Allow Registry Events to bypass noise filter
+                                    // System processes (svchost, services) do most of the registry work
+                                    let is_registry = evt.event_type.starts_with("REG_");
+
+                                    if !is_registry && NOISE_PROCESSES.iter().any(|&n| p_name.contains(n)) {
                                         line.clear();
                                         continue;
                                     }

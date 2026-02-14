@@ -381,7 +381,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
         // 1. Filter events for this specific task and exclude noise
         const filteredEvents = events.filter((e: AgentEvent) => {
             const matchesId = !taskId || String((e as any).task_id) === String(taskId);
-            const isNotNoise = !NOISE_FILTER_PROCESSES.includes(e.process_name.toLowerCase());
+            const isRegistry = e.event_type.startsWith('REG_');
+            const isNotNoise = isRegistry || !NOISE_FILTER_PROCESSES.includes(e.process_name.toLowerCase());
 
             if (taskId && !matchesId) {
                 // Occasional log for mismatch to avoid spam but give insight
