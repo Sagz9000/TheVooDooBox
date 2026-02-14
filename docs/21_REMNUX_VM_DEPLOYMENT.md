@@ -10,8 +10,52 @@ This guide details how to set up the Remnux MCP server on a dedicated Docker hos
 | **Remnux Docker Host** | `192.168.50.199` | Runs the MCP Server container |
 | **AI Server** | `192.168.50.98` | Runs Ollama / Local AI |
 
-### Docker Compose (On 192.168.50.199)
-Ensure `network_mode: "host"` is set so it binds to the VM's IP directly once `socat` is running.
+### 1. Configure NFS Server (On App Server: 192.168.50.196)
+The App Server must export the shared directory so the Remnux VM can mount it.
+
+```bash
+# 1. Install NFS Kernel Server
+sudo apt update && sudo apt install nfs-kernel-server -y
+
+# 2. Add the export (Match the 192.168.50.0 range)
+# rw: Read-Write, sync: synchronous writes, no_root_squash: allow root to write
+echo "/mnt/voodoo_samples 192.168.50.0/24(rw,sync,no_subtree_check,no_root_squash)" | sudo tee -a /etc/exports
+
+# 3. Apply changes
+sudo exportfs -ra
+
+# 4. Ensure service is running
+sudo systemctl restart nfs-kernel-server
+
+# 5. Check firewall (NFSv4 + NFSv3 auxiliary ports)
+sudo ufw allow from 192.168.50.199 to any port nfs
+sudo ufw allow from 192.168.50.199 to any port 111
+sudo ufw allow from 192.168.50.199 to any port 2049
+```
+
+> [!CAUTION]
+> If it still hangs, try disabling the firewall temporarily: `sudo ufw disable` to confirm it's a network block.
+
+### 2. Configure NFS Mount (On Remnux VM: 192.168.50.199)
+The Remnux VM must be able to see the files staged by the App Server.
+
+```bash
+# Install NFS client
+sudo apt update && sudo apt install nfs-common -y
+
+# Create mount point
+sudo mkdir -p /mnt/voodoo_samples
+
+# Mount the App Server share
+sudo mount 192.168.50.196:/mnt/voodoo_samples /mnt/voodoo_samples
+
+# Verify mount
+ls -la /mnt/voodoo_samples
+```
+
+> [!TIP]
+> To make it permanent, add this line to /etc/fstab:
+> `192.168.50.196:/mnt/voodoo_samples /mnt/voodoo_samples nfs defaults 0 0`
 
 ## 1. Remnux Server (192.168.50.199)
 
@@ -24,7 +68,7 @@ const { spawn } = require('child_process');
 const http = require('http');
 const fs = require('fs');
 
-// RUNTIME FIX: Ensure the CWD exists (Volume mounts can hide build-time folders)
+// RUNTIME FIX: Ensure the CWD exists
 const WORK_DIR = '/home/remnux/files/samples';
 if (!fs.existsSync(WORK_DIR)) {
   console.log(`[GATEWAY] Creating working directory: ${WORK_DIR}`);
@@ -37,14 +81,6 @@ process.env.SHELL = '/bin/bash';
 
 console.log('[GATEWAY] Environment PATH:', process.env.PATH);
 
-// Pre-flight check: Can Node.js spawn bash?
-const preflight = spawn('bash', ['--version']);
-preflight.stdout.on('data', (d) => console.log('[PREFLIGHT] Bash Version:', d.toString().split('\n')[0]));
-preflight.on('error', (err) => console.error('[PREFLIGHT] Failed to spawn bash:', err));
-
-console.log('[GATEWAY] Starting MCP Server (Direct Mode)...');
-
-// Start the MCP server directly using the patched CLI
 const mcp = spawn('node', ['/usr/lib/node_modules/@remnux/mcp-server/dist/cli.js'], { 
   env: process.env,
   shell: false, 
@@ -52,30 +88,42 @@ const mcp = spawn('node', ['/usr/lib/node_modules/@remnux/mcp-server/dist/cli.js
 });
 
 let buffer = '';
+let initialized = false;
 
-// MCP Handshake on startup
+// 1. MCP Handshake: We MUST wait for initialized before starting tools
 mcp.stdin.write(JSON.stringify({
-  jsonrpc: "2.0", id: 0, method: "initialize",
+  jsonrpc: "2.0", id: "init", method: "initialize",
   params: { protocolVersion: "2024-11-05", capabilities: {}, clientInfo: { name: "voodoo-bridge", version: "1.0" } }
 }) + '\n');
 
-// Global collector for stdout
 mcp.stdout.on('data', (chunk) => {
-  buffer += chunk.toString();
+  const data = chunk.toString();
+  buffer += data;
+  
+  if (!initialized && data.includes('"id":"init"')) {
+    console.log('[GATEWAY] MCP Server Initialized & Ready!');
+    initialized = true;
+    mcp.stdin.write(JSON.stringify({ jsonrpc: "2.0", method: "notifications/initialized" }) + '\n');
+  }
+  
+  // Real-time debug logging
+  process.stdout.write(`[MCP-STDOUT] Received ${data.length} bytes\n`);
 });
 
-// Log server stderr for debugging (This is where the ENOENT likely shows up)
-mcp.stderr.on('data', (data) => console.error(`[MCP-STDERR] ${data}`));
+mcp.stderr.on('data', (data) => process.stderr.write(`[MCP-STDERR] ${data}`));
 
 const server = http.createServer((req, res) => {
   if (req.method === 'POST' && req.url === '/analyze') {
     let body = '';
     req.on('data', chunk => body += chunk);
     req.on('end', () => {
+      if (!initialized) {
+        res.writeHead(503); return res.end("MCP Server not ready");
+      }
       try {
         const { file } = JSON.parse(body);
         const id = Date.now();
-        console.log(`[GATEWAY] Analyzing: ${file}`);
+        console.log(`[GATEWAY] STARTING ANALYSIS [ID:${id}]: ${file}`);
         
         mcp.stdin.write(JSON.stringify({
           jsonrpc: "2.0", id, method: "tools/call",
@@ -85,8 +133,10 @@ const server = http.createServer((req, res) => {
         const checkBuffer = setInterval(() => {
           const lines = buffer.split('\n');
           for (let i = 0; i < lines.length; i++) {
-            if (lines[i].includes(`"id":${id}`)) {
+            // Robust check for ID (handle number or string IDs)
+            if (lines[i].includes(`"id":${id}`) || lines[i].includes(`"id":"${id}"`)) {
               clearInterval(checkBuffer);
+              console.log(`[GATEWAY] FINISHED ANALYSIS [ID:${id}]`);
               res.writeHead(200, { 'Content-Type': 'application/json' });
               res.end(lines[i]);
               lines.splice(i, 1);
@@ -94,20 +144,23 @@ const server = http.createServer((req, res) => {
               return;
             }
           }
-        }, 100);
+        }, 500);
 
-        // Timeout after 5 minutes
+        // Timeout after 10 minutes (malware analysis is slow)
         setTimeout(() => {
           clearInterval(checkBuffer);
           if (!res.writableEnded) {
-            res.writeHead(504); res.end("Analysis Timeout");
+            console.error(`[GATEWAY] TIMEOUT [ID:${id}] - Tool likely still running (capa/floss?)`);
+            res.writeHead(504); res.end("Analysis Timeout - Check logs for progress");
           }
-        }, 300000);
+        }, 600000);
 
       } catch (e) {
         res.writeHead(400); res.end("Invalid Request");
       }
     });
+  } else {
+    res.writeHead(404); res.end();
   }
 });
 
@@ -164,58 +217,32 @@ services:
       - /mnt/voodoo_samples:/home/remnux/files
 ```
 
-### Start
+## 2. Shared Storage (NFS Sync)
 
-```bash
-cd ~/remnux_mcp
-docker-compose up -d
-```
-
-## 2. Shared Storage (NFS)
-
-Both servers must mount the same NFS share:
+Ensure the App Server (.196) and Remnux VM (.199) are perfectly synced:
 
 ```bash
 # On App Server (192.168.50.196):
-mount 192.168.50.10:/volume/samples /mnt/voodoo_samples
+# Check that files exist
+ls -R /mnt/voodoo_samples
 
-# On Remnux Host (10.10.20.50):
-mount 192.168.50.10:/volume/samples /mnt/voodoo_samples
+# On Remnux Host (192.168.50.199):
+# Check that the mount is active
+mount | grep voodoo
 ```
-
-> **Note**: The NFS export path depends on your NAS/Proxmox host configuration.
-
-## 3. pfSense Firewall Rule
-
-| Field | Value |
-|---|---|
-| Action | Pass |
-| Interface | Management (192.168.50.x) |
-| Source | `192.168.50.196` |
-| Destination | `10.10.20.50` |
-| Port | `8090` |
 
 ## 4. VooDooBox Integration
 
-In your main `docker-compose.yaml`, the following environment variables are set on the `hyper-bridge` service:
+In your main `docker-compose.yaml` (on .196), the environment variables must point to the Remnux VM IP:
 
 ```env
-REMNUX_MCP_URL=http://10.10.20.50:8090/sse
-REMNUX_MCP_TOKEN=voodoo-secret-token
+REMNUX_MCP_URL=http://192.168.50.199:8090/sse
 SHARED_MALWARE_DIR=/mnt/voodoo_samples
 ```
 
-The hyper-bridge container also mounts the shared volume:
+## 5. Data Flow Verification
 
-```yaml
-volumes:
-  - /mnt/voodoo_samples:/mnt/voodoo_samples
-```
-
-## 5. Data Flow
-
-1. User uploads `suspect.exe` via the web UI.
-2. Backend copies sample to `/mnt/voodoo_samples/<task_id>/suspect.exe`.
-3. Backend calls Remnux MCP at `http://10.10.20.50:8090/mcp/tools/call` with `Authorization: Bearer voodoo-secret-token`.
-4. Remnux reads the file from its volume mount at `/home/remnux/files/<task_id>/suspect.exe`.
-5. Results are returned via MCP and stored in the `tasks` table.
+1. Backend stages file to `/mnt/voodoo_samples/<task_id>/sample.exe`.
+2. Backend calls `POST http://192.168.50.199:8090/analyze`.
+3. Gateway triggers Remnux MCP and waits up to 10 minutes.
+4. results are saved to the database.
