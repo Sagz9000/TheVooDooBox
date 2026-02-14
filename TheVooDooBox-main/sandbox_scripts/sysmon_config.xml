@@ -59,8 +59,19 @@
 
     <!-- Event ID 12, 13, 14: RegistryEvent -->
     <RuleGroup name="" groupRelation="or">
-      <RegistryEvent onmatch="exclude" />
+      <RegistryEvent onmatch="include">
+        <TargetObject condition="contains">\CurrentVersion\Run</TargetObject>
+        <TargetObject condition="contains">\CurrentVersion\RunOnce</TargetObject>
+        <TargetObject condition="contains">\CurrentVersion\RunService</TargetObject>
+        <TargetObject condition="contains">\System\CurrentControlSet\Services</TargetObject>
+        <TargetObject condition="contains">\Windows\CurrentVersion\Explorer\Shell Folders</TargetObject>
+        <TargetObject condition="contains">\Windows\CurrentVersion\Explorer\User Shell Folders</TargetObject>
+        <TargetObject condition="contains">\Windows NT\CurrentVersion\Winlogon\Shell</TargetObject>
+        <TargetObject condition="contains">\Windows NT\CurrentVersion\Winlogon\Userinit</TargetObject>
+        <TargetObject condition="contains">\Windows\CurrentVersion\AppInit_DLLs</TargetObject>
+      </RegistryEvent>
     </RuleGroup>
+
 
     <!-- Event ID 15: FileCreateStreamHash (ADS / Hidden Payloads) -->
     <RuleGroup name="" groupRelation="or">
