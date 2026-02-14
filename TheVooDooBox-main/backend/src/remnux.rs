@@ -119,11 +119,52 @@ async fn call_analyze_tool(
         .await?;
 
     if resp.status().is_success() {
-        let json: serde_json::Value = resp.json().await?;
+        let body = resp.text().await.unwrap_or_default();
+        println!("[REMNUX] Raw Gateway Response ({} chars): {:.500}...", body.len(), body);
+
+        // 1. Robust JSON Extraction: Find the first { and last }
+        let json_text = if let (Some(start), Some(end)) = (body.find('{'), body.rfind('}')) {
+            if end > start {
+                &body[start..=end]
+            } else {
+                &body
+            }
+        } else {
+            &body
+        };
+
+        let mut json: serde_json::Value = serde_json::from_str(json_text).map_err(|e| {
+            format!("Failed to parse JSON response: {}. Body start: {:.100}", e, body)
+        })?;
+
+        // 2. MCP Unwrap: if it matches { "result": { "content": [ { "text": "..." } ] } }
+        if let Some(result) = json.get("result") {
+            if let Some(content) = result.get("content") {
+                if let Some(first) = content.as_array().and_then(|a| a.get(0)) {
+                    if let Some(inner_text) = first.get("text").and_then(|t| t.as_str()) {
+                        println!("[REMNUX] Detected MCP-wrapped response, unwrapping inner JSON...");
+                        // Try to parse the inner text as JSON
+                        if let Ok(inner_json) = serde_json::from_str::<serde_json::Value>(inner_text) {
+                            json = inner_json;
+                        } else {
+                            // If inner text isn't JSON, maybe it's the raw report text
+                            json = serde_json::json!({ "raw_text_report": inner_text });
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. Status Normalization: Check if the JSON itself contains an error
+        if let Some(error) = json.get("error") {
+            return Err(format!("Gateway reported error in JSON: {}", error).into());
+        }
+
         Ok(json)
     } else {
         let status = resp.status();
         let body = resp.text().await.unwrap_or_default();
+        eprintln!("[REMNUX] Gateway error ({}): {:.200}", status, body);
         Err(format!("Voodoo Gateway error ({}): {}", status, body).into())
     }
 }

@@ -634,7 +634,7 @@ pub async fn generate_ai_report(
         }
     }
 
-    context.virustotal = vt_data;
+    context.virustotal = vt_data.clone();
     context.analyst_notes = analyst_notes;
     context.manual_tags = manual_tags;
     context.digital_signature = Some(digital_signature.clone());
@@ -722,274 +722,157 @@ pub async fn generate_ai_report(
         }
     }
 
-    // 6. Construct Hybrid Prompt
-    // Prepare initial sort for truncation
-    let mut truncated_processes = context.processes.clone();
-    
-    // Sort by Relevance to keep interesting processes
+    // 6. Construct Hybrid Prompt (Map-Reduce)
+    // We will now chunk the processes and use the Map-Reduce flow.
     let root_pid_num = context.patient_zero_pid.parse::<i32>().unwrap_or(-1);
-    truncated_processes.sort_by(|a, b| {
+    
+    // Sort broadly by relevance first to ensure even if we limit total chunks, we get the best data
+    let mut all_processes = context.processes.clone();
+    
+    all_processes.sort_by(|a, b| {
         let get_score = |p: &ProcessSummary| -> i32 {
              let mut score = 0;
-             // Lineage Scoring
              if p.pid == root_pid_num { score += 5000; }
              if p.ppid == root_pid_num { score += 2000; }
-             
-             // Interest Scoring
-             if !p.image_name.to_lowercase().contains("windows") && !p.image_name.to_lowercase().contains("system32") { 
-                 // Allow commonly benign paths like "Program Files" to be neutral
-                 if !p.image_name.to_lowercase().contains("program files") {
-                    score += 200; // Reduced from 500 to be less punitive to 3rd party software
-                 }
-             }
-             
-             // Activity Scoring
-             score += (p.network_activity.len() as i32) * 200; // High value on network
+             if !p.image_name.to_lowercase().contains("windows") && !p.image_name.to_lowercase().contains("program files") { score += 200; }
+             score += (p.network_activity.len() as i32) * 200;
              score += (p.file_activity.len() as i32) * 50;
              score += (p.registry_mods.len() as i32) * 50;
-             
-             // Specific Suspicion Bonus
-             if p.image_name.to_lowercase().contains("powershell") || p.image_name.to_lowercase().contains("cmd") || p.image_name.to_lowercase().contains("bitsadmin") {
-                 if p.ppid == root_pid_num { score += 1000; } // LOLBin spawned by malware
-             }
-             
+             if p.image_name.to_lowercase().contains("powershell") || p.image_name.to_lowercase().contains("cmd") { score += 1000; }
              score
         };
         get_score(b).cmp(&get_score(a))
     });
 
-    // Moderate limit: 12 processes to save tokens (bumped from 10)
-    if truncated_processes.len() > 12 {
-        truncated_processes.truncate(12);
-    }
 
-    // Extract valid PIDs for the "Menu" technique ONLY from the truncated list to save tokens
-    let valid_pids: Vec<String> = truncated_processes.iter().map(|p| p.pid.to_string()).collect();
-    let total_process_count = context.processes.len();
-    let pid_list_str = format!("{} (showing top {} of {} total processes)", valid_pids.join(", "), valid_pids.len(), total_process_count);
-    for proc in &mut truncated_processes {
-        // Network: External IPs first
-        proc.network_activity.sort_by(|a, b| {
-            let score = |n: &NetworkOp| {
-                let mut s = 0;
-                if !n.dest.starts_with("127.") && !n.dest.starts_with("192.168.") && !n.dest.starts_with("10.") { s += 100; }
-                if n.port != "80" && n.port != "443" { s += 10; }
-                s
-            };
-            score(b).cmp(&score(a))
-        });
-        if proc.network_activity.len() > 8 { proc.network_activity.truncate(8); }
 
-        // File: Executables first
-        proc.file_activity.sort_by(|a, b| {
-            let score = |f: &FileOp| {
-                let mut s = 0;
-                let path = f.path.to_lowercase();
-                if f.is_executable || path.ends_with(".exe") || path.ends_with(".dll") || path.ends_with(".ps1") { s += 50; }
-                if path.contains("\\users\\public\\") || path.contains("\\appdata\\") || path.contains("\\temp\\") { s += 20; }
-                s
-            };
-            score(b).cmp(&score(a))
-        });
-        if proc.file_activity.len() > 8 { proc.file_activity.truncate(8); }
-
-        // Registry
-        if proc.registry_mods.len() > 8 { proc.registry_mods.truncate(8); }
-
-        // Web Activity
-        proc.web_activity.sort_by(|a, b| {
-             let score = |w: &WebOp| {
-                 match w.event_type.as_str() {
-                     "DOM" => 100,
-                     "REDIRECT" => 80,
-                     _ => 50
-                 }
-             };
-             score(b).cmp(&score(a))
-        });
-        if proc.web_activity.len() > 5 { proc.web_activity.truncate(5); }
-    }
-
-    let mut truncated_ghidra = context.static_analysis.clone();
+    // Chunk size 5 is a good balance for Local LLM context (approx 2-3k tokens per chunk)
+    const CHUNK_SIZE: usize = 5;
+    let chunks: Vec<Vec<ProcessSummary>> = all_processes.chunks(CHUNK_SIZE).map(|c| c.to_vec()).collect();
     
-    // Sort functions: Suspicious tags first
-    truncated_ghidra.functions.sort_by(|a, b| {
-        let score = |f: &DecompiledFunction| {
-            if !f.suspicious_tag.is_empty() && f.suspicious_tag != "None" { 100 } else { 0 }
-        };
-        score(b).cmp(&score(a))
-    });
+    println!("[AI] Starting Map-Reduce Analysis. Total Processes: {}. Chunks: {}", all_processes.len(), chunks.len());
 
-    if truncated_ghidra.functions.len() > 12 {
-        truncated_ghidra.functions.truncate(12);
-    }
-    for func in &mut truncated_ghidra.functions {
-        if func.pseudocode.len() > 600 {
-            func.pseudocode = func.pseudocode.chars().take(600).collect();
-            func.pseudocode.push_str("\n...[TRUNCATED]");
+    let mut map_insights: Vec<String> = Vec::new();
+    
+    // --- MAP PHASE (Local LLM) ---
+    // In a real production system, this would be parallelized. 
+    // Sequential execution avoids OOM on local Ollama.
+    for (i, chunk) in chunks.iter().enumerate() {
+        println!("[AI] Processing Chunk {}/{} via Local LLM...", i+1, chunks.len());
+        
+        let chunk_json = serde_json::to_string(&chunk).unwrap_or_default();
+        let map_prompt = format!(
+            "Analyze this telemetry chunk (Part {}/{}). Identify suspicious behavior.
+             Target File: {}
+             
+             PROCESS DATA:
+             {}
+             
+             OUTPUT FORMAT:
+             Return a JSON array of strings, where each string is a concise insight about a specific suspicious action.
+             Example: [\"Process powershell.exe (PID 454) established network connection to 45.33.2.1\", \"Process cmd.exe deleted shadow copies\"]
+             If nothing suspicious is found, return empty array [].
+             DO NOT produce a full report. Only precise insights.", 
+             i+1, chunks.len(), target_filename, chunk_json
+        );
+
+        let system_prompt = "You are a Forensic Pre-Processor. Your job is to extract raw technical facts from telemetry chunks.";
+        
+        // We force "map" phase to use Local provider in Hybrid mode via manager.rs logic
+        // We use a blank history for each chunk to keep it stateless
+        let response = ai_manager.ask_with_mode(
+            vec![crate::ai::provider::ChatMessage { role: "user".to_string(), content: map_prompt }], 
+            system_prompt.to_string(),
+            &crate::ai::manager::AIMode::Hybrid, // Enforce Hybrid routing logic
+            "map"
+        ).await;
+
+        match response {
+            Ok(resp_text) => {
+                // Try to parse the array
+                if let Ok(insights) = serde_json::from_str::<Vec<String>>(&resp_text) {
+                     map_insights.extend(insights);
+                } else {
+                     // Fallback: Just take the raw text if it's not valid JSON array
+                     // or try to extract lines
+                     let clean_text = resp_text.trim();
+                     if !clean_text.is_empty() {
+                        map_insights.push(format!("Chunk {} Insight: {}", i+1, clean_text));
+                     }
+                }
+            },
+            Err(e) => {
+                println!("[AI] Map Phase Failed for Chunk {}: {}", i, e);
+            }
         }
     }
     
-    // Add RAG Context to prompt
-    let _rag_section = if !rag_context.is_empty() {
-        rag_context
-    } else {
-        match analysis_mode {
-            "deep" => "\n[Deep Dive Note: No specific vector evidence found or ingestion failed]\n".to_string(),
-             _ => "".to_string()
-        }
-    };
+    println!("[AI] Map Phase Complete. Collected {} aggregated insights.", map_insights.len());
 
-    let sysmon_json = serde_json::to_string_pretty(&truncated_processes).unwrap_or_default();
-    let ghidra_json = serde_json::to_string_pretty(&truncated_ghidra.functions).unwrap_or_default();
+    // --- REDUCE PHASE (Cloud LLM) ---
+    // Now we take the aggregated insights + Static Analysis + Context and ask for the Final Report
     
-    let vt_section = if let Some(vt) = &context.virustotal {
-        format!("**DATA SOURCE 3: THREAT INTEL (VIRUSTOTAL)**\n- Detections: {}\n- Label: {}\n- Family: {:?}\n- Behavior: {:?}", 
-            vt.malicious_votes, vt.threat_label, vt.family_labels, vt.behavior_tags)
+    let consolidated_insights = if map_insights.is_empty() {
+        "No specific suspicious insights detected in detailed telemetry.".to_string()
     } else {
-        "**DATA SOURCE 3: THREAT INTEL**\n- No VirusTotal data found for this hash.".to_string()
-    };
-
-    // Format Analyst Input Section
-    let notes_section = if !context.analyst_notes.is_empty() {
-        let mut notes_str = "**DATA SOURCE 4: ANALYST FIELD NOTES**\n".to_string();
-        for note in &context.analyst_notes {
-            let prefix = if note.is_hint { "[AI HINT]" } else { "[OBSERVATION]" };
-            notes_str.push_str(&format!("- {} ({}): {}\n", prefix, note.author, note.content));
-        }
-        notes_str.push_str("INSTRUCTION: You MUST respect these hints.");
-        notes_str
-    } else {
-        "".to_string()
-    };
-
-    let tags_section = if !context.manual_tags.is_empty() {
-        let mut tags_str = "**DATA SOURCE 5: HUMAN-TAGGED TELEMETRY**\n".to_string();
-        for tag in &context.manual_tags {
-            tags_str.push_str(&format!("- Event #{} marked as {}\n", tag.event_id, tag.tag_type));
-        }
-        tags_str.push_str("INSTRUCTION: These tags represent human verification. If an event is tagged 'Malicious', it is a definitive indicator.");
-        tags_str
-    } else {
-        "".to_string()
-    };
-
-    let hive_section = if !context.related_samples.is_empty() {
-        let mut hive_str = "**DATA SOURCE 6: THE HIVE MIND (HISTORICAL CORRELATIONS)**\n".to_string();
-        for sample in &context.related_samples {
-            hive_str.push_str(&format!("- SIMILAR TO: Task {} | Verdict: {} | Family: {}\n", sample.task_id, sample.verdict, sample.malware_family));
-            hive_str.push_str(&format!("  Summary: {}\n", sample.summary.chars().take(150).collect::<String>()));
-        }
-        hive_str
-    } else {
-        "".to_string()
+        map_insights.join("\n- ")
     };
     
-    let prompt = format!(
-        r#"### TECHNICAL DATA AUDIT (REF: LAB-402)
-OBJECTIVE: Technical correlation of code patterns and dynamic activity.
-DIAGNOSTIC VERDICTS: [Diagnostic Alpha], [Diagnostic Beta], [Diagnostic Gamma].
+    // Prepare Static Analysis Summary
+    let static_summary = if !context.static_analysis.functions.is_empty() {
+        context.static_analysis.functions.iter().map(|f| format!("Function {}: {} (Tag: {})", f.name, f.pseudocode.chars().take(300).collect::<String>(), f.suspicious_tag)).collect::<Vec<_>>().join("\n")
+    } else {
+        "Static Analysis Pending or Failed.".to_string()
+    };
+    
+    let vt_summary = serde_json::to_string(&vt_data).unwrap_or("None".to_string());
 
-DATA SOURCE 7: DIGITAL SIGNATURE (CONTEXT)
-- Signature Status: {signature}
-- RELEVANCE: Valid signatures from trusted vendors (Microsoft, Google, EA, Adobe) strongly suggest BENIGN behavior (installers/updates).
-
-DATA SOURCE 1: DYNAMIC TELEMETRY
-- Target: "{filename}" (PID {root_pid})
-- Observed PIDs: [{pid_list}]
-<TELEMETRY_DATA>
-{sysmon}
-</TELEMETRY_DATA>
-
-DATA SOURCE 2: STATIC CODE PATTERNS (GHIDRA)
-<CODE_PATTERNS>
-{ghidra}
-</CODE_PATTERNS>
-
-{vt_section}
-{notes_section}
-{tags_section}
-{hive_section}
-
-INSTRUCTIONS:
-1. BRIDGE DATA: Correlate dynamic activity (Sysmon) with provided code patterns (Ghidra). 
-   - e.g., "The network connection (PID 123) matches the 'InternetOpen' call in function 'init_c2'".
-2. STATIC ANALYSIS: Explicitly list findings from the code snippets in the "static_analysis_insights" section.
-3. ANTI-HALLUCINATION: Do NOT flag standard Windows APIs (HTTP, Cryptography) as malicious in isolation. They are standard in installers.
-   - If filename contains 'Install' or 'Setup' OR signature is valid, treat network activity as PRE-AUTHORIZED updates unless connecting to known bad IPs.
-4. THINKING PROCESS: Provide a deep technical chain-of-thought in your thinking section.
-5. BENIGN HYPOTHESIS TESTING: Explicitly state why this activity is NOT a standard software update or installation.
-
-OUTPUT SCHEMA (JSON ONLY):
-{{
-    "verdict": "[Diagnostic Alpha/Diagnostic Beta/Diagnostic Gamma]",
-    "malware_family": "String",
-    "threat_score": 0-100,
-    "executive_summary": "Technical evaluation summary.",
-    "static_analysis_insights": [
-        "Insight 1: Function 'X' performs [Behavior Y]",
-        "Insight 2: Suspicious code pattern 'Z' detected."
-    ],
-    "behavioral_timeline": [
-        {{
-            "timestamp_offset": "+Ns",
-            "stage": "Activity Stage",
-            "event_description": "Technical description.",
-            "technical_context": "Evidence link (cite function names if applicable).",
-            "related_pid": 123
-        }}
-    ],
-    "artifacts": {{ "dropped_files": [], "c2_ips": [], "c2_domains": [], "mutual_exclusions": [], "command_lines": [] }},
-    "recommended_actions": [
-        {{
-            "action": "FETCH_URL",
-            "params": {{ "url": "http://example.com/malware" }},
-            "reasoning": "Detected suspicious DGA-like domain in telemetry."
-        }}
-    ],
-    "digital_signature": "String (e.g., 'Signed by Microsoft' or 'Unsigned')",
-    "mitre_matrix": {{
-        "Tactic Name (e.g. Execution, Persistence, Defense Evasion)": [
-            {{
-                "id": "TXXXX.XXX",
-                "name": "Technique Name",
-                "evidence": ["Specific telemetry or code evidence"],
-                "status": "confirmed or suspected"
-            }}
-        ]
-    }},
-    "thinking": "Your internal technical reasoning/chain-of-thought goes here."
-}}
-"# , 
-        filename = context.target_filename,
-        root_pid = context.patient_zero_pid,
-        pid_list = pid_list_str,
-        sysmon = sysmon_json,
-        ghidra = ghidra_json,
-        vt_section = vt_section,
-        notes_section = notes_section,
-        tags_section = tags_section,
-        hive_section = hive_section,
-        signature = digital_signature
+    let reduce_prompt = format!(
+        "GENERATE FORENSIC REPORT.
+         
+         TARGET: {} (Hash: '{}')
+         VERDICT: Decide if Malicious, Suspicious, or Benign (Use 'Diagnostic Gamma' for Malicious).
+         
+         --- AGGREGATED TELEMETRY INSIGHTS (From Local Deep-Scan) ---
+         - {}
+         
+         --- STATIC ANALYSIS (Ghidra) ---
+         {}
+         
+         --- VIRUSTOTAL ---
+         {}
+         
+         --- DIGITAL SIGNATURE ---
+         {}
+         
+         --- RAG CONTEXT ---
+         {}
+         
+         OUTPUT FORMAT: JSON ONLY, matching `ForensicReport` schema.
+         Field `behavioral_timeline` must be an array of objects: {{ \"timestamp_offset\": \"+2s\", \"stage\": \"Persistence\", \"event_description\": \"...\", \"technical_context\": \"...\", \"related_pid\": 123 }}
+         Field `thinking` should contain your chain of thought.
+         ",
+         target_filename, file_hash, consolidated_insights, static_summary, vt_summary, digital_signature, rag_context
     );
+        
+    let system_reduce = "You are the Lead Digital Forensics Expert. Synthesize the provided technical insights into a final comprehensive report.";
 
-    // 7. Call AI Provider via Manager (Mode-Aware)
-    let system_prompt_str = "You are a Senior Malware Researcher. Output strictly follows the JSON schema. \
-        Avoid preamble, avoid markdown fences if possible, just output the JSON object. \
-        Correlate telemetry to code patterns.".to_string();
-
-    let history = vec![crate::ai::provider::ChatMessage {
-        role: "user".to_string(),
-        content: prompt,
-    }];
-
-    // Read the current AI Mode for routing
-    let current_ai_mode = ai_manager.get_ai_mode().await;
-    println!("[AI] Generating report with AI Mode: {:?}", current_ai_mode);
+    println!("[AI] Starting Reduce Phase (Cloud LLM)...");
     
-    let mut response_text = match ai_manager.ask_with_mode(history, system_prompt_str, &current_ai_mode, "reduce").await {
-        Ok(text) => text,
-        Err(e) => return Err(format!("AI Provider failed: {}", e).into()),
+    // Ask Manager (Phase: "reduce")
+    let response_result = ai_manager.ask_with_mode(
+        vec![crate::ai::provider::ChatMessage { role: "user".to_string(), content: reduce_prompt }],
+        system_reduce.to_string(),
+        &crate::ai::manager::AIMode::Hybrid,
+        "reduce"
+    ).await;
+
+    let mut response_text = match response_result {
+        Ok(t) => t,
+        Err(e) => {
+            println!("[AI] Analysis Failed: {}", e);
+            return Err(e);
+        }
     };
     
     println!("[AI] Received response ({} chars)", response_text.len());
@@ -1252,10 +1135,21 @@ OUTPUT SCHEMA (JSON ONLY):
         .execute(pool)
         .await?;
     
-    // 9. Generate PDF causing the "Detailed Activity Log" to match the AI's focused analysis
+    // 9. Generate PDF causing the "Detailed Activity Log" to match the AI's focused analysis (Sample top 12)
+    let mut truncated_processes = all_processes.clone();
+    if truncated_processes.len() > 12 {
+        truncated_processes.truncate(12);
+    }
+    let mut truncated_ghidra_functions = context.static_analysis.functions.clone();
+    if truncated_ghidra_functions.len() > 12 {
+        truncated_ghidra_functions.truncate(12);
+    }
+    let mut truncated_ghidra = context.static_analysis.clone();
+    truncated_ghidra.functions = truncated_ghidra_functions;
+
     let refined_context = AnalysisContext {
-        processes: truncated_processes.clone(),
-        static_analysis: truncated_ghidra.clone(), // Use sorted/truncated ghidra too
+        processes: truncated_processes,
+        static_analysis: truncated_ghidra, 
         ..context.clone()
     };
 
