@@ -32,7 +32,7 @@ Forget manual log correlation. The Neural Report provides:
 *   **Threat Score Rings**: Visual assessment of risk level (0-100).
 *   **Verdict Triage**: High-confidence "Malicious", "Suspicious", or "Benign" judgments.
 
-### 🕸️ Activity Flow (Fishbone)
+### 🕸️ Activity Flow (Galaxy)
 *   **Real-Time Visualization**: Watch the process execution tree grow live during detonation.
 *   **Interactive Inspection**: Drill down into any process to see loaded DLLs, network connections, and registry modifications.
 
