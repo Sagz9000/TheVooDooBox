@@ -121,11 +121,26 @@ release-cursor=shift+f12
         setShowSubmissionModal(true);
     };
 
-    const handleGlobalSubmission = async (file: File, targetVms: number[]) => {
-        // Mock submission logic or implement real one if needed
-        console.log("Submitting", file.name, "to", targetVms);
-        setShowSubmissionModal(false);
-        alert("Submission initiated!");
+    const handleGlobalSubmission = async (data: any) => {
+        try {
+            if (data.type === 'file' && data.file) {
+                await voodooApi.submitSample({
+                    file: data.file,
+                    duration: data.duration,
+                    mode: data.mode,
+                    vmid: data.vmid,
+                    node: data.node
+                });
+            } else if (data.type === 'url' && data.url) {
+                await voodooApi.execUrl(data.url, data.duration, data.vmid, data.node);
+            }
+            setShowSubmissionModal(false);
+            // Switch to tasks view to see the new task
+            setView('tasks');
+        } catch (e) {
+            console.error("Submission failed", e);
+            alert("Failed to submit task. Check console for details.");
+        }
     };
 
     // ── Render ──

@@ -536,6 +536,33 @@ export const voodooApi = {
         });
         if (!resp.ok) throw new Error("Failed to update AI mode");
         return resp.json();
+    },
+
+    submitSample: async (data: {
+        file: File;
+        duration: number;
+        mode: string;
+        vmid?: number;
+        node?: string;
+    }) => {
+        const formData = new FormData();
+        formData.append('file', data.file);
+        formData.append('analysis_duration', data.duration.toString());
+        formData.append('analysis_mode', data.mode);
+        if (data.vmid) formData.append('vmid', data.vmid.toString());
+        if (data.node) formData.append('node', data.node);
+
+        const resp = await fetch(`${BASE_URL}/vms/actions/submit`, {
+            method: 'POST',
+            body: formData,
+        });
+        if (!resp.ok) throw new Error("Failed to submit sample");
+        return resp.json();
+    },
+
+    purgeAll: async () => {
+        const resp = await fetch(`${BASE_URL}/tasks/purge`, { method: 'POST' });
+        return resp.ok;
     }
 };
 
