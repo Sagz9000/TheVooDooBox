@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Bug, Activity, Disc, Box, FileText, Play, Layers, Server, Sliders, Zap, MonitorPlay, ExternalLink } from 'lucide-react';
+import { Bug, Activity, Disc, Box, FileText, Play, Layers, Server, Sliders, Zap, MonitorPlay, ExternalLink, Brain, Cpu, Cloud, Key } from 'lucide-react';
 import { ViewModel, voodooApi, BASE_URL } from './voodooApi';
 
 interface AnalysisTask {
@@ -29,13 +29,33 @@ export default function LabDashboard({ vms, onRefresh, onSelectVm, onLaunchNativ
     const [tasks, setTasks] = useState<AnalysisTask[]>([]);
     const [allowedVmIds, setAllowedVmIds] = useState<number[]>([]);
     const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+    const [aiConfig, setAiConfig] = useState<{ provider: string, model: string } | null>(null);
 
 
     useEffect(() => {
         fetchTasks();
-        const interval = setInterval(fetchTasks, 5000);
+        fetchAIConfig();
+        const interval = setInterval(() => {
+            fetchTasks();
+            fetchAIConfig(); // Keep AI config in sync
+        }, 5000);
         return () => clearInterval(interval);
     }, []);
+
+    const fetchAIConfig = () => {
+        voodooApi.getAIConfig().then((config: any) => {
+            let model = config.ollama_model;
+            if (config.provider === 'anthropic') model = config.anthropic_model;
+            else if (config.provider === 'openai') model = config.openai_model;
+            else if (config.provider === 'copilot') model = config.copilot_model;
+            else if (config.provider === 'gemini') model = config.gemini_model;
+
+            setAiConfig({
+                provider: config.provider || 'ollama',
+                model: model || 'unknown'
+            });
+        }).catch(err => console.error("Failed to fetch AI config", err));
+    };
 
     // Load allowed VM IDs from localStorage on mount
     useEffect(() => {
@@ -89,8 +109,31 @@ export default function LabDashboard({ vms, onRefresh, onSelectVm, onLaunchNativ
             <div className="scanlines"></div>
             {/* Header Section */}
             <header className="flex justify-between items-center mb-6 relative z-10 shrink-0">
-                <div className="flex items-center gap-4">
+                <div className="flex items-center gap-6">
                     <img src="/logo.png" alt="THE VOODOOBOX" className="h-20 w-auto object-contain drop-shadow-[4px_4px_0px_rgba(0,0,0,1)]" />
+
+                    {/* Active AI Indicator */}
+                    {aiConfig && (
+                        <div className="flex items-center gap-3 px-4 py-2 bg-black/60 border border-voodoo-border/50 backdrop-blur-sm shadow-[0_0_15px_rgba(0,0,0,0.5)] group hover:border-voodoo-toxic-green/50 transition-colors">
+                            <div className={`p-1.5 rounded-sm ${aiConfig.provider === 'anthropic' ? 'bg-voodoo-purple/20 text-voodoo-purple' :
+                                aiConfig.provider === 'openai' ? 'bg-blue-500/20 text-blue-400' :
+                                    aiConfig.provider === 'copilot' ? 'bg-orange-500/20 text-orange-400' :
+                                        'bg-voodoo-toxic-green/20 text-voodoo-toxic-green'
+                                }`}>
+                                {aiConfig.provider === 'anthropic' ? <Cpu size={16} /> :
+                                    aiConfig.provider === 'openai' ? <Cloud size={16} /> :
+                                        aiConfig.provider === 'copilot' ? <Key size={16} /> :
+                                            <Brain size={16} />}
+                            </div>
+                            <div className="flex flex-col">
+                                <span className="text-[8px] font-black uppercase tracking-[0.2em] text-white/40 group-hover:text-white/60 transition-colors">Cortex Uplink</span>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-[11px] font-bold text-white uppercase tracking-wider">{aiConfig.provider}</span>
+                                    {aiConfig.model && <span className="text-[9px] font-mono text-white/30 border-l border-white/10 pl-2">{aiConfig.model}</span>}
+                                </div>
+                            </div>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex gap-4">

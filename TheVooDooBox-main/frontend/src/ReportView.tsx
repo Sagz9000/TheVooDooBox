@@ -34,6 +34,7 @@ import AIInsightPanel from './AIInsightPanel';
 import AnalystNotepad from './AnalystNotepad';
 import NeuralReport from './NeuralReport';
 import Split from './lib/split';
+import FishboneDiagram from './FishboneDiagram';
 
 interface Props {
     taskId: string | null;
@@ -1155,6 +1156,21 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                                         </div>
                                     </div>
                                 ))}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Process Lineage Tree */}
+                    {globalEvents && globalEvents.length > 0 && (
+                        <div className="print-section">
+                            <div className="print-section-header">Process Lineage</div>
+                            <div className="print-lineage-tree" style={{ height: '350px', background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', overflow: 'hidden' }}>
+                                <FishboneDiagram
+                                    events={globalEvents}
+                                    width={700}
+                                    height={350}
+                                    printMode={true}
+                                />
                             </div>
                         </div>
                     )}

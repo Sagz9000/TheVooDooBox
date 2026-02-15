@@ -1423,6 +1423,12 @@ struct ConfigRequest {
     gemini_key: Option<String>,
     ollama_url: Option<String>,
     ollama_model: Option<String>,
+    anthropic_key: Option<String>,
+    anthropic_model: Option<String>,
+    openai_key: Option<String>,
+    openai_model: Option<String>,
+    copilot_token: Option<String>,
+    copilot_model: Option<String>,
 }
 
 #[post("/vms/ai/config")]
@@ -1432,21 +1438,32 @@ async fn set_ai_config(
 ) -> impl Responder {
     let provider = match req.provider.to_lowercase().as_str() {
         "gemini" => ProviderType::Gemini,
-        _ => ProviderType::Ollama,
+        "anthropic" => ProviderType::Anthropic,
+        "openai" => ProviderType::OpenAI,
+        "copilot" => ProviderType::Copilot,
+        _ => ProviderType::Ollama, // Default fallback
     };
 
-    ai_manager.switch_provider(provider, req.gemini_key.clone(), req.ollama_url.clone(), req.ollama_model.clone()).await;
+    ai_manager.switch_provider(
+        provider, 
+        req.gemini_key.clone(), 
+        req.ollama_url.clone(), 
+        req.ollama_model.clone(),
+        req.anthropic_key.clone(),
+        req.anthropic_model.clone(),
+        req.openai_key.clone(),
+        req.openai_model.clone(),
+        req.copilot_token.clone(),
+        req.copilot_model.clone()
+    ).await;
+    
     HttpResponse::Ok().json(serde_json::json!({ "status": "success", "provider": req.provider }))
 }
 
 #[get("/vms/ai/config")]
 async fn get_ai_config(ai_manager: web::Data<AIManager>) -> impl Responder {
-    let provider_name = ai_manager.get_current_provider_name().await;
-    let ai_mode = ai_manager.get_ai_mode().await;
-    HttpResponse::Ok().json(serde_json::json!({
-        "provider": provider_name,
-        "ai_mode": ai_mode.to_str()
-    }))
+    let config = ai_manager.get_config().await;
+    HttpResponse::Ok().json(config)
 }
 
 #[derive(Deserialize)]

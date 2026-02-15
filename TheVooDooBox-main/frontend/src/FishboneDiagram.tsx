@@ -1,12 +1,14 @@
-import React, { useEffect, useRef, useMemo, useCallback } from 'react';
+import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { AgentEvent } from './voodooApi';
 
+// ── Types ──
 interface FishboneProps {
     events: AgentEvent[];
     width?: number;
     height?: number;
     mitreData?: Map<number, string[]>;
+    printMode?: boolean; // Static render for PDF export
 }
 
 interface ProcessNode {
@@ -18,44 +20,65 @@ interface ProcessNode {
     type: 'root' | 'process';
     startTime?: number;
     techniques?: string[];
+    commandLine?: string;
+    _collapsed?: boolean;
+    _childCount?: number; // Total descendants (for +N badge)
 }
 
-// Force simulation node extends ProcessNode with D3 position fields
-interface SimNode extends d3.SimulationNodeDatum {
-    data: ProcessNode;
-    radius: number;
-    x?: number;
-    y?: number;
-    fx?: number | null;
-    fy?: number | null;
-}
+// D3 hierarchy node with coordinates
+type TreeNode = d3.HierarchyPointNode<ProcessNode>;
 
-interface SimLink extends d3.SimulationLinkDatum<SimNode> {
-    source: number | SimNode;
-    target: number | SimNode;
-    timeDelta?: number;
-}
+// ── Constants ──
+const NOISE_PROCESSES = new Set([
+    'system', 'smss.exe', 'csrss.exe', 'wininit.exe', 'winlogon.exe',
+    'services.exe', 'lsass.exe', 'svchost.exe', 'dwm.exe', 'ctfmon.exe',
+    'fontdrvhost.exe', 'spoolsv.exe', 'searchindexer.exe', 'taskhostw.exe',
+    'sppsvc.exe', 'conhost.exe', 'voodoobox-agent-windows.exe',
+    'voodoobox-agent.exe', 'audiodg.exe', 'sihost.exe', 'runtimebroker.exe',
+    'shellexperiencehost.exe', 'startmenuexperiencehost.exe',
+    'textinputhost.exe', 'dllhost.exe', 'searchui.exe',
+    'microsoftedgeupdate.exe', 'wmiprvse.exe', 'wudfhost.exe',
+    'officeclicktorun.exe', 'werfault.exe', 'trustedinstaller.exe',
+    'tiworker.exe', 'taskmgr.exe', 'securityhealthservice.exe',
+    'securityhealthsystray.exe', 'msmpeng.exe', 'nissrv.exe',
+    'sgrmbroker.exe', 'registry', 'memory compression',
+    'system idle process',
+]);
 
-// ── Color Palette ──
+const SHELL_PROCESSES = new Set([
+    'cmd.exe', 'powershell.exe', 'pwsh.exe', 'wscript.exe',
+    'cscript.exe', 'mshta.exe', 'bash.exe', 'sh.exe',
+]);
+
+const NODE_W = 180;
+const NODE_H = 48;
+const NODE_GAP_X = 40;
+const NODE_GAP_Y = 80;
+
+// ── Color Palette (VooDoo Theme) ──
 const COLOR = {
-    root: '#666',
-    target: '#ae00ff',    // Voodoo Purple
-    shell: '#ff003c',     // Threat Red
-    standard: '#00ff99',  // Toxic Green
-    link: '#333',
-    linkActive: '#ae00ff44',
-    label: '#ccc',
-    sublabel: '#666',
-    timeDelta: '#555',
-    bg: '#0a0a0a',
-    glow: (c: string) => `${c}66`,
+    root: { bg: '#1a1a1a', border: '#444', text: '#888', glow: 'none' },
+    target: { bg: '#1a0028', border: '#ae00ff', text: '#d580ff', glow: '0 0 12px rgba(174,0,255,0.4)' },
+    shell: { bg: '#280008', border: '#ff003c', text: '#ff6680', glow: '0 0 12px rgba(255,0,60,0.3)' },
+    standard: { bg: '#001a0d', border: '#00ff99', text: '#66ffbb', glow: 'none' },
+    link: '#555',
+    linkGrad1: '#ae00ff',
+    linkGrad2: '#00ff99',
+    arrow: '#888',
+    timeDelta: '#ae00ff88',
+    tooltip: { bg: '#111', border: '#333', text: '#ccc' },
+    badge: { bg: '#ae00ff22', border: '#ae00ff88', text: '#d580ff' },
+    collapsed: { bg: '#1a1a0d', border: '#ffaa00', text: '#ffcc44' },
 };
 
-function nodeColor(name: string, type: string): string {
+function getNodeStyle(name: string, type: string) {
     if (type === 'root') return COLOR.root;
     const n = name.toLowerCase();
-    if (n.includes('sample') || n.includes('artifact')) return COLOR.target;
-    if (n.includes('cmd') || n.includes('powershell') || n.includes('wscript') || n.includes('cscript') || n.includes('mshta')) return COLOR.shell;
+    if (n.includes('sample') || n.includes('artifact') || n.includes('.exe') && !SHELL_PROCESSES.has(n) && !NOISE_PROCESSES.has(n)) {
+        // Check if it's the "interesting" target — heuristic: not a shell, not noise
+        if (n.includes('sample') || n.includes('artifact')) return COLOR.target;
+    }
+    if (SHELL_PROCESSES.has(n)) return COLOR.shell;
     return COLOR.standard;
 }
 
@@ -66,7 +89,16 @@ function formatDelta(ms: number): string {
     return `+${(ms / 60000).toFixed(1)}m`;
 }
 
-// ── Build Hierarchy ──
+// ── Count all descendants ──
+function countDescendants(node: ProcessNode): number {
+    let count = 0;
+    for (const child of node.children) {
+        count += 1 + countDescendants(child);
+    }
+    return count;
+}
+
+// ── Build Hierarchy with noise filtering ──
 function buildHierarchy(events: AgentEvent[], mitreData?: Map<number, string[]>): ProcessNode | null {
     if (!events || events.length === 0) return null;
 
@@ -77,20 +109,27 @@ function buildHierarchy(events: AgentEvent[], mitreData?: Map<number, string[]>)
             processMap.set(procId, {
                 id: procId, pid, name,
                 children: [], events: [], type: 'process',
-                techniques: mitreData?.get(pid) || []
+                techniques: mitreData?.get(pid) || [],
             });
         }
         return processMap.get(procId)!;
     };
 
+    // Phase 1: Create nodes from events
     events.forEach(e => {
         const pId = e.process_id || 0;
-        const node = getOrCreate(pId, e.process_id || 0, e.process_name || `Unknown (${pId})`);
+        const node = getOrCreate(pId, e.process_id || 0, e.process_name || `PID ${pId}`);
         node.events.push(e);
-        if (e.event_type === 'PROCESS_CREATE' && e.process_name) node.name = e.process_name;
+        if (e.event_type === 'PROCESS_CREATE' && e.process_name) {
+            node.name = e.process_name;
+        }
+        // Capture command line from PROCESS_CREATE details
+        if (e.event_type === 'PROCESS_CREATE' && e.details && !node.commandLine) {
+            node.commandLine = e.details;
+        }
     });
 
-    // Start times
+    // Phase 2: Set start times
     processMap.forEach(node => {
         if (node.events.length > 0) {
             const create = node.events.find(e => e.event_type === 'PROCESS_CREATE');
@@ -98,7 +137,16 @@ function buildHierarchy(events: AgentEvent[], mitreData?: Map<number, string[]>)
         }
     });
 
-    // Parent→Child
+    // Phase 3: Filter noise BEFORE building parent-child links
+    const noiseIds = new Set<number>();
+    processMap.forEach((node, procId) => {
+        if (NOISE_PROCESSES.has(node.name.toLowerCase())) {
+            noiseIds.add(procId);
+        }
+    });
+    noiseIds.forEach(id => processMap.delete(id));
+
+    // Phase 4: Build parent-child relationships
     const roots: ProcessNode[] = [];
     processMap.forEach((node, procId) => {
         const create = node.events.find(e => e.event_type === 'PROCESS_CREATE');
@@ -113,353 +161,434 @@ function buildHierarchy(events: AgentEvent[], mitreData?: Map<number, string[]>)
     });
 
     if (roots.length === 0) return null;
+
+    // Sort children by start time
+    const sortChildren = (node: ProcessNode) => {
+        node.children.sort((a, b) => (a.startTime || 0) - (b.startTime || 0));
+        node.children.forEach(sortChildren);
+    };
+
+    let root: ProcessNode;
     if (roots.length === 1) {
-        roots[0].type = 'root';
-        return roots[0];
+        root = roots[0];
+        root.type = 'root';
+    } else {
+        const contextStart = Math.min(...roots.map(r => r.startTime || Infinity));
+        root = {
+            id: -999, pid: 0, name: 'Detonation Context',
+            children: roots, events: [], type: 'root',
+            startTime: contextStart === Infinity ? 0 : contextStart,
+        };
     }
 
-    const contextStart = Math.min(...roots.map(r => r.startTime || Infinity));
-    return {
-        id: -999, pid: 0, name: 'Detonation Context',
-        children: roots, events: [], type: 'root',
-        startTime: contextStart === Infinity ? 0 : contextStart
+    sortChildren(root);
+
+    // Count descendants for collapse badges
+    const annotateCount = (node: ProcessNode) => {
+        node._childCount = countDescendants(node);
+        node.children.forEach(annotateCount);
     };
+    annotateCount(root);
+
+    return root;
 }
 
-// ── Flatten hierarchy into nodes & links for force simulation ──
-function flatten(root: ProcessNode): { nodes: SimNode[]; links: SimLink[] } {
-    const nodes: SimNode[] = [];
-    const links: SimLink[] = [];
-    const visited = new Set<number>();
-
-    function walk(proc: ProcessNode, depth: number) {
-        if (visited.has(proc.id)) return;
-        visited.add(proc.id);
-
-        const eventCount = proc.events.length;
-        const radius = proc.type === 'root' ? 10 : Math.max(5, Math.min(14, 4 + eventCount * 0.8));
-
-        const node: SimNode = { data: proc, radius };
-        nodes.push(node);
-
-        proc.children.forEach(child => {
-            const timeDelta = (child.startTime && proc.startTime) ? child.startTime - proc.startTime : undefined;
-            links.push({
-                source: proc.id,
-                target: child.id,
-                timeDelta: timeDelta && timeDelta > 0 ? timeDelta : undefined
-            });
-            walk(child, depth + 1);
-        });
+// ── Get visible tree (respecting collapsed state) ──
+function getVisibleTree(node: ProcessNode): ProcessNode {
+    if (node._collapsed) {
+        return { ...node, children: [] };
     }
-
-    walk(root, 0);
-    console.log("[Fishbone] flatten result: nodes:", nodes.length, "links:", links.length);
-    return { nodes, links };
+    return { ...node, children: node.children.map(getVisibleTree) };
 }
 
 // ────────────────────────────────────────────
 // COMPONENT
 // ────────────────────────────────────────────
-export default function FishboneDiagram({ events, width = 800, height = 400, mitreData }: FishboneProps) {
+export default function FishboneDiagram({ events, width = 1000, height = 400, mitreData, printMode = false }: FishboneProps) {
     const svgRef = useRef<SVGSVGElement>(null);
-    const simRef = useRef<d3.Simulation<SimNode, SimLink> | null>(null);
+    const tooltipRef = useRef<HTMLDivElement>(null);
+    const [, forceUpdate] = useState(0); // trigger re-render on collapse
 
     const root = useMemo(() => {
-        const r = buildHierarchy(events, mitreData);
-        console.log("[Fishbone] root built:", !!r, "events:", events.length);
-        return r;
+        return buildHierarchy(events, mitreData);
     }, [events, mitreData]);
 
-    const drawGalaxy = useCallback(() => {
-        console.log("[Fishbone] drawGalaxy triggered. root:", !!root, "svgRef:", !!svgRef.current);
+    const drawTree = useCallback(() => {
         if (!root || !svgRef.current) return;
-
-        // Cleanup previous sim
-        if (simRef.current) {
-            console.log("[Fishbone] Stopping previous simulation");
-            simRef.current.stop();
-            simRef.current = null;
-        }
 
         const svg = d3.select(svgRef.current);
         svg.selectAll('*').remove();
 
-        const { nodes, links } = flatten(root);
+        // Build visible tree (respecting collapsed nodes)
+        const visibleRoot = getVisibleTree(root);
+        const hierarchy = d3.hierarchy(visibleRoot);
 
-        // Map: id → SimNode for link resolution
-        const nodeById = new Map<number, SimNode>();
-        nodes.forEach(n => nodeById.set(n.data.id, n));
+        // D3 tree layout
+        const treeLayout = d3.tree<ProcessNode>()
+            .nodeSize([NODE_W + NODE_GAP_X, NODE_H + NODE_GAP_Y])
+            .separation((a, b) => a.parent === b.parent ? 1 : 1.3);
 
-        // Resolve links to actual references
-        const resolvedLinks: SimLink[] = links
-            .map((l): SimLink | null => {
-                const src = nodeById.get(l.source as number);
-                const tgt = nodeById.get(l.target as number);
-                if (!src || !tgt) return null;
-                return {
-                    source: src,
-                    target: tgt,
-                    timeDelta: l.timeDelta,
-                };
-            })
-            .filter((l): l is SimLink => l !== null);
+        const treeData = treeLayout(hierarchy) as TreeNode;
+        const nodes = treeData.descendants();
+        const links = treeData.links();
 
-        console.log("[Fishbone] resolvedLinks after filter:", resolvedLinks.length);
-
-        // ── Defs (gradients, glows) ──
+        // ── Defs ──
         const defs = svg.append('defs');
 
-        // Radial glow filter
-        const glowFilter = defs.append('filter').attr('id', 'galaxy-glow');
-        glowFilter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'blur');
-        glowFilter.append('feMerge').selectAll('feMergeNode')
+        // Arrow marker
+        defs.append('marker')
+            .attr('id', 'lineage-arrow')
+            .attr('viewBox', '0 0 10 10')
+            .attr('refX', 10)
+            .attr('refY', 5)
+            .attr('markerWidth', 8)
+            .attr('markerHeight', 8)
+            .attr('orient', 'auto')
+            .append('path')
+            .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+            .attr('fill', COLOR.arrow);
+
+        // Glow filter
+        const glow = defs.append('filter').attr('id', 'node-glow');
+        glow.append('feGaussianBlur').attr('stdDeviation', '4').attr('result', 'blur');
+        glow.append('feMerge').selectAll('feMergeNode')
             .data(['blur', 'SourceGraphic'])
             .enter().append('feMergeNode')
-            .attr('in', (d: any) => d);
+            .attr('in', (d: string) => d);
 
         // ── Container group for zoom/pan ──
         const g = svg.append('g');
 
-        const zoom = d3.zoom<SVGSVGElement, unknown>()
-            .scaleExtent([0.15, 5])
-            .on('zoom', (event: any) => g.attr('transform', event.transform));
+        if (!printMode) {
+            const zoom = d3.zoom<SVGSVGElement, unknown>()
+                .scaleExtent([0.15, 3])
+                .on('zoom', (event: any) => g.attr('transform', event.transform));
 
-        svg.call(zoom)
-            .call(zoom.transform, d3.zoomIdentity.translate(width / 2, height / 2));
+            svg.call(zoom);
 
-        // ── TEST CIRCLE at (0,0) ──
-        g.append('circle').attr('r', 20).attr('fill', 'red').attr('opacity', 0.5);
+            // Auto-fit: compute bounds and center
+            const xExtent = d3.extent(nodes, (d: TreeNode) => d.x) as [number, number];
+            const yExtent = d3.extent(nodes, (d: TreeNode) => d.y) as [number, number];
+            const treeBoundsW = (xExtent[1] - xExtent[0]) + NODE_W + 80;
+            const treeBoundsH = (yExtent[1] - yExtent[0]) + NODE_H + 80;
 
-        console.log("[Fishbone] Rendering", nodes.length, "nodes and", resolvedLinks.length, "links");
+            const scale = Math.min(width / treeBoundsW, height / treeBoundsH, 1);
+            const tx = (width / 2) - ((xExtent[0] + xExtent[1]) / 2) * scale;
+            const ty = 40 * scale; // Small top margin
 
-        // ── Links ──
-        const linkSelection = g.selectAll('.galaxy-link')
-            .data(resolvedLinks)
-            .enter().append('line')
-            .attr('class', 'galaxy-link')
+            svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
+        } else {
+            // Print mode: static transform to fit
+            const xExtent = d3.extent(nodes, (d: TreeNode) => d.x) as [number, number];
+            const yExtent = d3.extent(nodes, (d: TreeNode) => d.y) as [number, number];
+            const treeBoundsW = (xExtent[1] - xExtent[0]) + NODE_W + 80;
+            const treeBoundsH = (yExtent[1] - yExtent[0]) + NODE_H + 80;
+            const scale = Math.min(width / treeBoundsW, height / treeBoundsH, 1);
+            const tx = (width / 2) - ((xExtent[0] + xExtent[1]) / 2) * scale;
+            const ty = 30 * scale;
+            g.attr('transform', `translate(${tx},${ty}) scale(${scale})`);
+        }
+
+        // ── Links (curved vertical paths) ──
+
+        const linkGroup = g.selectAll('.lineage-link')
+            .data(links)
+            .enter().append('g')
+            .attr('class', 'lineage-link');
+
+        linkGroup.append('path')
+            .attr('d', (d: any) => {
+                const sourceX = d.source.x;
+                const sourceY = d.source.y + NODE_H;
+                const targetX = d.target.x;
+                const targetY = d.target.y;
+                const midY = (sourceY + targetY) / 2;
+                return `M ${sourceX} ${sourceY} C ${sourceX} ${midY}, ${targetX} ${midY}, ${targetX} ${targetY}`;
+            })
+            .attr('fill', 'none')
             .attr('stroke', COLOR.link)
-            .attr('stroke-width', 1)
-            .attr('stroke-opacity', 0.4);
+            .attr('stroke-width', 1.5)
+            .attr('stroke-opacity', 0.6)
+            .attr('marker-end', 'url(#lineage-arrow)');
 
-        // ── Time-delta labels on links ──
-        const timeLabelSelection = g.selectAll('.galaxy-time')
-            .data(resolvedLinks.filter(l => l.timeDelta))
-            .enter().append('text')
-            .attr('class', 'galaxy-time')
-            .attr('text-anchor', 'middle')
-            .attr('fill', COLOR.timeDelta)
-            .attr('font-size', '8px')
-            .attr('font-family', "'JetBrains Mono', monospace")
-            .text((d: SimLink) => formatDelta(d.timeDelta!));
+        // Time delta labels on links
+        linkGroup.each(function (this: SVGGElement, d: any) {
+            const parentStart = d.source.data.startTime;
+            const childStart = d.target.data.startTime;
+            if (parentStart && childStart && childStart > parentStart) {
+                const delta = childStart - parentStart;
+                const midX = (d.source.x + d.target.x) / 2;
+                const midY = (d.source.y + NODE_H + d.target.y) / 2;
+
+                d3.select(this).append('text')
+                    .attr('x', midX + 8)
+                    .attr('y', midY)
+                    .attr('text-anchor', 'start')
+                    .attr('fill', COLOR.timeDelta)
+                    .attr('font-size', '9px')
+                    .attr('font-family', "'JetBrains Mono', monospace")
+                    .attr('font-weight', 'bold')
+                    .text(formatDelta(delta));
+            }
+        });
 
         // ── Node groups ──
-        const nodeSelection = g.selectAll('.galaxy-node')
+        const nodeGroup = g.selectAll('.lineage-node')
             .data(nodes)
             .enter().append('g')
-            .attr('class', 'galaxy-node')
-            .style('cursor', 'pointer')
-            .call(d3.drag<SVGGElement, SimNode>()
-                .on('start', (event: any, d: SimNode) => {
-                    if (!event.active) simulation.alphaTarget(0.3).restart();
-                    d.fx = d.x; d.fy = d.y;
-                })
-                .on('drag', (event: any, d: SimNode) => {
-                    d.fx = event.x; d.fy = event.y;
-                })
-                .on('end', (event: any, d: SimNode) => {
-                    if (!event.active) simulation.alphaTarget(0);
-                    d.fx = null; d.fy = null;
-                })
-            );
+            .attr('class', 'lineage-node')
+            .attr('transform', (d: TreeNode) => `translate(${d.x - NODE_W / 2}, ${d.y})`)
+            .style('cursor', printMode ? 'default' : 'pointer');
 
-        // Outer glow ring
-        nodeSelection.append('circle')
-            .attr('r', (d: SimNode) => d.radius + 4)
-            .attr('fill', 'none')
-            .attr('stroke', (d: SimNode) => COLOR.glow(nodeColor(d.data.name, d.data.type)))
-            .attr('stroke-width', 2)
-            .attr('stroke-opacity', 0.3)
-            .attr('filter', 'url(#galaxy-glow)');
+        // Node card backgrounds (rounded rects)
+        nodeGroup.append('rect')
+            .attr('width', NODE_W)
+            .attr('height', NODE_H)
+            .attr('rx', 6)
+            .attr('ry', 6)
+            .attr('fill', (d: TreeNode) => {
+                if (d.data._collapsed) return COLOR.collapsed.bg;
+                return getNodeStyle(d.data.name, d.data.type).bg;
+            })
+            .attr('stroke', (d: TreeNode) => {
+                if (d.data._collapsed) return COLOR.collapsed.border;
+                return getNodeStyle(d.data.name, d.data.type).border;
+            })
+            .attr('stroke-width', 1.5)
+            .style('box-shadow', (d: TreeNode) => getNodeStyle(d.data.name, d.data.type).glow);
 
-        // Core circle
-        nodeSelection.append('circle')
-            .attr('r', (d: SimNode) => d.radius)
-            .attr('fill', (d: SimNode) => nodeColor(d.data.name, d.data.type))
-            .attr('stroke', '#000')
-            .attr('stroke-width', 1.5);
+        // Glow effect for target processes
+        nodeGroup.filter((d: TreeNode) => {
+            const n = d.data.name.toLowerCase();
+            return n.includes('sample') || n.includes('artifact');
+        }).select('rect')
+            .attr('filter', 'url(#node-glow)');
 
-        // Inner bright dot (star effect)
-        nodeSelection.append('circle')
-            .attr('r', (d: SimNode) => Math.max(1.5, d.radius * 0.3))
-            .attr('fill', '#fff')
-            .attr('opacity', 0.6);
-
-        // Process name label
-        nodeSelection.append('text')
-            .attr('dy', (d: SimNode) => -(d.radius + 6))
-            .attr('text-anchor', 'middle')
-            .attr('fill', COLOR.label)
-            .attr('font-size', '10px')
+        // Process name
+        nodeGroup.append('text')
+            .attr('x', 12)
+            .attr('y', 18)
+            .attr('fill', (d: TreeNode) => {
+                if (d.data._collapsed) return COLOR.collapsed.text;
+                return getNodeStyle(d.data.name, d.data.type).text;
+            })
+            .attr('font-size', '11px')
             .attr('font-family', "'JetBrains Mono', monospace")
             .attr('font-weight', 'bold')
-            .style('text-shadow', '0 2px 6px rgba(0,0,0,0.9)')
-            .style('pointer-events', 'none')
-            .text((d: SimNode) => d.data.name);
-
-        // PID + event count sub-label
-        nodeSelection.append('text')
-            .attr('dy', (d: SimNode) => d.radius + 14)
-            .attr('text-anchor', 'middle')
-            .attr('fill', COLOR.sublabel)
-            .attr('font-size', '8px')
-            .attr('font-family', "'JetBrains Mono', monospace")
-            .style('pointer-events', 'none')
-            .text((d: SimNode) => {
-                if (d.data.type === 'root') return '';
-                return `PID:${d.data.pid} [${d.data.events.length}]`;
+            .text((d: TreeNode) => {
+                const name = d.data.name;
+                return name.length > 20 ? name.slice(0, 18) + '…' : name;
             });
 
-        // MITRE Badges
-        nodeSelection.each(function (this: SVGGElement, d: SimNode) {
+        // PID + event count
+        nodeGroup.append('text')
+            .attr('x', 12)
+            .attr('y', 34)
+            .attr('fill', '#666')
+            .attr('font-size', '9px')
+            .attr('font-family', "'JetBrains Mono', monospace")
+            .text((d: TreeNode) => {
+                if (d.data.type === 'root' && d.data.id === -999) return 'Context Root';
+                const evCount = d.data.events.length;
+                return `PID:${d.data.pid}  [${evCount} events]`;
+            });
+
+        // Collapsed badge (+N)
+        nodeGroup.filter((d: TreeNode) => !!(d.data._collapsed && d.data._childCount && d.data._childCount > 0))
+            .append('g')
+            .attr('transform', `translate(${NODE_W - 30}, 4)`)
+            .call((g: d3.Selection<SVGGElement, TreeNode, SVGGElement, unknown>) => {
+                g.append('rect')
+                    .attr('width', 26)
+                    .attr('height', 14)
+                    .attr('rx', 3)
+                    .attr('fill', COLOR.collapsed.border)
+                    .attr('opacity', 0.3);
+                g.append('text')
+                    .attr('x', 13)
+                    .attr('y', 10)
+                    .attr('text-anchor', 'middle')
+                    .attr('fill', COLOR.collapsed.text)
+                    .attr('font-size', '9px')
+                    .attr('font-weight', 'bold')
+                    .attr('font-family', "'JetBrains Mono', monospace")
+                    .text((d: TreeNode) => `+${d.data._childCount}`);
+            });
+
+        // MITRE technique badges
+        nodeGroup.each(function (this: SVGGElement, d: TreeNode) {
             if (d.data.techniques && d.data.techniques.length > 0) {
-                const g = d3.select(this as SVGGElement);
-                const badges = d.data.techniques.slice(0, 3); // Max 3 badges
+                const badges = d.data.techniques.slice(0, 3);
+                const badgeG = d3.select(this).append('g')
+                    .attr('transform', `translate(0, ${NODE_H + 4})`);
 
                 badges.forEach((techId: string, i: number) => {
-                    const bg = g.append('g')
-                        .attr('transform', `translate(${(i * 24) - ((badges.length * 24) / 2) + 12}, ${d.radius + 24})`);
-
-                    bg.append('rect')
-                        .attr('x', -10)
-                        .attr('y', -5)
-                        .attr('width', 20)
-                        .attr('height', 10)
-                        .attr('rx', 2)
-                        .attr('fill', '#ae00ff33')
-                        .attr('stroke', '#ae00ff')
+                    const bw = techId.length * 6 + 10;
+                    const bx = i * (bw + 3);
+                    badgeG.append('rect')
+                        .attr('x', bx)
+                        .attr('y', 0)
+                        .attr('width', bw)
+                        .attr('height', 14)
+                        .attr('rx', 3)
+                        .attr('fill', COLOR.badge.bg)
+                        .attr('stroke', COLOR.badge.border)
                         .attr('stroke-width', 0.5);
 
-                    bg.append('text')
-                        .attr('dy', 2)
+                    badgeG.append('text')
+                        .attr('x', bx + bw / 2)
+                        .attr('y', 10)
                         .attr('text-anchor', 'middle')
-                        .attr('font-size', '6px')
-                        .attr('font-family', 'monospace')
-                        .attr('fill', '#ae00ff')
+                        .attr('fill', COLOR.badge.text)
+                        .attr('font-size', '8px')
+                        .attr('font-family', "'JetBrains Mono', monospace")
+                        .attr('font-weight', 'bold')
                         .text(techId);
                 });
             }
         });
 
-        // ── Hover effects ──
-        nodeSelection.on('mouseover', function (this: SVGGElement, _: any, d: SimNode) {
-            d3.select(this).select('circle:nth-child(2)')
-                .transition().duration(200)
-                .attr('r', d.radius * 1.4)
-                .attr('stroke-width', 2.5);
-            d3.select(this).select('circle:first-child')
-                .transition().duration(200)
-                .attr('stroke-opacity', 0.8);
-
-            // Highlight connected links
-            linkSelection
-                .attr('stroke', (l: SimLink) => {
-                    const s = l.source as SimNode;
-                    const t = l.target as SimNode;
-                    return (s.data.id === d.data.id || t.data.id === d.data.id) ? nodeColor(d.data.name, d.data.type) : COLOR.link;
-                })
-                .attr('stroke-opacity', (l: SimLink) => {
-                    const s = l.source as SimNode;
-                    const t = l.target as SimNode;
-                    return (s.data.id === d.data.id || t.data.id === d.data.id) ? 0.8 : 0.15;
-                })
-                .attr('stroke-width', (l: SimLink) => {
-                    const s = l.source as SimNode;
-                    const t = l.target as SimNode;
-                    return (s.data.id === d.data.id || t.data.id === d.data.id) ? 2 : 1;
-                });
-        }).on('mouseout', function (this: SVGGElement, _: any, d: SimNode) {
-            d3.select(this).select('circle:nth-child(2)')
-                .transition().duration(300)
-                .attr('r', d.radius)
-                .attr('stroke-width', 1.5);
-            d3.select(this).select('circle:first-child')
-                .transition().duration(300)
-                .attr('stroke-opacity', 0.3);
-
-            linkSelection
-                .attr('stroke', COLOR.link)
-                .attr('stroke-opacity', 0.4)
-                .attr('stroke-width', 1);
-        });
-
-        // ── Force Simulation ──
-        const simulation = d3.forceSimulation<SimNode>(nodes)
-            .force('link', d3.forceLink<SimNode, SimLink>(resolvedLinks)
-                .id((d: SimNode) => d.data.id)
-                .distance((d: SimLink) => {
-                    const src = d.source as SimNode;
-                    const tgt = d.target as SimNode;
-                    return 60 + src.radius + tgt.radius;
-                })
-                .strength(0.7)
-            )
-            .force('charge', d3.forceManyBody<SimNode>()
-                .strength((d: SimNode) => d.data.type === 'root' ? -400 : -200)
-                .distanceMax(350)
-            )
-            .force('collision', d3.forceCollide<SimNode>()
-                .radius((d: SimNode) => d.radius + 20)
-                .strength(0.9)
-            )
-            .force('center', d3.forceCenter(0, 0).strength(0.05))
-            .force('x', d3.forceX(0).strength(0.03))
-            .force('y', d3.forceY(0).strength(0.03))
-            .alpha(1)
-            .alphaDecay(0.02)
-            .on('tick', () => {
-                if (simulation.alpha() > 0.98) console.log("[Fishbone] Simulation tick running: alpha =", simulation.alpha().toFixed(3));
-                linkSelection
-                    .attr('x1', (d: SimLink) => (d.source as SimNode).x!)
-                    .attr('y1', (d: SimLink) => (d.source as SimNode).y!)
-                    .attr('x2', (d: SimLink) => (d.target as SimNode).x!)
-                    .attr('y2', (d: SimLink) => (d.target as SimNode).y!);
-
-                timeLabelSelection
-                    .attr('x', (d: SimLink) => ((d.source as SimNode).x! + (d.target as SimNode).x!) / 2)
-                    .attr('y', (d: SimLink) => ((d.source as SimNode).y! + (d.target as SimNode).y!) / 2 - 6);
-
-                nodeSelection.attr('transform', (d: SimNode) => `translate(${d.x},${d.y})`);
+        // ── Interactivity (non-print only) ──
+        if (!printMode) {
+            // Click to collapse/expand
+            nodeGroup.on('click', (_event: any, d: TreeNode) => {
+                if (d.data.children.length === 0 && !d.data._collapsed) return;
+                // Find the original node in root and toggle
+                const toggle = (node: ProcessNode, targetId: number): boolean => {
+                    if (node.id === targetId) {
+                        node._collapsed = !node._collapsed;
+                        return true;
+                    }
+                    for (const child of node.children) {
+                        if (toggle(child, targetId)) return true;
+                    }
+                    return false;
+                };
+                toggle(root, d.data.id);
+                forceUpdate(prev => prev + 1);
             });
 
-        simRef.current = simulation;
-    }, [root, width, height]);
+            // Hover tooltip
+            nodeGroup.on('mouseover', function (this: SVGGElement, event: MouseEvent, d: TreeNode) {
+                if (!tooltipRef.current || d.data.type === 'root') return;
+                const tip = tooltipRef.current;
+                const startStr = d.data.startTime ? new Date(d.data.startTime).toLocaleTimeString([], { hour12: false }) : 'N/A';
+                const cmdLine = d.data.commandLine || d.data.events.find(e => e.event_type === 'PROCESS_CREATE')?.details || '';
 
+                tip.innerHTML = `
+                    <div style="font-size:11px;font-weight:bold;color:white;margin-bottom:4px">${d.data.name}</div>
+                    <div style="font-size:9px;color:#888;font-family:monospace">
+                        PID: ${d.data.pid}<br/>
+                        Events: ${d.data.events.length}<br/>
+                        Start: ${startStr}<br/>
+                        ${d.data.techniques && d.data.techniques.length > 0 ? `MITRE: ${d.data.techniques.join(', ')}<br/>` : ''}
+                        ${cmdLine ? `<div style="margin-top:4px;padding-top:4px;border-top:1px solid #333;word-break:break-all;color:#aaa">${cmdLine.length > 200 ? cmdLine.slice(0, 200) + '…' : cmdLine}</div>` : ''}
+                    </div>
+                `;
+                tip.style.display = 'block';
+                tip.style.left = `${event.offsetX + 16}px`;
+                tip.style.top = `${event.offsetY - 10}px`;
+            })
+                .on('mousemove', function (event: MouseEvent) {
+                    if (!tooltipRef.current) return;
+                    tooltipRef.current.style.left = `${event.offsetX + 16}px`;
+                    tooltipRef.current.style.top = `${event.offsetY - 10}px`;
+                })
+                .on('mouseout', function () {
+                    if (tooltipRef.current) tooltipRef.current.style.display = 'none';
+                });
+
+            // Hover highlight links
+            nodeGroup.on('mouseover.links', function (_event: MouseEvent, d: TreeNode) {
+                linkGroup.select('path')
+                    .attr('stroke', (l: any) => {
+                        return (l.source.data.id === d.data.id || l.target.data.id === d.data.id)
+                            ? getNodeStyle(d.data.name, d.data.type).border
+                            : COLOR.link;
+                    })
+                    .attr('stroke-opacity', (l: any) => {
+                        return (l.source.data.id === d.data.id || l.target.data.id === d.data.id) ? 1 : 0.3;
+                    })
+                    .attr('stroke-width', (l: any) => {
+                        return (l.source.data.id === d.data.id || l.target.data.id === d.data.id) ? 2.5 : 1.5;
+                    });
+            }).on('mouseout.links', function () {
+                linkGroup.select('path')
+                    .attr('stroke', COLOR.link)
+                    .attr('stroke-opacity', 0.6)
+                    .attr('stroke-width', 1.5);
+            });
+        }
+
+    }, [root, width, height, printMode]);
+
+    // Trigger redraw on collapse state changes
     useEffect(() => {
-        drawGalaxy();
-        return () => { if (simRef.current) simRef.current.stop(); };
-    }, [drawGalaxy]);
+        drawTree();
+    }, [drawTree]);
+
+    if (!events || events.length === 0) {
+        return (
+            <div className="w-full h-full bg-[#0a0a0a] border border-white/5 rounded-lg overflow-hidden flex items-center justify-center">
+                <span className="text-zinc-700 text-xs font-mono uppercase">No Telemetry Data</span>
+            </div>
+        );
+    }
+
+    if (!root) {
+        return (
+            <div className="w-full h-full bg-[#0a0a0a] border border-white/5 rounded-lg overflow-hidden flex items-center justify-center">
+                <span className="text-zinc-700 text-xs font-mono uppercase">Failed to build process tree</span>
+            </div>
+        );
+    }
 
     return (
-        <div className="w-full h-full bg-[#0a0a0a] border border-white/5 rounded-lg overflow-hidden relative">
-            <div className="absolute top-2 left-2 text-[10px] uppercase font-black tracking-widest text-zinc-500 z-10">
-                Process Galaxy
-            </div>
-            {(!events || events.length === 0) ? (
-                <div className="flex items-center justify-center h-full text-zinc-700 text-xs font-mono uppercase">
-                    No Telemetry Data
+        <div className={`w-full h-full bg-[#0a0a0a] border border-white/5 rounded-lg overflow-hidden relative ${printMode ? 'print-lineage-tree' : ''}`}>
+            {!printMode && (
+                <div className="absolute top-2 left-2 text-[10px] uppercase font-black tracking-widest text-zinc-500 z-10">
+                    Process Lineage
                 </div>
-            ) : !root ? (
-                <div className="flex items-center justify-center h-full text-zinc-700 text-xs font-mono uppercase">
-                    Failed to build process tree
+            )}
+            {!printMode && (
+                <div className="absolute top-2 right-2 flex items-center gap-3 z-10">
+                    <div className="flex items-center gap-1.5 text-[8px] uppercase tracking-wider font-bold">
+                        <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLOR.target.border }}></span>
+                        <span className="text-zinc-600">Target</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[8px] uppercase tracking-wider font-bold">
+                        <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLOR.shell.border }}></span>
+                        <span className="text-zinc-600">Shell</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[8px] uppercase tracking-wider font-bold">
+                        <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLOR.standard.border }}></span>
+                        <span className="text-zinc-600">Process</span>
+                    </div>
                 </div>
-            ) : (
-                <svg
-                    ref={svgRef}
-                    width={width}
-                    height={height}
-                    viewBox={`0 0 ${width} ${height}`}
-                    className="block mx-auto cursor-grab active:cursor-grabbing"
+            )}
+            <svg
+                ref={svgRef}
+                width={width}
+                height={height}
+                viewBox={`0 0 ${width} ${height}`}
+                className={`block mx-auto ${printMode ? '' : 'cursor-grab active:cursor-grabbing'}`}
+            />
+            {/* Tooltip container */}
+            {!printMode && (
+                <div
+                    ref={tooltipRef}
+                    style={{
+                        display: 'none',
+                        position: 'absolute',
+                        zIndex: 50,
+                        background: COLOR.tooltip.bg,
+                        border: `1px solid ${COLOR.tooltip.border}`,
+                        borderRadius: '6px',
+                        padding: '8px 12px',
+                        maxWidth: '320px',
+                        pointerEvents: 'none',
+                        boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                    }}
                 />
             )}
         </div>

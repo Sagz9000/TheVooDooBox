@@ -212,6 +212,22 @@ impl AIManager {
         provider.name().to_string()
     }
 
+    pub async fn get_config(&self) -> serde_json::Value {
+        serde_json::json!({
+            "provider": self.get_current_provider_name().await,
+            "ai_mode": self.get_ai_mode().await.to_str(),
+            "gemini_key": self.gemini_key.read().await.as_str(),
+            "ollama_url": self.ollama_url.read().await.as_str(),
+            "ollama_model": self.ollama_model.read().await.as_str(),
+            "anthropic_key": self.anthropic_key.read().await.as_str(),
+            "anthropic_model": self.anthropic_model.read().await.as_str(),
+            "openai_key": self.openai_key.read().await.as_str(),
+            "openai_model": self.openai_model.read().await.as_str(),
+            "copilot_token": self.copilot_token.read().await.as_str(),
+            "copilot_model": self.copilot_model.read().await.as_str(),
+        })
+    }
+
     pub async fn ask(&self, history: Vec<crate::ai::provider::ChatMessage>, system_prompt: String) -> Result<String, Box<dyn std::error::Error + Send + Sync>> {
         let provider = self.provider.read().await;
         provider.ask(history, system_prompt).await

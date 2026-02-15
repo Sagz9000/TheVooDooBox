@@ -13,6 +13,12 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
     const [geminiKey, setGeminiKey] = useState('');
     const [ollamaUrl, setOllamaUrl] = useState('');
     const [ollamaModel, setOllamaModel] = useState('');
+    const [anthropicKey, setAnthropicKey] = useState('');
+    const [anthropicModel, setAnthropicModel] = useState('');
+    const [openaiKey, setOpenaiKey] = useState('');
+    const [openaiModel, setOpenaiModel] = useState('');
+    const [copilotToken, setCopilotToken] = useState('');
+    const [copilotModel, setCopilotModel] = useState('');
     const [showKey, setShowKey] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [status, setStatus] = useState<{ type: 'success' | 'error', message: string } | null>(null);
@@ -20,14 +26,29 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
 
     useEffect(() => {
         if (isOpen) {
-            voodooApi.getAIConfig().then(config => {
-                setProvider(config.provider.toLowerCase());
+            voodooApi.getAIConfig().then((config: any) => {
+                setProvider(config.provider ? config.provider.toLowerCase() : 'ollama');
                 if (config.ai_mode) setAiMode(config.ai_mode);
+
+                // Load existing keys/models if available
+                if (config.gemini_key) setGeminiKey(config.gemini_key);
+                if (config.ollama_url) setOllamaUrl(config.ollama_url);
+                if (config.ollama_model) setOllamaModel(config.ollama_model);
+
+                if (config.anthropic_key) setAnthropicKey(config.anthropic_key);
+                if (config.anthropic_model) setAnthropicModel(config.anthropic_model);
+
+                if (config.openai_key) setOpenaiKey(config.openai_key);
+                if (config.openai_model) setOpenaiModel(config.openai_model);
+
+                if (config.copilot_token) setCopilotToken(config.copilot_token);
+                if (config.copilot_model) setCopilotModel(config.copilot_model);
+
             }).catch(err => console.error("Failed to fetch AI config", err));
 
-            // Initial defaults from env-like behavior
-            setOllamaUrl('http://192.168.50.98:11434');
-            setOllamaModel('llama-server');
+            // Initial defaults from env-like behavior (only if empty)
+            if (!ollamaUrl) setOllamaUrl('http://192.168.50.98:11434');
+            if (!ollamaModel) setOllamaModel('llama-server');
         }
     }, [isOpen]);
 
@@ -41,7 +62,13 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
                 provider,
                 gemini_key: geminiKey || undefined,
                 ollama_url: ollamaUrl || undefined,
-                ollama_model: ollamaModel || undefined
+                ollama_model: ollamaModel || undefined,
+                anthropic_key: anthropicKey || undefined,
+                anthropic_model: anthropicModel || undefined,
+                openai_key: openaiKey || undefined,
+                openai_model: openaiModel || undefined,
+                copilot_token: copilotToken || undefined,
+                copilot_model: copilotModel || undefined,
             });
             await voodooApi.setAIMode(aiMode);
             setStatus({ type: 'success', message: 'Configuration Synchronized' });
@@ -85,28 +112,61 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
                         <label className="text-[10px] text-security-muted font-black uppercase tracking-widest mb-4 block">
                             Intelligence Source
                         </label>
-                        <div className="flex gap-4">
+                        <div className="grid grid-cols-5 gap-2">
+                            {/* Gemini */}
                             <button
                                 onClick={() => setProvider('gemini')}
-                                className={`flex-1 p-5 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-3 ${provider === 'gemini'
+                                className={`flex-1 p-3 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${provider === 'gemini'
                                     ? 'bg-brand-500/10 border-brand-500 text-brand-500 shadow-[0_0_20px_rgba(59,130,246,0.1)]'
                                     : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
                                     }`}
                             >
-                                <Globe size={28} />
-                                <div className="text-xs font-black uppercase tracking-widest">Google Gemini</div>
-                                <div className="text-[9px] opacity-60 font-medium">Cloud Scaled Pro/Flash</div>
+                                <Globe size={20} />
+                                <div className="text-[8px] font-black uppercase tracking-widest text-center">Google Gemini</div>
                             </button>
+                            {/* Ollama */}
                             <button
                                 onClick={() => setProvider('ollama')}
-                                className={`flex-1 p-5 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-3 ${provider === 'ollama'
+                                className={`flex-1 p-3 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${provider === 'ollama'
                                     ? 'bg-brand-500/10 border-brand-500 text-brand-500 shadow-[0_0_20px_rgba(59,130,246,0.1)]'
                                     : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
                                     }`}
                             >
-                                <Cpu size={28} />
-                                <div className="text-xs font-black uppercase tracking-widest">Local Llama.cpp</div>
-                                <div className="text-[9px] opacity-60 font-medium">Private AI Infrastructure</div>
+                                <Cpu size={20} />
+                                <div className="text-[8px] font-black uppercase tracking-widest text-center">Local Llama</div>
+                            </button>
+                            {/* Anthropic */}
+                            <button
+                                onClick={() => setProvider('anthropic')}
+                                className={`flex-1 p-3 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${provider === 'anthropic'
+                                    ? 'bg-purple-500/10 border-purple-500 text-purple-400 shadow-[0_0_20px_rgba(168,85,247,0.1)]'
+                                    : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
+                                    }`}
+                            >
+                                <Cpu size={20} />
+                                <div className="text-[8px] font-black uppercase tracking-widest text-center">Anthropic</div>
+                            </button>
+                            {/* OpenAI */}
+                            <button
+                                onClick={() => setProvider('openai')}
+                                className={`flex-1 p-3 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${provider === 'openai'
+                                    ? 'bg-green-500/10 border-green-500 text-green-400 shadow-[0_0_20px_rgba(34,197,94,0.1)]'
+                                    : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
+                                    }`}
+                            >
+                                <Cloud size={20} />
+                                <div className="text-[8px] font-black uppercase tracking-widest text-center">OpenAI</div>
+                            </button>
+                            {/* Copilot */}
+                            <button
+                                onClick={() => setProvider('copilot')}
+                                className={`flex-1 p-3 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${provider === 'copilot'
+                                    ? 'bg-blue-500/10 border-blue-500 text-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.1)]'
+                                    : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
+                                    }`}
+                            >
+                                <Key size={20} />
+                                <div className="text-[8px] font-black uppercase tracking-widest text-center">Copilot</div>
                             </button>
                         </div>
                     </div>
@@ -153,33 +213,140 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
                         </div>
                     </div>
 
-                    {/* Gemini Config */}
-                    {provider === 'gemini' && (
+                    {/* Cloud Provider Config */}
+                    {['anthropic', 'openai', 'copilot', 'gemini'].includes(provider) && (
                         <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
-                            <div>
-                                <label className="text-[10px] text-security-muted font-black uppercase tracking-widest mb-2 block flex items-center gap-2">
-                                    <Key size={12} className="text-brand-500" />
-                                    Gemini API Key
-                                </label>
-                                <div className="relative">
-                                    <input
-                                        type={showKey ? "text" : "password"}
-                                        value={geminiKey}
-                                        onChange={(e) => setGeminiKey(e.target.value)}
-                                        placeholder="Enter your API key..."
-                                        className="w-full bg-security-panel border border-security-border rounded-lg pl-4 pr-12 py-3 text-sm text-white focus:border-brand-500 transition-colors placeholder-security-muted font-mono"
-                                    />
-                                    <button
-                                        onClick={() => setShowKey(!showKey)}
-                                        className="absolute right-3 top-1/2 -translate-y-1/2 text-security-muted hover:text-white"
-                                    >
-                                        {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
-                                    </button>
+                            {provider === 'gemini' && (
+                                <div>
+                                    <label className="text-[10px] text-security-muted font-black uppercase tracking-widest mb-2 block flex items-center gap-2">
+                                        <Key size={12} className="text-brand-500" />
+                                        Gemini API Key
+                                    </label>
+                                    <div className="relative">
+                                        <input
+                                            type={showKey ? "text" : "password"}
+                                            value={geminiKey}
+                                            onChange={(e) => setGeminiKey(e.target.value)}
+                                            placeholder="Enter your Gemini API key..."
+                                            className="w-full bg-security-panel border border-security-border rounded-lg pl-4 pr-12 py-3 text-sm text-white focus:border-brand-500 transition-colors placeholder-security-muted font-mono"
+                                        />
+                                        <button onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-security-muted hover:text-white">
+                                            {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                                        </button>
+                                    </div>
                                 </div>
-                                <p className="text-[9px] text-zinc-500 mt-2 italic font-medium">
-                                    * Key is stored in-memory on the backend unless set via GEMINI_API_KEY env.
-                                </p>
-                            </div>
+                            )}
+
+                            {provider === 'anthropic' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-[10px] text-security-muted font-black uppercase tracking-widest mb-2 block flex items-center gap-2">
+                                            <Key size={12} className="text-purple-500" />
+                                            Anthropic API Key
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type={showKey ? "text" : "password"}
+                                                value={anthropicKey}
+                                                onChange={(e) => setAnthropicKey(e.target.value)}
+                                                placeholder="sk-ant-..."
+                                                className="w-full bg-security-panel border border-security-border rounded-lg pl-4 pr-12 py-3 text-sm text-white focus:border-purple-500 transition-colors placeholder-security-muted font-mono"
+                                            />
+                                            <button onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-security-muted hover:text-white">
+                                                {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-security-muted font-black uppercase tracking-widest mb-2 block flex items-center gap-2">
+                                            <Cpu size={12} className="text-purple-500" />
+                                            Model ID (Optional Override)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={anthropicModel}
+                                            onChange={(e) => setAnthropicModel(e.target.value)}
+                                            placeholder="claude-3-5-sonnet-latest"
+                                            className="w-full bg-security-panel border border-security-border rounded-lg px-4 py-3 text-sm text-white focus:border-purple-500 transition-colors font-mono"
+                                        />
+                                        <p className="text-[9px] text-zinc-500 mt-1 italic">
+                                            Defaults to <code>claude-3-5-sonnet-latest</code>. Use specific IDs like <code>claude-3-7-sonnet-20250219</code> for newer models.
+                                        </p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {provider === 'openai' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-[10px] text-security-muted font-black uppercase tracking-widest mb-2 block flex items-center gap-2">
+                                            <Key size={12} className="text-green-500" />
+                                            OpenAI API Key
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type={showKey ? "text" : "password"}
+                                                value={openaiKey}
+                                                onChange={(e) => setOpenaiKey(e.target.value)}
+                                                placeholder="sk-..."
+                                                className="w-full bg-security-panel border border-security-border rounded-lg pl-4 pr-12 py-3 text-sm text-white focus:border-green-500 transition-colors placeholder-security-muted font-mono"
+                                            />
+                                            <button onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-security-muted hover:text-white">
+                                                {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-security-muted font-black uppercase tracking-widest mb-2 block flex items-center gap-2">
+                                            <Cpu size={12} className="text-green-500" />
+                                            Model ID
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={openaiModel}
+                                            onChange={(e) => setOpenaiModel(e.target.value)}
+                                            placeholder="gpt-4o"
+                                            className="w-full bg-security-panel border border-security-border rounded-lg px-4 py-3 text-sm text-white focus:border-green-500 transition-colors font-mono"
+                                        />
+                                    </div>
+                                </div>
+                            )}
+
+                            {provider === 'copilot' && (
+                                <div className="space-y-4">
+                                    <div>
+                                        <label className="text-[10px] text-security-muted font-black uppercase tracking-widest mb-2 block flex items-center gap-2">
+                                            <Key size={12} className="text-blue-500" />
+                                            GitHub Copilot Token
+                                        </label>
+                                        <div className="relative">
+                                            <input
+                                                type={showKey ? "text" : "password"}
+                                                value={copilotToken}
+                                                onChange={(e) => setCopilotToken(e.target.value)}
+                                                placeholder="ghu_..."
+                                                className="w-full bg-security-panel border border-security-border rounded-lg pl-4 pr-12 py-3 text-sm text-white focus:border-blue-500 transition-colors placeholder-security-muted font-mono"
+                                            />
+                                            <button onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-security-muted hover:text-white">
+                                                {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
+                                            </button>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="text-[10px] text-security-muted font-black uppercase tracking-widest mb-2 block flex items-center gap-2">
+                                            <Cpu size={12} className="text-blue-500" />
+                                            Model ID
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={copilotModel}
+                                            onChange={(e) => setCopilotModel(e.target.value)}
+                                            placeholder="gpt-4"
+                                            className="w-full bg-security-panel border border-security-border rounded-lg px-4 py-3 text-sm text-white focus:border-blue-500 transition-colors font-mono"
+                                        />
+                                    </div>
+                                </div>
+                            )}
                         </div>
                     )}
 

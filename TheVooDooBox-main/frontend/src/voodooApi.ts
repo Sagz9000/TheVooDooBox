@@ -501,7 +501,18 @@ export const voodooApi = {
         return resp.json();
     },
 
-    setAIConfig: async (config: { provider: string, gemini_key?: string, ollama_url?: string, ollama_model?: string }) => {
+    setAIConfig: async (config: {
+        provider: string,
+        gemini_key?: string,
+        ollama_url?: string,
+        ollama_model?: string,
+        anthropic_key?: string,
+        anthropic_model?: string,
+        openai_key?: string,
+        openai_model?: string,
+        copilot_token?: string,
+        copilot_model?: string
+    }) => {
         const resp = await fetch(`${BASE_URL}/vms/ai/config`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
