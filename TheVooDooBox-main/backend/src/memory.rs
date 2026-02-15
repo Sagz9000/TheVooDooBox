@@ -62,14 +62,14 @@ pub async fn get_embedding(text: &str) -> Result<Vec<f32>, Box<dyn std::error::E
         .send()
         .await?;
 
-    if res.status().is_success() {
+    let status = res.status();
+    if status.is_success() {
         let body: serde_json::Value = res.json().await?;
         if let Some(emb) = body["embedding"].as_array() {
              return Ok(emb.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect());
         }
     }
 
-    let status = res.status();
     let error_body = res.text().await.unwrap_or_default();
     Err(format!("All embedding endpoints failed. Last status ({}): {}", status, error_body).into())
 }
