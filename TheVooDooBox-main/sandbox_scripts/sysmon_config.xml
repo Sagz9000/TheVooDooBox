@@ -59,16 +59,26 @@
 
     <!-- Event ID 12, 13, 14: RegistryEvent -->
     <RuleGroup name="" groupRelation="or">
-      <RegistryEvent onmatch="include">
-        <TargetObject condition="contains">\CurrentVersion\Run</TargetObject>
-        <TargetObject condition="contains">\CurrentVersion\RunOnce</TargetObject>
-        <TargetObject condition="contains">\CurrentVersion\RunService</TargetObject>
-        <TargetObject condition="contains">\System\CurrentControlSet\Services</TargetObject>
-        <TargetObject condition="contains">\Windows\CurrentVersion\Explorer\Shell Folders</TargetObject>
-        <TargetObject condition="contains">\Windows\CurrentVersion\Explorer\User Shell Folders</TargetObject>
-        <TargetObject condition="contains">\Windows NT\CurrentVersion\Winlogon\Shell</TargetObject>
-        <TargetObject condition="contains">\Windows NT\CurrentVersion\Winlogon\Userinit</TargetObject>
-        <TargetObject condition="contains">\Windows\CurrentVersion\AppInit_DLLs</TargetObject>
+      <!-- BROAD MONITORING: Log everything except specific noisy keys -->
+      <RegistryEvent onmatch="exclude">
+        <!-- System Noise -->
+        <TargetObject condition="contains">\Microsoft\Windows\CurrentVersion\WINEVT\Channels</TargetObject>
+        <TargetObject condition="contains">\Microsoft\Cryptography\RNG</TargetObject>
+        <TargetObject condition="contains">\Microsoft\Windows NT\CurrentVersion\Tracing</TargetObject>
+        <TargetObject condition="contains">\Microsoft\Windows\CurrentVersion\MMCSS</TargetObject>
+        <TargetObject condition="contains">\Microsoft\Windows Defender\</TargetObject>
+        <TargetObject condition="contains">\Microsoft\Windows Defender Advanced Threat Protection\</TargetObject>
+        
+        <!-- Browser / App Noise -->
+        <TargetObject condition="end with">\TypedURLs</TargetObject>
+        <TargetObject condition="end with">\TypedURLsTime</TargetObject>
+        <TargetObject condition="contains">\Software\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap</TargetObject>
+        <TargetObject condition="contains">\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist</TargetObject>
+        <TargetObject condition="contains">\AppModel\StateRepository\Cache\</TargetObject>
+
+        <!-- Kernel / Driver Noise -->
+        <TargetObject condition="begin with">HKLM\System\CurrentControlSet\Control\WMI\Autologger</TargetObject>
+        <TargetObject condition="begin with">HKLM\System\CurrentControlSet\Services\Tcpip\Parameters</TargetObject>
       </RegistryEvent>
     </RuleGroup>
 
