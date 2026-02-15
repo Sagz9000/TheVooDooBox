@@ -78,13 +78,14 @@ pub async fn ensure_collection_by_name(name: &str) -> Result<(), Box<dyn std::er
     let status = resp.status();
     if status.is_success() {
         println!("[HiveMind] Collection '{}' created successfully.", name);
-    } else if status.as_u16() == 409 {
-        // 409 Conflict simply means it already exists
-        println!("[HiveMind] Collection '{}' already exists.", name);
     } else {
         let err_body = resp.text().await.unwrap_or_else(|_| "No body".to_string());
-        println!("[HiveMind] Warning: Collection creation returned status {}: {}", status, err_body);
-        // We don't necessarily error here as the next GET might work if it exists.
+        if status.as_u16() == 409 || (status.as_u16() == 500 && err_body.contains("UniqueConstraintError")) {
+            // Collection already exists (Chroma 0.5.0 often returns 500 for this)
+            println!("[HiveMind] Collection '{}' already exists.", name);
+        } else {
+            println!("[HiveMind] Warning: Collection creation returned status {}: {}", status, err_body);
+        }
     }
         
     Ok(())
