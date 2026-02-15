@@ -199,7 +199,7 @@ class MCPWorker {
             { id: 'signsrch', command: `signsrch "${file}"` },
             { id: 'yara_scan', command: `yara -w /usr/share/yara-rules/rules.yar "${file}"` },
             { id: 'strings', command: `pestr "${file}"` },
-            { id: 'floss', command: `floss --no-static-strings "${file}"` },
+            { id: 'floss', command: `floss "${file}" --no static` },
             { id: 'peframe', command: `peframe "${file}"` },
             { id: 'manalyze', command: `manalyze --dump all "${file}"` },
             { id: 'densityscout', command: `densityscout -n 0.1 "${file}"` },
