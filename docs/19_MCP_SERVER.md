@@ -24,10 +24,17 @@ The server exposes the following function-calling tools to the AI:
 ### 2. Telemetry Access
 *   **`get_vm_telemetry(limit=100)`**: Fetches the most recent kernel events (Process Create, Network Connect) from the active session. This allows the AI to "see" what happened.
 
-### 3. Ghidra Integration
+### 3. Ghidra Integration (Static)
 *   **`trigger_ghidra_analysis(binary_name)`**: Commands the Ghidra Docker container to ingest and analyze a new binary.
 *   **`query_static_functions(binary_name)`**: Lists all functions found in the binary.
 *   **`decompile_function(binary_name, address)`**: Returns the C-pseudocode for a specific memory address.
+
+### 4. Forensic Memory & Intelligence
+*   **`add_analyst_note(task_id, content, is_hint=False)`**: Saves a forensic finding to the task's permanent record.
+*   **`get_notes(task_id)`**: Retrieves all existing notes (AI + Human) for a task.
+*   **`tag_telemetry_event(task_id, event_id, tag_type, comment="")`**: Marks a specific event with a forensic classification.
+*   **`search_knowledge_base(query)`**: Performs a semantic vector search against the local malware intelligence database.
+*   **`get_task_status(task_id)`**: Fetches full metadata and risk scores for a specific task.
 
 ---
 

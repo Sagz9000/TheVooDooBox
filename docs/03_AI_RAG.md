@@ -280,7 +280,19 @@ During a chat session or automated report generation, the backend performs a sem
 *   **Example**: If the binary performs "Process Hollowing," the RAG pipeline retrieves the relevant sections from the SANS posters explaining how hollowing works and what registry/memory artifacts it leaves behind.
 *   **Benefit**: This grounds the LLM in peer-reviewed forensic methodology, significantly reducing hallucination and providing "Senior Researcher" levels of technical accuracy.
 
-## Features
+## 📓 AI Forensic Memory (Phase 32)
+While the Vector DB (ChromaDB) provides global forensic knowledge, **Forensic Memory** provides task-specific, persistent recall.
+
+### 1. Auto-Note Generation (The "Sight" Layer)
+During the parallelized Map phase of analysis, the AI generates hundreds of technical observations. To prevent these from being lost after the Reduce phase, the system automatically saves each Map insight as an `analyst_note` (tagged as `ai_map`).
+
+### 2. Contextual Recall (The "Memory" Layer)
+When an analyst opens a chat session, the backend fetches all historical notes for that task and injects them into the AI's context window under `### FORENSIC MEMORY (AI + Analyst Notes)`.
+*   **Persistent Reasoning**: The AI can now reference findings discovered hours ago during the initial automated detonation.
+*   **Hybrid Collaboration**: Notes written by human analysts are also injected, allowing the AI to build upon manual findings.
+
+### 3. Cross-Task Intelligence
+By using the **MCP Tool `search_knowledge_base`**, the AI can query not just the current task's memory, but the entire history of the VoodooBox lab, identifying recurring patterns across different malware samples.
 
 1.  **Verdict Classification**: The AI assigns a `Malicious`, `Suspicious`, or `Benign` verdict based on *behavior*, not signature.
 2.  **Behavioral Timeline**: It reconstructs the attack chain (e.g., "Persistence achieved via Registry Run Key").

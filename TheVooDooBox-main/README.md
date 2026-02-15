@@ -28,6 +28,12 @@ Forget raw logs. The Neural Report is a comprehensive intelligence product:
 *   **Threat Score Rings**: Visual risk assessment (0-100).
 *   **Actionable Verdicts**: "Malicious", "Suspicious", or "Benign" with high-confidence reasoning.
 
+### 🕵️ Active Investigator (MCP)
+The VoodooBox is an **Agentic Node**. Utilizing the **Model Context Protocol (MCP)**, it exposes a suite of investigative tools to external AI agents:
+*   **Virtual Operations**: Rollback VMs, trigger Ghidra analysis, and decompile code.
+*   **Forensic Memory**: AI saves and retrieves "Forensic Notes" during analysis to maintain continuity across sessions.
+*   **Intelligence RAG**: Semantic search against the local malware knowledge base (ChromaDB) to ground findings in peer-reviewed methodology.
+
 ### 🕸️ Activity Flow (Fishbone)
 *   **Real-Time Visualization**: Watch the process tree grow in real-time as the malware executes.
 *   **Interactive Nodes**: Click on any process to see loaded DLLs, network connections, and registry modifications.
