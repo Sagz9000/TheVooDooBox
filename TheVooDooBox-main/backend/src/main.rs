@@ -2641,9 +2641,25 @@ async fn main() -> std::io::Result<()> {
     let agent_manager_data = web::Data::new(agent_manager.clone());
 
     // AI Manager Initialization
-    let gemini_key = std::env::var("GEMINI_API_KEY").unwrap_or_default();
-    let ollama_url = std::env::var("OLLAMA_URL").unwrap_or("http://192.168.50.98:11434".to_string());
-    let ai_manager = web::Data::new(AIManager::new(gemini_key, ollama_url));
+    let gemini_api_key = env::var("GEMINI_API_KEY").unwrap_or_default();
+    let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://ollama:11434".to_string());
+    let anthropic_key = env::var("ANTHROPIC_API_KEY").unwrap_or_default();
+    let openai_key = env::var("OPENAI_API_KEY").unwrap_or_default();
+    let copilot_token = env::var("COPILOT_TOKEN").unwrap_or_default();
+
+    println!("[Main] Initializing AI Manager...");
+    println!("[Main] OLLAMA_URL: {}", ollama_url);
+    if !gemini_api_key.is_empty() { println!("[Main] Gemini API Key detected."); }
+    if !anthropic_key.is_empty() { println!("[Main] Anthropic API Key detected."); }
+    if !openai_key.is_empty() { println!("[Main] OpenAI API Key detected."); }
+    
+    let ai_manager = web::Data::new(AIManager::new(
+        gemini_api_key, 
+        ollama_url,
+        anthropic_key,
+        openai_key,
+        copilot_token
+    ));
 
     tokio::spawn(start_tcp_listener(broadcaster, agent_manager, pool));
 

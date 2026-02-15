@@ -40,14 +40,32 @@ impl AIMode {
 #[derive(Clone)]
 pub struct AIManager {
     provider: Arc<RwLock<Box<dyn AIProvider>>>,
+    
     gemini_key: Arc<RwLock<String>>,
+    
     ollama_url: Arc<RwLock<String>>,
     ollama_model: Arc<RwLock<String>>,
+
+    anthropic_key: Arc<RwLock<String>>,
+    anthropic_model: Arc<RwLock<String>>,
+
+    openai_key: Arc<RwLock<String>>,
+    openai_model: Arc<RwLock<String>>,
+
+    copilot_token: Arc<RwLock<String>>,
+    copilot_model: Arc<RwLock<String>>,
+
     ai_mode: Arc<RwLock<AIMode>>,
 }
 
 impl AIManager {
-    pub fn new(gemini_key: String, ollama_url: String) -> Self {
+    pub fn new(
+        gemini_key: String, 
+        ollama_url: String,
+        anthropic_key: String,
+        openai_key: String,
+        copilot_token: String
+    ) -> Self {
         // 1. Try to load from disk
         let saved_mode = Self::load_mode_config();
         
@@ -77,6 +95,16 @@ impl AIManager {
             gemini_key: Arc::new(RwLock::new(gemini_key)),
             ollama_url: Arc::new(RwLock::new(ollama_url)),
             ollama_model: Arc::new(RwLock::new("llama-server".to_string())),
+            
+            anthropic_key: Arc::new(RwLock::new(anthropic_key)),
+            anthropic_model: Arc::new(RwLock::new("claude-3-5-sonnet-latest".to_string())),
+
+            openai_key: Arc::new(RwLock::new(openai_key)),
+            openai_model: Arc::new(RwLock::new("gpt-4o".to_string())),
+
+            copilot_token: Arc::new(RwLock::new(copilot_token)),
+            copilot_model: Arc::new(RwLock::new("gpt-4".to_string())),
+
             ai_mode: Arc::new(RwLock::new(initial_mode.clone())),
         };
         
@@ -109,35 +137,56 @@ impl AIManager {
     pub async fn switch_provider(
         &self, 
         provider_type: ProviderType, 
+        // Optional updates to configs
         gemini_key: Option<String>, 
         ollama_url: Option<String>,
-        ollama_model: Option<String>
+        ollama_model: Option<String>,
+        anthropic_key: Option<String>,
+        anthropic_model: Option<String>,
+        openai_key: Option<String>,
+        openai_model: Option<String>,
+        copilot_token: Option<String>,
+        copilot_model: Option<String>,
     ) {
-        if let Some(key) = gemini_key {
-            let mut g_key = self.gemini_key.write().await;
-            *g_key = key;
-        }
-        if let Some(url) = ollama_url {
-            let mut o_url = self.ollama_url.write().await;
-            *o_url = url;
-        }
-        if let Some(ref model) = ollama_model {
-            let mut o_model = self.ollama_model.write().await;
-            *o_model = model.clone();
-        }
+        // Update RwLocks if values provided
+        if let Some(v) = gemini_key { *self.gemini_key.write().await = v; }
+        if let Some(v) = ollama_url { *self.ollama_url.write().await = v; }
+        if let Some(v) = ollama_model { *self.ollama_model.write().await = v; }
+        
+        if let Some(v) = anthropic_key { *self.anthropic_key.write().await = v; }
+        if let Some(v) = anthropic_model { *self.anthropic_model.write().await = v; }
+        
+        if let Some(v) = openai_key { *self.openai_key.write().await = v; }
+        if let Some(v) = openai_model { *self.openai_model.write().await = v; }
+        
+        if let Some(v) = copilot_token { *self.copilot_token.write().await = v; }
+        if let Some(v) = copilot_model { *self.copilot_model.write().await = v; }
         
         let mut provider_lock = self.provider.write().await;
         match provider_type {
             ProviderType::Gemini => {
-                let g_key = self.gemini_key.read().await;
-                if !g_key.is_empty() {
-                    *provider_lock = Box::new(GeminiProvider::new(g_key.clone()));
-                }
+                let key = self.gemini_key.read().await;
+                *provider_lock = Box::new(GeminiProvider::new(key.clone()));
             }
             ProviderType::Ollama => {
-                let o_url = self.ollama_url.read().await;
-                let model = ollama_model.unwrap_or_else(|| "llama-server".to_string());
-                *provider_lock = Box::new(OllamaProvider::new(o_url.clone(), model));
+                let url = self.ollama_url.read().await;
+                let model = self.ollama_model.read().await;
+                *provider_lock = Box::new(OllamaProvider::new(url.clone(), model.clone()));
+            }
+            ProviderType::Anthropic => {
+                let key = self.anthropic_key.read().await;
+                let model = self.anthropic_model.read().await;
+                *provider_lock = Box::new(AnthropicProvider::new(key.clone(), model.clone()));
+            }
+            ProviderType::OpenAI => {
+                let key = self.openai_key.read().await;
+                let model = self.openai_model.read().await;
+                *provider_lock = Box::new(OpenAIProvider::new(key.clone(), model.clone()));
+            }
+            ProviderType::Copilot => {
+                let token = self.copilot_token.read().await;
+                let model = self.copilot_model.read().await;
+                *provider_lock = Box::new(CopilotProvider::new(token.clone(), model.clone()));
             }
         }
     }
