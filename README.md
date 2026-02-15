@@ -83,3 +83,6 @@ The full documentation is available in the `docs/` directory.
 Traditional sandboxes are "black boxes" for batch processing. TheVooDooBox is a **live streaming engine** for deep forensic dissection. Using our custom **Windows Kernel Driver**, we bypass noisy user-mode hooks that malware can detect, providing a high-fidelity window into the core of the infection.
 
 *Built with ❤️ by the AntiCode Team. Maintained by JP.*
+
+---
+> "I got the poison (I got the remedy)"
