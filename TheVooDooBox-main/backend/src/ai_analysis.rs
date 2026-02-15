@@ -844,13 +844,13 @@ pub async fn generate_ai_report(
     let vt_summary = serde_json::to_string(&vt_data).unwrap_or("None".to_string());
 
     let reduce_prompt = format!(
-        "GENERATE FORENSIC REPORT.
+        "GENERATE COMPREHENSIVE FORENSIC REPORT.
          
          TARGET: {} (Hash: '{}')
          VERDICT: Decide if Malicious, Suspicious, or Benign (Use 'Diagnostic Gamma' for Malicious).
          
-         --- AGGREGATED TELEMETRY INSIGHTS (From Local Deep-Scan) ---
-         - {}
+         --- AGGREGATED TELEMETRY INSIGHTS ---
+         {}
          
          --- STATIC ANALYSIS (Ghidra) ---
          {}
@@ -864,11 +864,33 @@ pub async fn generate_ai_report(
          --- RAG CONTEXT ---
          {}
          
-         OUTPUT FORMAT: JSON ONLY. 
-         - Do NOT include markdown code blocks (```json).
-         - Do NOT include any text before or after the JSON object.
-         - Ensure valid JSON matching the `ForensicReport` schema.
-         - Field `behavioral_timeline` must be an array of objects: {{ \"timestamp_offset\": \"+2s\", \"stage\": \"Persistence\", \"event_description\": \"...\", \"technical_context\": \"...\", \"related_pid\": 123 }}
+         REQUIRED JSON SCHEMA:
+         {{
+           \"verdict\": \"Malicious\" | \"Suspicious\" | \"Benign\",
+           \"malware_family\": \"string or null\",
+           \"threat_score\": 0-100,
+           \"executive_summary\": \"High-level technical overview (1-2 paragraphs)\",
+           \"behavioral_timeline\": [
+             {{ \"timestamp_offset\": \"+2s\", \"stage\": \"Persistence\", \"event_description\": \"...\", \"technical_context\": \"...\", \"related_pid\": 123 }}
+           ],
+           \"artifacts\": {{
+             \"dropped_files\": [], \"c2_ips\": [], \"c2_domains\": [], \"mutual_exclusions\": [], \"command_lines\": []
+           }},
+           \"mitre_matrix\": {{
+             \"Execution\": [{{ \"id\": \"T1059\", \"name\": \"Command and Scripting Interpreter\", \"evidence\": [\"...\"], \"status\": \"Detected\" }}],
+             \"Persistence\": [...],
+             \"Defense Evasion\": [...],
+             \"Discovery\": [...],
+             \"Lateral Movement\": [...],
+             \"Command and Control\": [...]
+           }}
+         }}
+
+         STRICT OUTPUT RULES:
+         1. OUTPUT RAW JSON ONLY.
+         2. DO NOT USE MARKDOWN BLOCKS (```json).
+         3. DO NOT INCLUDE PREAMBLE, COMMENTARY, OR EXPLANATIONS.
+         4. ENSURE EVERY MITRE TACTIC DETECTED IS IN THE `mitre_matrix`.
          ",
          target_filename, file_hash, consolidated_insights, static_summary, vt_summary, digital_signature, rag_context
     );
@@ -933,21 +955,28 @@ pub async fn generate_ai_report(
     response_text = response_text.trim().to_string();
 
     // STEP C: Markdown Fence Strip (Robust)
-    if let Some(start_idx) = response_text.find("```json") {
-        let content_after = &response_text[start_idx + 7..];
+    if let Some(start_idx) = response_text.find("```") {
+        let snippet = &response_text[start_idx..];
+        let start_content = if snippet.starts_with("```json") { start_idx + 7 } else { start_idx + 3 };
+        let content_after = &response_text[start_content..];
+        
         if let Some(end_idx) = content_after.find("```") {
             response_text = content_after[..end_idx].trim().to_string();
-            println!("[AI] Extracted JSON from markdown block.");
+            println!("[AI] Extracted JSON from markdown block (Robust).");
+        } else {
+            // Unclosed fence, just take everything after start
+            response_text = content_after.trim().to_string();
+            println!("[AI] Extracted content from unclosed markdown block.");
         }
-    } else if let Some(start_idx) = response_text.find("```") {
-        // Just generic code block, might be it
-         let content_after = &response_text[start_idx + 3..];
-        if let Some(end_idx) = content_after.find("```") {
-            let candidate = content_after[..end_idx].trim();
-            if candidate.starts_with('{') {
-                response_text = candidate.to_string();
-                println!("[AI] Extracted JSON from generic code block.");
-            }
+    }
+    
+    response_text = response_text.trim().to_string();
+
+    // STEP D: Extra Safety - Strip trailing chatter if JSON ends but text continues
+    if let Some(last_brace) = response_text.rfind('}') {
+        if last_brace < response_text.len() - 1 {
+            println!("[AI] Stripping {} trailing characters after last brace.", response_text.len() - 1 - last_brace);
+            response_text = response_text[..=last_brace].to_string();
         }
     }
 
