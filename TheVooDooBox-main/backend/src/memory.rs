@@ -31,30 +31,47 @@ struct ChromaQueryResponse {
 }
 
 pub async fn get_embedding(text: &str) -> Result<Vec<f32>, Box<dyn std::error::Error>> {
-    let ollama_url = env::var("OLLAMA_URL").unwrap_or_else(|_| "http://ollama:11434".to_string());
+    let embedding_url = env::var("EMBEDDING_URL").or_else(|_| env::var("OLLAMA_URL")).unwrap_or_else(|_| "http://ollama:11434".to_string());
     let embedding_model = env::var("EMBEDDING_MODEL").unwrap_or_else(|_| "llama-server".to_string());
 
     let client = reqwest::Client::new();
-    let res = client.post(format!("{}/v1/embeddings", ollama_url))
+    
+    // Try Ollama Native first (/api/embeddings)
+    println!("[RAG] Requesting embedding from {} using model: {}...", embedding_url, embedding_model);
+    let res = client.post(format!("{}/api/embeddings", embedding_url))
         .json(&json!({
             "model": embedding_model,
-            "input": text
+            "prompt": text
         }))
         .send()
         .await?;
 
-    if !res.status().is_success() {
-        let status = res.status();
-        let error_body = res.text().await.unwrap_or_default();
-        return Err(format!("Llama Server embedding failed ({}): {}", status, error_body).into());
+    if res.status().is_success() {
+        let body: serde_json::Value = res.json().await?;
+        if let Some(emb) = body["embedding"].as_array() {
+            return Ok(emb.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect());
+        }
     }
 
-    let body: OpenAIEmbeddingResponse = res.json().await?;
-    let embedding = body.data.first()
-        .map(|d| d.embedding.clone())
-        .ok_or("No embedding data in response")?;
-        
-    Ok(embedding)
+    // Fallback: Try llama-server native (/embedding)
+    println!("[RAG] Ollama Native failed or not present. Trying llama-server native endpoint at {}...", embedding_url);
+    let res = client.post(format!("{}/embedding", embedding_url))
+        .json(&json!({
+            "content": text
+        }))
+        .send()
+        .await?;
+
+    if res.status().is_success() {
+        let body: serde_json::Value = res.json().await?;
+        if let Some(emb) = body["embedding"].as_array() {
+             return Ok(emb.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect());
+        }
+    }
+
+    let status = res.status();
+    let error_body = res.text().await.unwrap_or_default();
+    Err(format!("All embedding endpoints failed. Last status ({}): {}", status, error_body).into())
 }
 
 pub async fn ensure_collection() -> Result<(), Box<dyn std::error::Error>> {

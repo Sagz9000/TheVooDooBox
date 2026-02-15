@@ -30,3 +30,12 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10s
+  nomic-embed:
+    image: ghcr.io/ggerganov/llama.cpp:server
+    container_name: voodoobox-nomic-embed
+    ports:
+      - "11435:8080"
+    volumes:
+      - ./models:/models
+    command: -m /models/nomic-embed-text-v1.5.f16.gguf --embedding --pooling mean --host 0.0.0.0 --port 8080
+    restart: unless-stopped
