@@ -758,6 +758,10 @@ pub async fn generate_ai_report(
 
 
 
+    // Fetch the actual User-Selected AI Mode (Local, Cloud, or Hybrid)
+    let ai_mode = ai_manager.get_ai_mode().await;
+    println!("[AI] Analysis Pipeline Strategy: {:?}", ai_mode);
+
     // Chunk size 5 is a good balance for Local LLM context (approx 2-3k tokens per chunk)
     const CHUNK_SIZE: usize = 5;
     let chunks: Vec<Vec<ProcessSummary>> = all_processes.chunks(CHUNK_SIZE).map(|c| c.to_vec()).collect();
@@ -795,7 +799,7 @@ pub async fn generate_ai_report(
         let response = ai_manager.ask_with_mode(
             vec![crate::ai::provider::ChatMessage { role: "user".to_string(), content: map_prompt }], 
             system_prompt.to_string(),
-            &crate::ai::manager::AIMode::Hybrid, // Enforce Hybrid routing logic
+            &ai_mode, // Respect User Selection
             "map"
         ).await;
 
@@ -877,7 +881,7 @@ pub async fn generate_ai_report(
     let response_result = ai_manager.ask_with_mode(
         vec![crate::ai::provider::ChatMessage { role: "user".to_string(), content: reduce_prompt }],
         system_reduce.to_string(),
-        &crate::ai::manager::AIMode::Hybrid,
+        &ai_mode,
         "reduce"
     ).await;
 
