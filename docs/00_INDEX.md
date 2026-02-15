@@ -7,30 +7,25 @@ Welcome to TheVooDooBox Documentation. Use the links below to navigate the techn
     *   *What & Why*: The mission statement and critical safety/network isolation requirements.
 *   [**07. Installation Guide**](07_INSTALLATION.md)
     *   *Deployment*: Step-by-step instructions for Docker host and Proxmox guest setup.
+*   [**21. Remnux VM Deployment**](21_REMNUX_VM_DEPLOYMENT.md)
+    *   *Linux Analysis*: Setup guide for the dedicated Remnux node and Voodoo Gateway.
 *   [**09. User Guide**](09_USER_GUIDE.md)
     *   *Usage*: How to submit samples, interact with VMs, and analyze forensic reports.
 
 ## 🏗️ Technical Architecture
 *   [**02. Architecture & Logic**](02_ARCHITECTURE.md)
-    *   *Design*: Data flow from Kernel Driver to React UI, including DB schema and API specs.
+    *   *Design*: Data flow including the Hybrid Map-Reduce path and Remnux integration.
 *   [**04. Hyper-Bridge & MCP**](04_HYPER_BRIDGE.md)
     *   *Orchestration*: How the backend works as an orchestration layer.
-*   [**19. MCP Server (Python)**](19_MCP_SERVER.md)
-    *   *Tooling*: The Python service exposing VM control and Ghidra tools to Agentic AI.
 *   [**06. Frontend Dashboard**](06_FRONTEND_DASHBOARD.md)
-    *   *Analyst UI*: React/Vite architecture, component breakdowns, and real-time telemetry rendering.
-*   [**10. VNC & SPICE Integration**](10_VNC_SPICE_INTEGRATION.md)
-    *   *Console*: Technical details on the WebSocket-to-TCP console relay mechanism.
-*   [**11. Reporting & AI Analysis**](11_REPORTING_AI.md)
-    *   *Workflow*: How telemetry is aggregated and synthesized into final PDF reports.
+    *   *Analyst UI*: React/Vite architecture and real-time Neural Report rendering.
 
 ## 🤖 AI & Intelligence
 | Document | Description |
 |---|---|
-| [**03_AI_RAG.md**](03_AI_RAG.md) | Technical deep-dive into the Llama.cpp RAG pipeline, Deep Thinking, and Prompt Engineering. |
-| [**15_ANALYSIS.md**](15_ANALYSIS.md) | Analyst guide: Running scans, using the UI, and interpreting Deep Thinking. |
-| [**15_LLAMA_TESTING.md**](15_LLAMA_TESTING.md) | Guide to verifying your local Llama.cpp server and GGUF models. |
-| [**20_AI_REPORTS.md**](20_AI_REPORTS.md) | Interpreting AI verdicts, scores, and Chain of Thought reasoning. |
+| [**03_AI_RAG.md**](03_AI_RAG.md) | Technical deep-dive into the Hybrid AI pipeline, Map-Reduce, and Prompt Engineering. |
+| [**15_ANALYSIS.md**](15_ANALYSIS.md) | Analyst guide: Running Hybrid scans and interpreting the Neural Report. |
+| [**20_AI_REPORTS.md**](20_AI_REPORTS.md) | Interpreting AI verdicts, MITRE Matrix, and Threat Scores. |
 
 ## 🛡️ Sandbox & Agent Internals
 *   [**05. Sandbox & Agent Internals**](05_SANDBOX_AND_AGENT.md)

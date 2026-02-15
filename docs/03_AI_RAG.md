@@ -1,11 +1,10 @@
-# AI Analyst & RAG Pipeline
+## 1. The Strategy (Map-Reduce)
 
-The VoodooBox employs a specialized Retrieval-Augmented Generation (RAG) pipeline to ensure high-fidelity forensic reports. It moves beyond simple "chat" by enforcing strict schema adherence and grounding the AI in both dynamic (Sandbox) and static (Ghidra) telemetry.
+The VoodooBox employs a specialized **Map-Reduce** pipeline to ensure high-fidelity forensic reports while maintaining privacy:
+- **Map Phase**: A local LLM (**llama.cpp**) processes telemetry chunks to extract objective technical facts.
+- **Reduce Phase**: Aggregated insights are synthesized into a final verdict (using Gemini 1.5 Pro or local reasoning).
 
-## 1. The Model (llama.cpp)
-
-We utilize **llama.cpp** to run high-performance reasoning models locally.
-- **Primary Model**: `DeepSeek-R1-Distill-Llama-8B` (or similar reasoning models).
+We utilize **llama.cpp** to run high-performance reasoning models locally (e.g., `DeepSeek-R1-Distill-Llama-8B`).
 - **Why llama.cpp?**: It provides superior control over the inference process, allowing us to extract the raw "Chain of Thought" (`<think>` tags) that standard APIs often hide.
 
 ![AI Kill Chain Reconstruction](../TheVooDooBox-main/pictures/aianalysis.png)
