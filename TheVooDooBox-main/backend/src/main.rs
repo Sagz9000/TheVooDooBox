@@ -1720,6 +1720,26 @@ async fn chat_handler(
     
     context_summary.push_str(&vector_context);
 
+    // --- FORENSIC MEMORY: Inject AI + Analyst Notes ---
+    if let Some(tid) = &req.task_id {
+        let notes: Vec<(String, String, bool)> = sqlx::query_as(
+            "SELECT author, content, is_hint FROM analyst_notes WHERE task_id = $1 ORDER BY created_at ASC"
+        )
+        .bind(tid)
+        .fetch_all(pool.get_ref())
+        .await
+        .unwrap_or_default();
+
+        if !notes.is_empty() {
+            context_summary.push_str("\n\n### FORENSIC MEMORY (AI + Analyst Notes)\n");
+            context_summary.push_str("These are observations from previous analysis passes and human analysts. Reference them for continuity.\n\n");
+            for (idx, (author, content, is_hint)) in notes.iter().enumerate() {
+                let prefix = if *is_hint { "🔍 AI Insight" } else { "📝 Analyst Note" };
+                context_summary.push_str(&format!("{}. [{}] ({}): {}\n", idx + 1, prefix, author, content));
+            }
+        }
+    }
+
     // Add explicit page context if provided
     if let Some(pc) = &req.page_context {
         context_summary.push_str("\n\nCURRENT ANALYST VIEW CONTEXT (Screen Data):\n");

@@ -10,6 +10,7 @@ use regex::Regex;
 use crate::AgentManager;
 use crate::action_manager::ActionManager;
 use std::sync::Arc;
+use uuid;
 
 // --- Raw DB Event ---
 #[derive(sqlx::FromRow, Serialize, Deserialize, Debug, Clone)]
@@ -836,14 +837,30 @@ pub async fn generate_ai_report(
     // Execute all chunks concurrently
     let results = futures::future::join_all(futures).await;
 
-    // Aggregate results
-    for res in results {
+    // Aggregate results AND save each insight as a Forensic Memory note
+    let total_chunks = chunks.len();
+    for (chunk_idx, res) in results.into_iter().enumerate() {
         if let Some(insights) = res {
+            for insight in &insights {
+                // Save each insight as an analyst_note (Forensic Memory)
+                let note_id = format!("ai_map_{}_{}", task_id, uuid::Uuid::new_v4());
+                let note_content = format!("[Map Chunk {}/{}] {}", chunk_idx + 1, total_chunks, insight);
+                let now = Utc::now().timestamp();
+                let _ = sqlx::query(
+                    "INSERT INTO analyst_notes (id, task_id, author, content, is_hint, created_at) VALUES ($1, $2, 'ai_map', $3, true, $4)"
+                )
+                .bind(&note_id)
+                .bind(task_id)
+                .bind(&note_content)
+                .bind(now)
+                .execute(pool)
+                .await;
+            }
             map_insights.extend(insights);
         }
     }
     
-    println!("[AI] Map Phase Complete. Collected {} aggregated insights.", map_insights.len());
+    println!("[AI] Map Phase Complete. Collected {} aggregated insights. Saved to Forensic Memory.", map_insights.len());
 
     // --- REDUCE PHASE (Cloud LLM) ---
     // Now we take the aggregated insights + Static Analysis + Context and ask for the Final Report
