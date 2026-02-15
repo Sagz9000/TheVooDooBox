@@ -1,6 +1,9 @@
 use crate::ai::provider::AIProvider;
 use crate::ai::gemini::GeminiProvider;
 use crate::ai::ollama::OllamaProvider;
+use crate::ai::anthropic::AnthropicProvider;
+use crate::ai::openai::OpenAIProvider;
+use crate::ai::copilot::CopilotProvider;
 use std::sync::Arc;
 use tokio::sync::RwLock;
 use serde::{Deserialize, Serialize};
@@ -9,6 +12,9 @@ use serde::{Deserialize, Serialize};
 pub enum ProviderType {
     Gemini,
     Ollama,
+    Anthropic,
+    OpenAI,
+    Copilot,
 }
 
 #[derive(Clone, Serialize, Deserialize, Debug, PartialEq)]
