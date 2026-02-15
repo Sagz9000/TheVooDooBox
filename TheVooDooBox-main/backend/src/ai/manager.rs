@@ -52,9 +52,9 @@ impl AIManager {
         let saved_mode = Self::load_mode_config();
         
         // 2. Determine initial mode
-        let initial_mode = if let Some(m) = saved_mode {
+        let initial_mode = if let Some(m) = &saved_mode {
             println!("[AI] Loaded persisted AI Mode: {:?}", m);
-            m
+            m.clone()
         } else {
             // Intelligent Default
             if gemini_key.is_empty() {

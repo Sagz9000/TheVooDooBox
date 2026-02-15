@@ -125,7 +125,7 @@ async fn call_analyze_stream(
         file: file_path.to_string(),
     };
 
-    let mut resp = client.post(&format!("{}/analyze/stream", base_url))
+    let resp = client.post(&format!("{}/analyze/stream", base_url))
         .json(&req)
         .send()
         .await?;
