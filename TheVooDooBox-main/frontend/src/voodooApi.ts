@@ -563,6 +563,15 @@ export const voodooApi = {
     purgeAll: async () => {
         const resp = await fetch(`${BASE_URL}/tasks/purge`, { method: 'POST' });
         return resp.ok;
+    },
+
+    getSystemHealth: async () => {
+        try {
+            const resp = await fetch(`${BASE_URL}/health`);
+            return resp.ok;
+        } catch {
+            return false;
+        }
     }
 };
 

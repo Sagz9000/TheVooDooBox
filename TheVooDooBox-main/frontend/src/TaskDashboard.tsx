@@ -69,6 +69,17 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
     const [statusFilter, setStatusFilter] = useState('All');
     const [searchTerm, setSearchTerm] = useState("");
     const [showNoise, setShowNoise] = useState(false);
+    const [isSystemHealthy, setIsSystemHealthy] = useState(true);
+
+    useEffect(() => {
+        const checkHealth = async () => {
+            const healthy = await voodooApi.getSystemHealth();
+            setIsSystemHealthy(healthy);
+        };
+        checkHealth();
+        const interval = setInterval(checkHealth, 30000); // Check every 30s
+        return () => clearInterval(interval);
+    }, []);
 
     // Expansion State
     const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -230,8 +241,10 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
                     <div className="hidden lg:block shrink-0">
                         <div className="text-[10px] font-black text-security-muted uppercase tracking-[0.2em] mb-1">Status</div>
                         <div className="flex items-center gap-2">
-                            <div className="w-2 h-2 rounded-full bg-voodoo-toxic-green animate-pulse"></div>
-                            <span className="text-xs font-bold text-white uppercase">Operational Core</span>
+                            <div className={`w-2 h-2 rounded-full ${isSystemHealthy ? 'bg-voodoo-toxic-green animate-pulse' : 'bg-red-500'} transition-colors duration-500`}></div>
+                            <span className={`text-xs font-bold uppercase ${isSystemHealthy ? 'text-white' : 'text-red-400'}`}>
+                                {isSystemHealthy ? 'Operational Core' : 'System Offline'}
+                            </span>
                         </div>
                     </div>
                 </div>
