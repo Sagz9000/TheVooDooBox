@@ -424,9 +424,6 @@ async fn start_tcp_listener(
                                     let p_name = evt.process_name.to_lowercase();
                                     let is_registry = evt.event_type.starts_with("REG_");
 
-                                    // DEEP DEBUG: Log ALL incoming events before filtering
-                                    println!("[DEBUG_NET] Received raw event type: {} from process: {}", evt.event_type, evt.process_name);
-
                                     if !is_registry && NOISE_PROCESSES.iter().any(|&n| p_name.contains(n)) {
                                         line.clear();
                                         continue;
