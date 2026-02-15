@@ -1,9 +1,10 @@
 # The VoodooBox
 
-**The Ultimate Hybrid AI Malware Analysis Platform**
+**Hybrid AI Malware Analysis Platform**
 
 ![TheVooDooBox Logo](TheVooDooBox-main/frontend/public/logo.png)
-
+The Voodoo, who do
+What you don't dare do, people
 ![VoodooBox Dashboard](TheVooDooBox-main/pictures/preview.png)
 
 > **"From Logging to Streaming"**
