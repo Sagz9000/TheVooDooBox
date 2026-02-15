@@ -48,19 +48,62 @@ pub struct AIManager {
 
 impl AIManager {
     pub fn new(gemini_key: String, ollama_url: String) -> Self {
-        let provider: Box<dyn AIProvider> = if !gemini_key.is_empty() {
+        // 1. Try to load from disk
+        let saved_mode = Self::load_mode_config();
+        
+        // 2. Determine initial mode
+        let initial_mode = if let Some(m) = saved_mode {
+            println!("[AI] Loaded persisted AI Mode: {:?}", m);
+            m
+        } else {
+            // Intelligent Default
+            if gemini_key.is_empty() {
+                println!("[AI] No Gemini API Key found. Defaulting to LocalOnly.");
+                AIMode::LocalOnly
+            } else {
+                println!("[AI] Gemini API Key present. Defaulting to Hybrid.");
+                AIMode::Hybrid
+            }
+        };
+
+        let provider: Box<dyn AIProvider> = if !gemini_key.is_empty() && (initial_mode == AIMode::Hybrid || initial_mode == AIMode::CloudOnly) {
             Box::new(GeminiProvider::new(gemini_key.clone()))
         } else {
             Box::new(OllamaProvider::new(ollama_url.clone(), "llama-server".to_string()))
         };
 
-        Self {
+        let manager = Self {
             provider: Arc::new(RwLock::new(provider)),
             gemini_key: Arc::new(RwLock::new(gemini_key)),
             ollama_url: Arc::new(RwLock::new(ollama_url)),
             ollama_model: Arc::new(RwLock::new("llama-server".to_string())),
-            ai_mode: Arc::new(RwLock::new(AIMode::Hybrid)),
+            ai_mode: Arc::new(RwLock::new(initial_mode.clone())),
+        };
+        
+        // Ensure we save the determined default if nothing was on disk
+        if saved_mode.is_none() {
+            let _ = Self::save_mode_config(&initial_mode);
         }
+        
+        manager
+    }
+
+    fn load_mode_config() -> Option<AIMode> {
+        if let Ok(content) = std::fs::read_to_string("ai_config.json") {
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(&content) {
+                if let Some(mode_str) = json.get("ai_mode").and_then(|v| v.as_str()) {
+                    return Some(AIMode::from_str(mode_str));
+                }
+            }
+        }
+        None
+    }
+
+    fn save_mode_config(mode: &AIMode) -> std::io::Result<()> {
+        let json = serde_json::json!({
+            "ai_mode": mode.to_str()
+        });
+        std::fs::write("ai_config.json", serde_json::to_string_pretty(&json)?)
     }
 
     pub async fn switch_provider(
@@ -102,8 +145,13 @@ impl AIManager {
     // --- AI Mode ---
     pub async fn set_ai_mode(&self, mode: AIMode) {
         println!("[AI] Switching AI Mode to: {:?}", mode);
-        let mut m = self.ai_mode.write().await;
-        *m = mode;
+        {
+            let mut m = self.ai_mode.write().await;
+            *m = mode.clone();
+        }
+        if let Err(e) = Self::save_mode_config(&mode) {
+            println!("[AI] Failed to persist AI mode: {}", e);
+        }
     }
 
     pub async fn get_ai_mode(&self) -> AIMode {
