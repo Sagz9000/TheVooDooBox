@@ -1,46 +1,61 @@
-# Analyst Guide: Running & Interpreting Scans
+# Analyst Guide: Running Investigations (v2.8)
 
 ## 1. Submitting a Sample
-1.  Navigate to the **Control Panel** (`http://localhost:3000`).
-2.  Drag and drop your target binary (EXE/DLL) into the "Upload New Task" area.
-3.  Click **Start Analysis**.
 
-## 2. The Analysis Process (What Happens Next?)
-- **Step 1**: The file is sent to the Sandbox VM.
-- **Step 2**: The Kernel Driver monitors execution for ~60 seconds.
-- **Step 3**: Headless Ghidra decompiles the binary in parallel.
-- **Step 4**: The AI correlates the streams.
+1.  Navigate to the **Dashboard** (`/`).
+2.  Drag & Drop your malware (`.exe`, `.dll`, `.ps1`) into the "Upload Zone".
+3.  **Analysis Configuration**:
+    *   **Analysis Duration**: Default 120s (Increase for long-running malware).
+    *   **AI Mode**:
+        *   **Hybrid (Recommended)**: Private Map + Cloud Reason. Best balance.
+        *   **Local Only**: Use this for highly sensitive samples. No data leaves the network.
+        *   **Cloud Only**: Fastest reasoning, but sends raw telemetry to Gemini.
 
-## 2a. The AI Engine (Deep Thinking)
-Unlike traditional "black box" classifiers, VoodooBox uses **DeepSeek-R1** (or Llama-3) running locally via `llama.cpp`.
-- **Chain of Thought**: The model is forced to "speak its mind" before generating the final JSON report. It debates with itself, correlates timestamps, and verifies API calls against the decompiled code.
-- **Why it matters**: This reduces hallucinations. If the AI is unsure about a C2 address, you will see it questioning the data in the "Forensic Reasoning" console.
+## 2. Monitoring Progress
+
+Once submitted, the task moves to the **"Running Tasks"** list.
+*   **Status Bar**: Indicates the current phase (Sandbox Execution -> Telemetry Stream -> AI Analysis).
+*   **Console Output**: Watch the real-time logs for kernel driver events (`PROCESS_CREATE`, `IMAGE_LOAD`).
 
 ## 3. Interpreting the Forensic Report
 
-The new AI-generated report is divided into four key sections:
+The **Neural Report** tab is your primary view.
 
 ### A. Executive Summary & Verdict
-- **Verdict**: Color-coded (Green/Yellow/Red).
-  - *Note: "Diagnostic Gamma" = Malicious.*
-- **Threat Score**: A 0-100 confidence score.
-- **Summary**: A high-level overview of the malware's intent.
+The AI provides a definitive verdict (`Malicious`, `Suspicious`, `Benign`) and a confidence score.
+*   **Threat Score**: 0-100 ring. >70 is critical.
+*   **Summary**: A plain-English explanation of *why* the sample is malicious.
 
-### B. Forensic Reasoning (Chain of Thought) [NEW]
-This scrollable console block reveals the **AI's internal monologue**. You can see exactly *why* it reached a conclusion.
-- *Look for*: logic verification, hypothesis testing, and rule matching.
+### B. MITRE ATT&CK Matrix
+The AI maps observed behaviors to the MITRE framework.
+*   **Tactic**: e.g., "Persistence".
+*   **Technique**: e.g., "Registry Run Keys / Startup Folder".
+*   **Evidence**: The specific API call or command line that triggered the detection.
 
-### C. Static Analysis Insights (Ghidra) [NEW]
-This section lists specific code patterns found in the binary.
-- *Example*: "Function `FUN_00401000` calls `InternetOpenUrlA`, correlating with the network traffic to `1.2.3.4`."
+### C. Behavioral Timeline
+A chronological reconstruction of the attack chain.
+*   **Timestamps**: Relative to start (e.g., `+00:02s`).
+*   **Context**: Explains the sequence (e.g., "Dropper spawned PowerShell which downloaded payload").
 
-### D. Behavioral Timeline
-An interactive list of events sorted by time.
-- Click on **PID Buttons** to filter events by process.
-- Events are tagged with Mitre ATT&CK tactics (e.g., `Persistence`, `Execution`).
+### D. Static Analysis (Remnux)
+If configured, this section shows deep static insights:
+*   **Floss**: Obfuscated strings recovered from memory.
+*   **Capa**: Malicious capabilities detected in the binary (e.g., "connects to C2").
+*   **YARA**: Rule matches.
 
-## 4. Chat with Malware
-Use the floating chat window to ask specific questions about the analysis:
-- "What registry keys did it modify?"
-- "Explain the persistence mechanism in detail."
-- "Show me the decompiled code for function X."
+## 4. Activity Flow (Fishbone Diagram)
+
+Switch to the **"Activity Flow"** tab for a visual investigation.
+*   **Root Node**: The sample you submitted.
+*   **Branches**: Child processes spawned by the malware.
+*   **Interaction**: Click any node to see:
+    *   **Network**: IPs/Domains contacted.
+    *   **Files**: Dropped payloads.
+    *   **Registry**: Persistence mechanisms.
+
+## 5. Manual Actions
+
+You can interact with the running VM directly:
+*   **Terminate**: Kill a specific process ID.
+*   **Input**: Send keystrokes or mouse clicks if the malware requires interaction.
+*   **VNC**: View the VM desktop in real-time.

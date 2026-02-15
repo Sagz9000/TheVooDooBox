@@ -16,23 +16,28 @@ C4Context
         System(frontend, "Frontend Dashboard", "React/Vite app with V5 Functional Fidelity UI.")
         System(backend, "Hyper-Bridge", "Rust API server. Orchestrates VMs, ingests telemetry, manages AI.")
         System(db, "Persistence Layer", "PostgreSQL (Relational) + ChromaDB (Vector).")
-        System(ai, "AI Engine", "Llama.cpp (Inference) + DeepSeek-R1-8B.")
-        System(ghidra_srv, "Ghidra Server", "Headless static analysis engine.")
-        System(mcp, "MCP Server", "Model Context Protocol for IDE/Agent integration.")
+        System(ai_local, "Local Inference", "Ollama (Llama-3/DeepSeek) for Map Phase.")
+        System(ai_cloud, "Cloud Reasoning", "Google Gemini 1.5 Pro for Reduce Phase (Optional).")
     }
 
-    System_Boundary(isolation, "Isolation Zone (Proxmox/KVM)") {
+    System_Boundary(isolation, "Windows Sandbox (Proxmox/KVM)") {
         System(vm, "Sandbox VM", "Windows 10/11 Guest. Isolated Network.")
         System(agent, "TheVooDooBox Agent", "Rust binary with Kernel Driver (The Eye).")
+    }
+
+    System_Boundary(remnux_zone, "Remnux Analysis Zone (Linux)") {
+        System(remnux_vm, "Remnux VM", "Ubuntu Linux dedicated to static analysis.")
+        System(gateway, "Voodoo Gateway", "Node.js service bridging tools (Floss/Capa) to Backend.")
     }
 
     Rel(analyst, frontend, "Interacts/Views Reports")
     Rel(frontend, backend, "HTTPS / WSS (Telemetry Stream)")
     Rel(backend, db, "SQL / Vector Query")
-    Rel(backend, ai, "Prompt / Inference (reasoning)")
-    Rel(backend, ghidra_srv, "Analysis Requests")
+    Rel(backend, ai_local, "Map Phase (Filter Privacy)")
+    Rel(backend, ai_cloud, "Reduce Phase (Synthesize Verdict)")
     Rel(backend, vm, "VirtIO Serial / TCP", "Control & Telemetry")
-    Rel(agent, mcp, "Telemetry Enrichment")
+    Rel(backend, gateway, "HTTP POST /analyze", "Triggers Static Analysis")
+    Rel(gateway, remnux_vm, "Executes Toolchain")
 ```
 
 ---
@@ -47,12 +52,43 @@ The system runs as a multi-container Docker application (`docker-compose.yaml`).
 | **frontend** | `./frontend` | `3000` | React web application. |
 | **db** | `postgres:15-alpine` | `5432` | Stores Tasks, Events, and Reports. |
 | **chromadb** | `chromadb/chroma` | `8002` | Stores embeddings for RAG (Retrieval Augmented Generation). |
-| **ghidra** | `./ghidra` | `8005` | Headless Ghidra server for static analysis. |
-| **mcp-server** | `./mcp-server` | `8001` | Model Context Protocol server for IDE integration. |
+| **remnux-gateway** | `./remnux` | `8090` | Node.js bridge to Remnux tools (can be remote). |
 
 ---
 
-## 3. Database Schema
+## 3. AI Pipeline (Map-Reduce)
+
+TheVooDooBox uses a **Map-Reduce** architecture to process large volumes of telemetry while respecting privacy boundaries.
+
+```mermaid
+sequenceDiagram
+    participant B as Backend (Rust)
+    participant L as Local LLM (Ollama)
+    participant C as Cloud AI (Gemini)
+
+    Note over B: Analysis Complete (10k+ Telemetry Events)
+    
+    B->>B: Chunk Telemetry (Batch Size: 3 Processes)
+    
+    loop Map Phase (Parallel)
+        B->>L: analyze_chunk(json_chunk)
+        L-->>B: structured_insights (Privacy Filtered)
+    end
+    
+    B->>B: Aggregate Insights + Static Analysis Data
+    
+    alt Hybrid Mode
+        B->>C: generate_final_report(aggregated_context)
+        C-->>B: final_verdict_json
+    else Local Only Mode
+        B->>L: generate_final_report(aggregated_context)
+        L-->>B: final_verdict_json
+    end
+```
+
+---
+
+## 4. Database Schema
 
 The persistence layer uses **PostgreSQL**. Key tables include:
 
@@ -64,52 +100,17 @@ Tracks the lifecycle of a submitted sample.
 - `status` (Text): `QUEUED`, `RUNNING`, `ANALYZING`, `COMPLETED`.
 - `verdict` (Text): AI-determined verdict (`MALICIOUS`, `BENIGN`).
 - `risk_score` (Int): 0-100 score.
-- `sandbox_id` (Text): ID of the specific VM used.
+- `mitre_matrix` (JSONB): Mapped tactics and techniques.
+- `remnux_status` (Text): Status of the Linux static analysis.
 
 ### `events`
 Stores raw telemetry streamed from the Agent.
 - `id` (Serial): Primary Key.
 - `task_id` (UUID): Link to parent Task.
-- `event_type` (Text): `PROCESS_CREATE`, `network_connect`, `file_create`, etc.
+- `event_type` (Text): `PROCESS_CREATE`, `network_connect`, `file_create`, `registry_set`.
 - `timestamp` (BigInt): Unix epoch.
 - `process_id` (Int): PID of the actor.
 - `details` (JSON): Context-specific data (IPs, Paths, Registry Keys).
-- `digital_signature` (Text): status of the binary (e.g., `Signed by Microsoft`).
-
-### `analysis_reports`
-Stores the final AI-generated output.
-- `task_id` (UUID): Unique Link.
-- `report_text` (Text): Full markdown report.
-- `forensic_report_json` (JSONB): Structured findings (Timeline, IOCs).
-- `generated_at` (Timestamp).
-
-### `virustotal_cache`
-Caches external intelligence to save API quota.
-- `hash` (Text PK): SHA256.
-- `data` (JSONB): Full VT Report.
-- `scanned_at` (Timestamp).
-
----
-
-## 4. API Reference (Hyper-Bridge)
-
-The backend exposes a REST API on port `8080`.
-
-### VM Management
-- `GET /vms`: List all Proxmox VMs and their status.
-- `POST /vms/{node}/{vmid}/status`: Start, Stop, or Reset a VM.
-- `POST /vms/{node}/{vmid}/revert`: Rollback VM to "Gold Image".
-- `POST /vms/{node}/{vmid}/vnc`: Get a VNC WebSocket ticket.
-
-### Analysis Actions
-- `POST /vms/actions/submit`: Upload a file for detonation.
-    - **Multipart Form**: `file`, `analysis_duration` (seconds).
-- `POST /vms/actions/terminate`: Kill a process in the active VM.
-- `POST /vms/actions/exec`: Run a command/URL in the active VM.
-
-### Reporting
-- `GET /reports/{task_id}`: Retrieve the full forensic report.
-- `GET /reports/{task_id}/events`: Stream raw events for the timeline UI.
 
 ---
 
@@ -124,28 +125,3 @@ The backend exposes a REST API on port `8080`.
 The Agent is protected by a custom Kernel Driver (`voodoobox_eye.sys`).
 - **Anti-Tamper**: Strips `PROCESS_TERMINATE` rights from any process attempting to open a handle to the Agent.
 - **Callback Registration**: Uses `PsSetCreateProcessNotifyRoutine` to capture process execution at the kernel level, ensuring no user-mode rootkit can hide execution.
-
----
-
-## 6. AI & RAG Pipeline
-
-For a detailed breakdown of the Artificial Intelligence architecture, including Prompt Engineering, Vector Embeddings, and the Hallucination Control Protocol, please see [03_AI_RAG.md](03_AI_RAG.md).
-
----
-
-## 7. Build & Deployment
-
-### Backend (Rust/Actix)
-```bash
-cd backend
-cargo build --release
-```
-
-### Agent (Rust/Windows)
-The agent is cross-compiled from Linux using MinGW or built natively on Windows.
-```bash
-# Cross-compile
-cargo build --target x86_64-pc-windows-gnu --release
-```
-
-For full deployment instructions, see [13_AGENT_DEPLOYMENT.md](13_AGENT_DEPLOYMENT.md).

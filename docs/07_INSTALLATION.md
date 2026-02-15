@@ -1,74 +1,68 @@
-# Installation & Deployment Guide
+# TheVooDooBox Installation Guide (v2.8)
 
-## 1. Prerequisites
+## 1. System Requirements
 
-### Hardware Requirements
-- **CPU**: x86_64 Processor with Virtualization Extensions (VT-x/AMD-v) enabled.
-- **RAM**: 16GB Minimum (32GB Recommended if running local Ollama LLM).
-- **Storage**: 100GB+ SSD.
+*   **Host OS**: Ubuntu 22.04 LTS (Recommended) or Windows 10/11 with WSL2.
+*   **Virtualization**: Proxmox VE (Preferred) or local KVM/QEMU.
+*   **Hardware**: 16GB RAM minimum (32GB recommended for local LLMs).
+*   **Docker**: Docker Engine 24+ and Docker Compose v2.
 
-### Software Requirements
-- **Docker**: Docker Engine + Docker Compose.
-- **Proxmox Virtual Environment (PVE)**: Required for Sandbox VM management.
-- **Node.js**: v18+ (for frontend dev).
-- **Rust**: 1.75+ (for backend dev).
-- **Ghidra**: 11.0+ (Headless Analyzer).
+## 2. Quick Start (Docker)
 
-## 2. Environment Setup
+### Clone & Configure
+```bash
+git clone https://github.com/Sagz9000/TheVooDooBox.git
+cd TheVooDooBox-main
+cp .env.example .env
+```
 
-1.  **Clone Repository**:
-    ```bash
-    git clone https://github.com/Sagz9000/TheVooDooBox.git
-    cd TheVooDooBox-main
-    ```
+### Edit Configuration (.env)
+You must set your API keys and network paths:
 
-2.  **Configure Secrets**:
-    Create a `.env` file in the root directory (copy from `.env.example`).
-    ```bash
-    cp .env.example .env
-    ```
-    Populate the following critical variables:
-    - `PROXMOX_HOST`: IP/Hostname of your PVE.
-    - `PROXMOX_TOKEN_ID`: API Token ID (e.g., `root@pam!token`).
-    - `PROXMOX_TOKEN_SECRET`: API Token Secret.
-    - `POSTGRES_PASSWORD`: Database password.
-    - `LLAMA_API_URL`: URL to your local `llama-server` (e.g., `http://host.docker.internal:8080`).
+```ini
+# --- Database ---
+POSTGRES_USER=voodoo
+POSTGRES_PASSWORD=secret
+POSTGRES_DB=mallab
 
-## 3. Launching the Stack
+# --- Proxmox (Sandbox Manager) ---
+PROXMOX_HOST=192.168.1.10
+PROXMOX_USER=root@pam
+PROXMOX_TOKEN_ID=your_token_id
+PROXMOX_TOKEN_SECRET=your_token_secret
 
-1.  **Start Llama Server**:
-    Download a GGUF model (e.g., DeepSeek-R1-Distill-Llama-8B) and run:
-    ```bash
-    ./llama-server -m models/deepseek-r1.gguf -c 8192 --host 0.0.0.0 --port 8080
-    ```
+# --- AI Configuration (Hybrid Mode) ---
+# Local Inference (Ollama)
+OLLAMA_HOST=http://host.docker.internal:11434
+# Cloud Reasoning (Gemini)
+GEMINI_API_KEY=your_google_api_key
 
-2.  **Run Docker Compose**:
-    ```bash
-    docker-compose up -d --build
-    ```
+# --- Remnux Integration ---
+REMNUX_MCP_URL=http://192.168.1.50:8090
+```
 
-- **Frontend**: Accessible at `http://localhost:3000`
-- **Backend API**: Accessible at `http://localhost:8080`
+### Launch the Stack
+```bash
+docker-compose up -d --build
+```
 
-## 4. Configuring the Sandbox (Windows VM)
+Access the dashboard at **http://localhost:3000**.
 
-1.  **Create VM**: In Proxmox, create a Windows 10/11 VM.
-2.  **Install Agent**: Compile `agent-windows` on your dev machine and copy `mallab-agent-windows.exe` to the VM.
-3.  **Run Agent**: Execute the agent with the server IP:
-    ```powershell
-    .\mallab-agent-windows.exe --server <HOST_IP>:9001
-    ```
-4.  **Snapshot**: Take a snapshot named `GOLD_IMAGE` while the agent is running and waiting for commands.
-5.  **Update Config**: Ensure the `.env` file reflects the VM ID and Snapshot Name.
+## 3. Sandbox VM Setup (Windows)
 
----
+The Windows Guest VM requires the VoodooBox Agent and Kernel Driver.
+Please see **[13_AGENT_DEPLOYMENT.md](13_AGENT_DEPLOYMENT.md)** for detailed steps on:
+1.  Disabling Defender/Tamper Protection.
+2.  Installing the Root Certificate.
+3.  Deploying the Agent Service and Kernel Driver.
 
-## 5. Deployment Matrix (Summary)
+## 4. Remnux VM Setup (Linux)
 
-For the latest updates (e.g., signature verification fixes), follow this matrix:
+For advanced static analysis (Floss, Capa, YARA), you need a dedicated Remnux VM.
+Please see **[21_REMNUX_VM_DEPLOYMENT.md](21_REMNUX_VM_DEPLOYMENT.md)** for the complete guide on setting up the Linux node and the Voodoo Gateway service.
 
-| Component | Target OS | Deployment Method |
-| :--- | :--- | :--- |
-| **Agent** | Windows (Sandbox VM) | Recompile `agent-windows` on dev machine. Copy `.exe` to VM. |
-| **Backend** | Linux (Server) | `git pull` on server, then `docker-compose up --build -d`. |
-| **Frontend** | Linux (Server) | (Bundled with Backend Docker Compose) |
+## 5. Verification
+
+1.  **Check Services**: `docker-compose ps` should show `backend`, `frontend`, and `db` as healthy.
+2.  **Check Logs**: `docker-compose logs -f backend` for startup errors.
+3.  **Test AI**: Go to "Settings" in the UI and test the connection to Ollama/Gemini.
