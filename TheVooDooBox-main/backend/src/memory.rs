@@ -63,15 +63,17 @@ pub async fn get_embedding(text: &str) -> Result<Vec<f32>, Box<dyn std::error::E
         .await?;
 
     let status = res.status();
+    let body_text = res.text().await.unwrap_or_default();
+    
     if status.is_success() {
-        let body: serde_json::Value = res.json().await?;
-        if let Some(emb) = body["embedding"].as_array() {
-             return Ok(emb.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect());
+        if let Ok(body) = serde_json::from_str::<serde_json::Value>(&body_text) {
+            if let Some(emb) = body["embedding"].as_array() {
+                return Ok(emb.iter().filter_map(|v| v.as_f64().map(|f| f as f32)).collect());
+            }
         }
     }
 
-    let error_body = res.text().await.unwrap_or_default();
-    Err(format!("All embedding endpoints failed. Last status ({}): {}", status, error_body).into())
+    Err(format!("All embedding endpoints failed. Last status ({}): {}", status, body_text).into())
 }
 
 pub async fn ensure_collection() -> Result<(), Box<dyn std::error::Error>> {
