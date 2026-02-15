@@ -138,12 +138,22 @@ async fn call_analyze_stream(
 
     let mut stream = resp.bytes_stream();
     let mut buffer = String::new();
+    let mut received_any_data = false;
 
     while let Some(chunk_result) = stream.next().await {
         let chunk = match chunk_result {
             Ok(c) => c,
-            Err(e) => return Err(format!("Stream chunk error: {}", e).into()),
+            Err(e) => {
+                // If we already received data, this is likely a normal connection close
+                // (the gateway calls res.end() after finishing all stages).
+                if received_any_data {
+                    println!("[REMNUX] Stream ended (connection closed after data received). This is normal.");
+                    break;
+                }
+                return Err(format!("Stream chunk error: {}", e).into());
+            },
         };
+        received_any_data = true;
         let text = String::from_utf8_lossy(&chunk);
         buffer.push_str(&text);
 
@@ -181,6 +191,24 @@ async fn call_analyze_stream(
                         .await;
                     }
                 }
+            }
+        }
+    }
+
+    // Process any remaining data in the buffer
+    if !buffer.trim().is_empty() && buffer.starts_with("data: ") {
+        let json_str = &buffer[6..].trim();
+        if let Ok(sse_data) = serde_json::from_str::<serde_json::Value>(json_str) {
+            let module = sse_data["module"].as_str().unwrap_or("unknown");
+            let data = &sse_data["data"];
+            if module != "status" && module != "error" {
+                let _ = sqlx::query(
+                    "UPDATE tasks SET remnux_report = COALESCE(remnux_report, '{}'::jsonb) || $1::jsonb WHERE id = $2"
+                )
+                .bind(serde_json::json!({ module: data }))
+                .bind(task_id)
+                .execute(pool)
+                .await;
             }
         }
     }
