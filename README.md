@@ -1,75 +1,84 @@
+# The VoodooBox (Mallab v3)
+
+**The Ultimate Hybrid AI Malware Analysis Platform**
+
 ![TheVooDooBox Logo](TheVooDooBox-main/frontend/public/logo.png)
 
-# TheVooDooBox
-
-![Analyst Report Preview](TheVooDooBox-main/pictures/preview.png)
+![VoodooBox Dashboard](TheVooDooBox-main/pictures/preview.png)
 
 > **"From Logging to Streaming"**
-"The Voodoo who-do, what you don't dare-to people." > Malware analysis is inherently a risk no one should have to take alone. TheVooDooBox acts as your automated orchestrator, handling the "don't dare-to" tasks by isolating the execution and interaction layers within a hardened Proxmox environment. By automating the detonation and behavioral capture, it strips the "voodoo" from malicious code...leaving only the actionable intelligence behind.
+TheVooDooBox acts as your automated orchestrator, handling the "don't dare-to" tasks of malware research. By automating detonation, kernel-level behavioral capture, and AI-driven synthesis, it strips the "voodoo" from malicious code... leaving only actionable intelligence behind.
 
-It provides a real-time window into the malware's execution, allowing analysts to:
-*   **Watch** the infection execute live via a high-performance VNC/Spice stream.
-*   **Interact** with the malware (click dialogs, solve CAPTCHAs, traverse file systems).
-*   **Observe** kernel-level events (process creation, file modification, registry connection) as they happen, with millisecond latency.
-- [x] **V5 Functional Fidelity**: Real-time resizable sidebar and inline task expansion for deep-dive previews (Timeline, Stats, Storyboard).
-- [x] **Agentic AI Response**: The AI doesn't just watch; it **reacts**. It can autonomously trigger actions (e.g., `FETCH_URL`) based on its forensic findings.
-- [x] **Verdict Triage**: Automated AI verdicts supplemented by manual "Verdict Override" for expert validation.
-- [x] **Digital Verification**: Cross-platform validation of digital signatures for every executing binary. Even when the backend runs on Linux, it leverages Agent-side telemetry to verify the trust status of all sandbox activity.
-- [x] **Print Optimization**: One-click PDF generation for forensic reports with dedicated print-ready styling.
-- [x] **Collaborate**: Deep-link support for specific analysis reports, enabling seamless sharing of forensic results among team members.
+---
 
+## 🚀 Key Features (v2.8)
+
+### 🧠 Hybrid AI Core (Map-Reduce)
+The VoodooBox uses a unique **Map-Reduce** pipeline to balance privacy and reasoning power:
+*   **Map Phase (Local)**: Raw telemetry is processed locally by **Ollama** (Llama-3/DeepSeek) to extract technical facts without data leakage.
+*   **Reduce Phase (Cloud/Local)**: Aggregated insights are sent to high-reasoning models like **Google Gemini 1.5 Pro** for final verdict synthesis and threat scoring.
+*   *Configurable strategies: Local Only, Cloud Only, or Hybrid.*
+
+### 🕵️ Full-Spectrum Orchestration
+*   **Dynamic Windows Sandbox**: SECURE detonation with Sysmon, Kernel Drivers ("The Eye"), and out-of-band communication via VirtIO Serial.
+*   **Remnux Linux Integration**: Offloads deep static analysis to a dedicated Remnux node running **Floss**, **Capa**, **YARA**, and **Manalyze**.
+*   **Ghidra Automation**: Automated decompilation pipeline that feeds suspicious code logic directly into the AI analyzer.
+
+### 📊 The Neural Report
+Forget manual log correlation. The Neural Report provides:
+*   **MITRE ATT&CK Matrix**: Automated mapping of observed tactics and techniques.
+*   **Behavioral Timelines**: Chronological reconstruction of the infection chain.
+*   **Threat Score Rings**: Visual assessment of risk level (0-100).
+*   **Verdict Triage**: High-confidence "Malicious", "Suspicious", or "Benign" judgments.
+
+### 🕸️ Activity Flow (Fishbone)
+*   **Real-Time Visualization**: Watch the process execution tree grow live during detonation.
+*   **Interactive Inspection**: Drill down into any process to see loaded DLLs, network connections, and registry modifications.
+
+---
 
 ## 📚 Documentation
 
-The full documentation is available in the `docs/` directory. For a complete guide to all available documents, see the [**Documentation Index**](docs/00_INDEX.md).
+The full documentation is available in the `docs/` directory.
 
-### Core Guides
-1.  [**Overview & Vision**](docs/01_OVERVIEW.md)
-2.  [**Architecture & Logic**](docs/02_ARCHITECTURE.md)
-3.  [**AI Analyst & RAG**](docs/03_AI_RAG.md)
-4.  [**Hyper-Bridge & MCP**](docs/04_HYPER_BRIDGE.md)
-5.  [**Sandbox & Agent Internals**](docs/05_SANDBOX_AND_AGENT.md)
-6.  [**Frontend Dashboard**](docs/06_FRONTEND_DASHBOARD.md)
-
-### Technical Deep Dives
-*   [**Installation Guide**](docs/07_INSTALLATION.md)
-*   [**User Guide**](docs/08_USER_GUIDE.md)
-*   [**VNC & SPICE Integration**](docs/10_VNC_SPICE_INTEGRATION.md)
-*   [**Reporting & AI Analysis**](docs/11_REPORTING_AI.md)
-*   [**Ghidra Static Analysis**](docs/17_GHIDRA_INTEGRATION.md)
-
-### Extended Resources
-*   [**Scripts Reference**](docs/08_SCRIPTS.md)
-*   [**Agent Build & Deploy**](docs/12_AGENT_BUILD_DEPLOY.md)
-*   [**Agent Deployment**](docs/13_AGENT_DEPLOYMENT.md)
-*   [**Agent Troubleshooting**](docs/14_AGENT_TROUBLESHOOTING.md)
-*   [**Ollama Testing**](docs/15_OLLAMA_TESTING.md)
-*   [**Sandbox Guide**](docs/16_SANDBOX_GUIDE.md)
-
-## 🚀 Quick Start
-
-For those familiar with the stack:
-
-1.  **Clone**: `git clone https://github.com/Sagz9000/TheVooDooBox.git`
-2.  **Config**: `cp .env.example .env` (⚠️ Check `DATABASE_URL` user is `voodoobox`!)
-3.  **Redeploy Backend (Linux)**:
-    ```bash
-    git pull
-    docker-compose up -d --build
-    ```
-4.  **Update Agent (Windows)**:
-    - Compile `agent-windows` on your dev machine.
-    - Copy the resulting `.exe` to your Sandbox VM.
-5.  **Analysis**: Access UI at `http://localhost:3000`
-
-## 📺 Streaming vs. Logging
-
-Traditional sandboxes like Cuckoo or CAPE are "black boxes" designed for high-volume batch processing. TheVooDooBox is built for deep, interactive forensic dissection.
-
-*   **Interaction Paradigm**: Traditional sandboxes execute samples for a fixed time and generate post-mortem reports. TheVooDooBox is a **live streaming engine**, allowing you to watch and interact with the infection in real-time.
-*   **Stealth & Transport**: We use **"The Eye"**, a custom Windows Kernel Driver, and **VirtIO Serial** for out-of-band communication. This bypasses the noisy user-mode hooks and network-based logging that modern malware easily detects and evades.
-*   **Real-Time AI**: Unlike static signature lists, our **Hybrid-RAG AI Analyst** synthesizes live kernel events and Ghidra static findings into a coherent forensic narrative as the malware executes.
-*   **Hardware Native**: Purpose-built for the **Proxmox/KVM stack** with a high-speed WebSocket-to-TCP console relay, providing significantly lower latency than standard VNC implementations.
+| Guide | Description |
+| :--- | :--- |
+| **[01. Overview & Vision](docs/01_OVERVIEW.md)** | Core capabilities and safety requirements. |
+| **[02. Architecture & Logic](docs/02_ARCHITECTURE.md)** | System design, Map-Reduce flow, and DB schema. |
+| **[07. Installation Guide](docs/07_INSTALLATION.md)** | Step-by-step deployment (Docker + Proxmox). |
+| **[15. Analyst Manual](docs/15_ANALYSIS.md)** | How to run investigations and interpret results. |
+| **[21. Remnux Setup](docs/21_REMNUX_VM_DEPLOYMENT.md)** | Deploying the Linux static analysis node. |
 
 ---
-*Maintained by the VoodooBox Research Team...me JP*
+
+## ⚡ Quick Start
+
+1.  **Clone the Repository**:
+    ```bash
+    git clone https://github.com/Sagz9000/TheVooDooBox.git
+    cd TheVooDooBox
+    ```
+
+2.  **Configure Environment**:
+    ```bash
+    cp TheVooDooBox-main/.env.example TheVooDooBox-main/.env
+    # Edit the .env with your credentials and API keys.
+    ```
+
+3.  **Launch the Stack**:
+    ```bash
+    cd TheVooDooBox-main
+    docker-compose up -d --build
+    ```
+
+4.  **Access the Dashboard**:
+    *   **Frontend**: `http://localhost:3000`
+    *   **Backend API**: `http://localhost:8080`
+
+---
+
+## 🏗️ Technical Philosophy
+
+Traditional sandboxes are "black boxes" for batch processing. TheVooDooBox is a **live streaming engine** for deep forensic dissection. Using our custom **Windows Kernel Driver**, we bypass noisy user-mode hooks that malware can detect, providing a high-fidelity window into the core of the infection.
+
+*Built with ❤️ by the AntiCode Team. Maintained by JP.*
