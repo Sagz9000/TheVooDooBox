@@ -762,8 +762,8 @@ pub async fn generate_ai_report(
     let ai_mode = ai_manager.get_ai_mode().await;
     println!("[AI] Analysis Pipeline Strategy: {:?}", ai_mode);
 
-    // Chunk size 5 is a good balance for Local LLM context (approx 2-3k tokens per chunk)
-    const CHUNK_SIZE: usize = 5;
+    // Chunk size 3 forces more granular analysis (approx 1-2k tokens per chunk)
+    const CHUNK_SIZE: usize = 3;
     let chunks: Vec<Vec<ProcessSummary>> = all_processes.chunks(CHUNK_SIZE).map(|c| c.to_vec()).collect();
     
     println!("[AI] Starting Map-Reduce Analysis. Total Processes: {}. Chunks: {}", all_processes.len(), chunks.len());
@@ -771,55 +771,75 @@ pub async fn generate_ai_report(
     let mut map_insights: Vec<String> = Vec::new();
     
     // --- MAP PHASE (Local LLM) ---
-    // In a real production system, this would be parallelized. 
-    // Sequential execution avoids OOM on local Ollama.
-    for (i, chunk) in chunks.iter().enumerate() {
-        println!("[AI] Processing Chunk {}/{} via Local LLM...", i+1, chunks.len());
-        
-        let chunk_json = serde_json::to_string(&chunk).unwrap_or_default();
-        let map_prompt = format!(
-            "Analyze this telemetry chunk (Part {}/{}). Identify suspicious behavior.
-             Target File: {}
-             
-             PROCESS DATA:
-             {}
-             
-             OUTPUT FORMAT:
-             Return a JSON array of strings, where each string is a concise insight about a specific suspicious action.
-             Example: [\"Process powershell.exe (PID 454) established network connection to 45.33.2.1\", \"Process cmd.exe deleted shadow copies\"]
-             If nothing suspicious is found, return empty array [].
-             DO NOT produce a full report. Only precise insights.", 
-             i+1, chunks.len(), target_filename, chunk_json
-        );
+    // Parallelize chunk processing for maximum throughput
+    let futures = chunks.iter().enumerate().map(|(i, chunk)| {
+        let ai_manager = ai_manager.clone(); 
+        let ai_mode = ai_mode.clone();
+        let chunk = chunk.clone();
+        let target_filename = target_filename.to_string();
+        let total_chunks = chunks.len();
 
-        let system_prompt = "You are a Forensic Pre-Processor. Your job is to extract raw technical facts from telemetry chunks.";
-        
-        // We force "map" phase to use Local provider in Hybrid mode via manager.rs logic
-        // We use a blank history for each chunk to keep it stateless
-        let response = ai_manager.ask_with_mode(
-            vec![crate::ai::provider::ChatMessage { role: "user".to_string(), content: map_prompt }], 
-            system_prompt.to_string(),
-            &ai_mode, // Respect User Selection
-            "map"
-        ).await;
+        async move {
+            println!("[AI] Processing Chunk {}/{} via Local LLM...", i+1, total_chunks);
+            
+            let chunk_json = serde_json::to_string(&chunk).unwrap_or_default();
+            let map_prompt = format!(
+                "Analyze this telemetry chunk (Part {}/{}). Identify suspicious behavior.
+                 Target File: {}
+                 
+                 PROCESS DATA:
+                 {}
+                 
+                 OUTPUT FORMAT:
+                 Return a JSON array of strings, where each string is a concise insight about a specific suspicious action.
+                 Example: [\"Process powershell.exe (PID 454) established network connection to 45.33.2.1\", \"Process cmd.exe deleted shadow copies\"]
+                 If nothing suspicious is found, return empty array [].
+                 DO NOT produce a full report. Only precise insights.", 
+                 i+1, total_chunks, target_filename, chunk_json
+            );
 
-        match response {
-            Ok(resp_text) => {
-                // Try to parse the array
-                if let Ok(insights) = serde_json::from_str::<Vec<String>>(&resp_text) {
-                     map_insights.extend(insights);
-                } else {
-                     // Fallback: Just take the raw text if it's not valid JSON array
-                     // or try to extract lines
-                     let clean_text = resp_text.trim();
-                     if !clean_text.is_empty() {
-                        map_insights.push(format!("Chunk {} Insight: {}", i+1, clean_text));
-                     }
+            let system_prompt = "You are a Forensic Pre-Processor. Your job is to extract raw technical facts from telemetry chunks.";
+            
+            // We force "map" phase to use Local provider in Hybrid mode via manager.rs logic
+            // We use a blank history for each chunk to keep it stateless
+            let response = ai_manager.ask_with_mode(
+                vec![crate::ai::provider::ChatMessage { role: "user".to_string(), content: map_prompt }], 
+                system_prompt.to_string(),
+                &ai_mode, // Respect User Selection
+                "map"
+            ).await;
+
+            match response {
+                Ok(resp_text) => {
+                    // Try to parse the array
+                    if let Ok(insights) = serde_json::from_str::<Vec<String>>(&resp_text) {
+                         Some(insights)
+                    } else {
+                         // Fallback: Just take the raw text if it's not valid JSON array
+                         // or try to extract lines
+                         let clean_text = resp_text.trim().to_string();
+                         if !clean_text.is_empty() {
+                            Some(vec![format!("Chunk {} Insight: {}", i+1, clean_text)])
+                         } else {
+                            None
+                         }
+                    }
+                },
+                Err(e) => {
+                    println!("[AI] Map Phase Failed for Chunk {}: {}", i, e);
+                    None
                 }
-            },
-            Err(e) => {
-                println!("[AI] Map Phase Failed for Chunk {}: {}", i, e);
             }
+        }
+    });
+
+    // Execute all chunks concurrently
+    let results = futures::future::join_all(futures).await;
+
+    // Aggregate results
+    for res in results {
+        if let Some(insights) = res {
+            map_insights.extend(insights);
         }
     }
     
@@ -1362,7 +1382,18 @@ fn aggregate_telemetry(task_id: &String, raw_events: Vec<RawEvent>, target_filen
         // 2. If PID is Relevant (Patient Zero Lineage) -> Keep EVERYTHING.
         // 3. Else (Noise) -> Skip.
         if !is_critical && !is_relevant {
-            continue; 
+            // Relaxed Filter: Keep obviously interesting processes even if lineage is broken
+            let name_lower = evt.process_name.to_lowercase();
+            let is_interesting = name_lower.contains("powershell") 
+                              || name_lower.contains("cmd.exe") 
+                              || name_lower.contains("wscript") 
+                              || name_lower.contains("cscript")
+                              || name_lower.contains("rundll32")
+                              || name_lower.contains("regsvr32");
+
+            if !is_interesting {
+                continue; 
+            }
         }
 
         process_map.entry(evt.process_id).or_insert(ProcessSummary {
