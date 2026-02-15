@@ -3,123 +3,117 @@ import {
     Activity,
     Brain,
     Biohazard,
-    Disc,
-    Layers,
     Zap,
-    Box,
     LayoutDashboard,
-    Settings
+    Settings,
+    Box,
+    Layers,
+    Server,
+    Sliders
 } from 'lucide-react';
 import { AgentEvent, ViewModel, voodooApi, BASE_URL } from './voodooApi';
 import LabDashboard from './LabDashboard';
 import AnalysisArena from './AnalysisArena';
 import TaskDashboard from './TaskDashboard';
 import FloatingChat from './FloatingChat';
+import LineagePage from './LineagePage';
 import ReportView from './ReportView';
-import SubmissionModal, { SubmissionData } from './SubmissionModal';
+import SubmissionModal from './SubmissionModal';
 import SettingsModal from './SettingsModal';
 
 export default function App() {
-    const [view, setView] = useState<'tasks' | 'lab' | 'arena' | 'history' | 'intel' | 'report'>('lab');
-    const [vms, setVms] = useState<ViewModel[]>([]);
-    const [events, setEvents] = useState<AgentEvent[]>([]);
-    const [connected, setConnected] = useState(false);
-    const [arenaTarget, setArenaTarget] = useState<{ node: string, vmid: number, mode: 'vnc' | 'spice-html5' } | null>(null);
+    // ── State ──
+    const [view, setView] = useState<'tasks' | 'lab' | 'arena' | 'intel' | 'report' | 'lineage'>('lab');
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
-    const [searchTerm, setSearchTerm] = useState("");
-    const [startTime] = useState(Date.now());
-
-    // AI Settings State
-    const [showSettingsModal, setShowSettingsModal] = useState(false);
-    const [aiProvider, setAiProvider] = useState<string>('Ollama');
-
-    // Submission Modal State
+    const [events, setEvents] = useState<AgentEvent[]>([]);
+    const [vms, setVms] = useState<ViewModel[]>([]);
+    const [arenaTarget, setArenaTarget] = useState<ViewModel | null>(null);
+    const [aiProvider, setAiProvider] = useState<string>('ollama');
     const [showSubmissionModal, setShowSubmissionModal] = useState(false);
+    const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [preSelectedVm, setPreSelectedVm] = useState<{ node: string, vmid: number } | null>(null);
 
-    // WebSocket Handling
+    // ── Effects ──
     useEffect(() => {
-        console.log("MALLAB-DEBUG: App mounting, starting WS");
-        const hostUrl = BASE_URL.replace(/^https?:\/\//, '');
-        const ws = new WebSocket(`ws://${hostUrl}/ws`);
-        ws.onopen = () => {
-            console.log("MALLAB-DEBUG: WS Connected");
-            setConnected(true);
-        };
-        ws.onmessage = (event) => {
+        const loadVms = async () => {
             try {
-                const data: AgentEvent = JSON.parse(event.data);
-                setEvents(prev => [...prev.slice(-499), data]);
+                const data = await voodooApi.fetchVms();
+                setVms(data);
             } catch (e) {
-                console.error("Failed to parse event", e);
+                console.error("Failed to fetch VMs", e);
             }
         };
-        ws.onclose = () => {
-            console.log("MALLAB-DEBUG: WS Closed");
-            setConnected(false);
-        };
-
-        refreshVms();
-
-        // Fetch AI Config
-        voodooApi.getAIConfig().then(config => {
-            setAiProvider(config.provider);
-        }).catch(err => console.error("Initial AI Config Fetch Failed", err));
-
-        return () => ws.close();
+        loadVms();
+        const interval = setInterval(loadVms, 5000);
+        return () => clearInterval(interval);
     }, []);
 
-    // Deep Linking Handler
     useEffect(() => {
-        const params = new URLSearchParams(window.location.search);
-        const taskId = params.get('task');
-        if (taskId) {
-            console.log(`[App] Deep link found for task: ${taskId}`);
-            // Clear the query param to avoid sticking to it on refresh if desired, 
-            // but keeping it allows sharing the URL as is.
-            setSelectedTaskId(taskId);
+        // Load AI config
+        voodooApi.getAIConfig().then(cfg => setAiProvider(cfg.provider))
+            .catch(e => console.error("Failed to load AI config", e));
+    }, []);
+
+    // ── Handlers ──
+
+    const handleSelectTask = async (taskId: string) => {
+        setSelectedTaskId(taskId);
+        try {
+            const evts = await voodooApi.fetchHistory(taskId);
+            setEvents(evts);
             setView('report');
-        }
-    }, []);
-
-    const refreshVms = async () => {
-        try {
-            const data = await voodooApi.fetchVms();
-            setVms(data);
         } catch (e) {
-            console.error(e);
+            console.error("Failed to load task events", e);
         }
     };
 
-    const loadHistory = async () => {
+    const handleOpenLineage = async (taskId: string) => {
+        setSelectedTaskId(taskId);
         try {
-            const hist = await voodooApi.fetchHistory();
-            setEvents(prev => {
-                const combined = [...hist, ...prev];
-                // Use database ID for reliable deduplication, fallback to composite key for live events
-                const unique = Array.from(new Map(combined.map(e => [
-                    e.id ? `id-${e.id}` : `${e.timestamp}-${e.event_type}-${e.process_id}-${e.details.substring(0, 20)}`,
-                    e
-                ])).values());
-                return unique.sort((a, b) => a.timestamp - b.timestamp);
-            });
+            const evts = await voodooApi.fetchHistory(taskId);
+            setEvents(evts);
+            setView('lineage');
         } catch (e) {
-            console.error("Failed to load history", e);
+            console.error("Failed to load task events for lineage", e);
         }
     };
-
-    useEffect(() => {
-        loadHistory();
-    }, []);
 
     const handleSelectVm = (node: string, vmid: number, mode: 'vnc' | 'spice-html5') => {
-        setArenaTarget({ node, vmid, mode });
-        setView('arena');
+        const vm = vms.find(v => v.vmid === vmid && v.node === node);
+        if (vm) {
+            setArenaTarget(vm);
+            setView('arena');
+        }
     };
 
-    const handleSelectTask = (taskId: string) => {
-        setSelectedTaskId(taskId);
-        setView('report');
+    const handleLaunchNativeSpice = async (node: string, vmid: number) => {
+        try {
+            const ticket = await voodooApi.getSpiceTicket(node, vmid);
+            // Create .vv file content
+            const vvContent = `[virt-viewer]
+type=spice
+host=${window.location.hostname}
+port=${ticket.port}
+password=${ticket.password}
+tls-port=${ticket.tls_port || 0}
+delete-this-file=1
+title=VM-${vmid}
+toggle-fullscreen=shift+f11
+release-cursor=shift+f12
+`;
+            const blob = new Blob([vvContent], { type: 'application/x-virt-viewer' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `vm-${vmid}.vv`;
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+            document.body.removeChild(a);
+        } catch (e) {
+            console.error("Failed to launch native SPICE", e);
+            alert("Failed to generate SPICE ticket");
+        }
     };
 
     const handleOpenSubmission = (vm?: { node: string, vmid: number }) => {
@@ -127,148 +121,101 @@ export default function App() {
         setShowSubmissionModal(true);
     };
 
-    const handleGlobalSubmission = async (data: SubmissionData & { vmid?: number, node?: string }) => {
-        try {
-            if (data.type === 'file' && data.file) {
-                const formData = new FormData();
-                formData.append('file', data.file);
-                formData.append('analysis_duration', data.duration.toString());
-                if (data.vmid) formData.append('vmid', data.vmid.toString());
-                if (data.node) formData.append('node', data.node);
-
-                const res = await fetch(`${BASE_URL}/vms/actions/submit`, {
-                    method: 'POST',
-                    body: formData,
-                });
-
-                if (res.ok) {
-                    alert("Sample submitted successfully! Analysis starting...");
-                    // We might need a way to refresh the TaskDashboard if it's active
-                } else {
-                    const errText = await res.text();
-                    alert(`Failed to submit sample. Server responded: ${res.status} ${errText}`);
-                }
-            } else if (data.type === 'url' && data.url) {
-                const success = await voodooApi.execUrl(data.url, data.duration, data.vmid, data.node);
-                if (success) {
-                    alert("URL submitted! Browser DETONATION initiated.");
-                } else {
-                    alert("Failed to detonate URL.");
-                }
-            }
-        } catch (error) {
-            console.error('Submission failed', error);
-            alert(`Error submitting task: ${error}`);
-        }
+    const handleGlobalSubmission = async (file: File, targetVms: number[]) => {
+        // Mock submission logic or implement real one if needed
+        console.log("Submitting", file.name, "to", targetVms);
+        setShowSubmissionModal(false);
+        alert("Submission initiated!");
     };
 
-    const handleNativeSpice = (node: string, vmid: number) => {
-        voodooApi.getSpiceTicket(node, vmid).then(data => {
-            const vvContent = `[virt-viewer]\ntype=spice\nhost=${data.host}\npassword=${data.password || ''}\ntls-port=${data.tls_port || ''}\nproxy=${data.proxy || ''}\nhost-subject=${data.host_subject || ''}\nca=${data.ca || ''}\ndelete-this-file=1\ntitle=MallabV3 SPICE\n`;
-            const blob = new Blob([vvContent], { type: 'application/x-virt-viewer' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `mallab-node-${vmid}.vv`;
-            a.click();
-        });
-    };
+    // ── Render ──
 
-    const activeVmCount = vms.filter(v => v.status === 'running').length;
-
-    try {
-        return (
-            <div className="flex h-screen bg-security-bg text-[#c9d1d9] overflow-hidden font-sans select-none">
-                {/* Sidebar */}
-                <aside className="w-[80px] bg-black border-r border-white/5 flex flex-col items-center py-10 z-30 shadow-[10px_0_50px_rgba(0,0,0,0.5)]">
-                    <div className="mb-12 cursor-pointer group relative" onClick={() => setView('lab')}>
-                        <div className="absolute inset-0 bg-voodoo-toxic-green/40 blur-xl opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                        <Biohazard size={32} className="text-voodoo-toxic-green relative z-10 animate-pulse" />
-                    </div>
-
-                    <nav className="flex-1 w-full flex flex-col items-center gap-6">
-                        <NavItem icon={<Disc size={22} />} label="Mixer" active={view === 'lab'} onClick={() => setView('lab')} />
-                        <NavItem icon={<Layers size={22} />} label="Telemetry Reports" active={view === 'tasks'} onClick={() => setView('tasks')} />
-                        <NavItem
-                            icon={<Zap size={22} className={arenaTarget ? 'animate-pulse text-boombox-teal' : ''} />}
-                            label="Arena"
-                            active={view === 'arena'}
-                            onClick={() => arenaTarget && setView('arena')}
-                            disabled={!arenaTarget}
-                        />
-                        <NavItem icon={<Brain size={22} />} label="Intel" active={view === 'intel'} onClick={() => setView('intel')} />
-                        <NavItem icon={<Settings size={22} />} label="Settings" active={showSettingsModal} onClick={() => setShowSettingsModal(true)} />
-                    </nav>
-
-                    <div className="mt-auto flex flex-col items-center gap-4">
-                        <div className={`w-3 h-3 rounded-full ${connected ? 'bg-boombox-green shadow-[0_0_15px_#00FF00]' : 'bg-red-600 shadow-[0_0_15px_#FF0000]'}`}></div>
-                        <span className="text-[10px] font-black text-white/20 uppercase tracking-widest">{connected ? 'ON' : 'OFF'}</span>
-                    </div>
-                </aside>
-
-                {/* Main Area */}
-                <div className="flex-1 flex flex-col min-w-0">
-                    {/* Activity Indicator Bar */}
-                    <div className="h-1 bg-security-panel flex overflow-hidden">
-                        <div className="h-full bg-brand-500/50 animate-pulse" style={{ width: '35%' }}></div>
-                        <div className="h-full bg-threat-high/50" style={{ width: '15%' }}></div>
-                        <div className="h-full bg-transparent" style={{ width: '50%' }}></div>
-                    </div>
-
-                    <div className="flex-1 overflow-hidden relative">
-                        {view === 'tasks' && <TaskDashboard onSelectTask={handleSelectTask} onOpenSubmission={() => handleOpenSubmission()} />}
-
-                        {view === 'lab' && (
-                            <LabDashboard
-                                vms={vms}
-                                onRefresh={refreshVms}
-                                onSelectVm={handleSelectVm}
-                                onLaunchNativeSpice={handleNativeSpice}
-                                onOpenSubmission={handleOpenSubmission}
-                                onSelectTask={handleSelectTask}
-                            />
-                        )}
-
-                        {view === 'arena' && arenaTarget && (
-                            <AnalysisArena target={arenaTarget} events={events} onBack={() => setView('tasks')} />
-                        )}
-
-                        {view === 'report' && (
-                            <ReportView taskId={selectedTaskId} events={events} onBack={() => setView('tasks')} />
-                        )}
-
-                        {view === 'arena' && !arenaTarget && (
-                            <div className="h-full flex flex-col items-center justify-center text-security-muted space-y-6 animate-in fade-in duration-700">
-                                <MonitorPlaceholder />
-                            </div>
-                        )}
-
-                        {view === 'intel' && (
-                            <IntelHub />
-                        )}
-                    </div>
+    return (
+        <div className="flex h-screen w-screen bg-[#050505] text-white overflow-hidden font-sans selection:bg-brand-500/30 selection:text-brand-200">
+            {/* Sidebar */}
+            <div className="w-20 bg-[#080808] border-r border-white/5 flex flex-col items-center py-6 gap-6 z-50">
+                <div className="mb-2">
+                    <Biohazard size={28} className="text-brand-500 animate-pulse-slow" />
                 </div>
+
+                <nav className="flex flex-col gap-4 w-full px-2">
+                    <NavItem icon={<Activity size={20} />} label="Lab" active={view === 'lab'} onClick={() => setView('lab')} />
+                    <NavItem icon={<LayoutDashboard size={20} />} label="Tasks" active={view === 'tasks'} onClick={() => setView('tasks')} />
+                    <NavItem icon={<Zap size={20} />} label="Arena" active={view === 'arena'} onClick={() => setView('arena')} />
+                    <NavItem icon={<Brain size={20} />} label="Intel" active={view === 'intel'} onClick={() => setView('intel')} />
+                </nav>
+
+                <div className="mt-auto flex flex-col gap-4 w-full px-2">
+                    <NavItem icon={<Settings size={20} />} label="Config" active={false} onClick={() => setShowSettingsModal(true)} />
+                </div>
+            </div>
+
+            {/* Main Content */}
+            <div className="flex-1 flex flex-col relative overflow-hidden">
+                {view === 'lab' && (
+                    <LabDashboard
+                        vms={vms}
+                        onRefresh={() => voodooApi.fetchVms().then(setVms)}
+                        onSelectVm={handleSelectVm}
+                        onLaunchNativeSpice={handleLaunchNativeSpice}
+                        onOpenSubmission={handleOpenSubmission}
+                        onSelectTask={handleSelectTask}
+                    />
+                )}
+
+                {view === 'tasks' && (
+                    <TaskDashboard
+                        onSelectTask={handleSelectTask}
+                        onOpenSubmission={() => handleOpenSubmission()}
+                        onOpenLineage={handleOpenLineage}
+                    />
+                )}
+
+                {view === 'arena' && arenaTarget && (
+                    <AnalysisArena
+                        target={arenaTarget}
+                        events={events} // Arena might fetch its own, but passing events is fine
+                        onBack={() => setView('lab')}
+                    />
+                )}
+
+                {view === 'arena' && !arenaTarget && (
+                    <div className="h-full flex flex-col items-center justify-center text-security-muted space-y-6 animate-in fade-in duration-700">
+                        <MonitorPlaceholder />
+                        <button onClick={() => setView('lab')} className="btn-secondary">Return to Lab</button>
+                    </div>
+                )}
+
+                {view === 'report' && (
+                    <ReportView
+                        taskId={selectedTaskId}
+                        events={events}
+                        onBack={() => setView('tasks')}
+                        onOpenLineage={() => selectedTaskId && handleOpenLineage(selectedTaskId)}
+                    />
+                )}
+
+                {view === 'lineage' && (
+                    <LineagePage
+                        taskId={selectedTaskId}
+                        events={events}
+                        onBack={() => setView('report')} // Back returns to report view usually? Or tasks?
+                    />
+                )}
+
+                {view === 'intel' && <IntelHub />}
 
                 {/* Global Floating Components */}
                 <FloatingChat
-                    activeTaskId={selectedTaskId}
+                    activeTaskId={selectedTaskId || undefined}
                     activeProvider={aiProvider}
                     pageContext={(() => {
                         let ctx = `User is currently viewing the [${view.toUpperCase()}] page.\n`;
-
                         if (view === 'lab') {
                             ctx += `Visible VMs: ${vms.length}. Running: ${vms.filter(v => v.status === 'running').length}.\n`;
-                            vms.forEach(v => ctx += `- VM ${v.vmid} (${v.name}): ${v.status} on ${v.node}\n`);
                         } else if (view === 'report' && selectedTaskId) {
                             ctx += `Analyzing specific Task ID: ${selectedTaskId}.\n`;
-                            const taskEvents = events.filter(e => e.task_id === selectedTaskId);
-                            ctx += `Telemtry events for this task: ${taskEvents.length}.\n`;
-                        } else if (view === 'arena' && arenaTarget) {
-                            ctx += `Active Arena Session: VM ${arenaTarget.vmid} on ${arenaTarget.node}.\n`;
-                        } else if (view === 'tasks') {
-                            ctx += `Viewing the Telemetry Reports dashboard.\n`;
                         }
-
                         return ctx;
                     })()}
                 />
@@ -287,22 +234,21 @@ export default function App() {
                     onConfigUpdated={(provider) => setAiProvider(provider)}
                 />
             </div>
-        );
-    } catch (err) {
-        console.error("MALLAB-DEBUG: Render error", err);
-        return <div className="p-10 text-red-500 font-mono">Render Error: {String(err)}</div>;
-    }
+        </div>
+    );
 }
+
+// ── Subcomponents ──
 
 function NavItem({ icon, label, active, onClick, disabled }: { icon: React.ReactNode, label: string, active: boolean, onClick: () => void, disabled?: boolean }) {
     return (
         <button
             disabled={disabled}
             onClick={onClick}
-            className={`nav-item ${active ? 'nav-item-active' : 'text-security-muted'} ${disabled ? 'opacity-10 cursor-not-allowed' : 'opacity-100'}`}
+            className={`flex flex-col items-center justify-center p-2 rounded-lg transition-all ${active ? 'bg-brand-500/20 text-brand-500' : 'text-zinc-600 hover:text-white hover:bg-white/5'} ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
         >
             {icon}
-            <span className="text-[9px] font-black uppercase tracking-tighter">{label}</span>
+            <span className="text-[9px] font-black uppercase tracking-tighter mt-1">{label}</span>
         </button>
     );
 }

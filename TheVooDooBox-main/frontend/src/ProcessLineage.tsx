@@ -1,14 +1,17 @@
 import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { AgentEvent } from './voodooApi';
+import { Maximize2, Minimize2 } from 'lucide-react';
 
 // ── Types ──
-interface FishboneProps {
+interface ProcessLineageProps {
     events: AgentEvent[];
-    width?: number;
-    height?: number;
+    width?: number; // Optional, if not provided will use container width
+    height?: number; // Optional, if not provided will use container height
     mitreData?: Map<number, string[]>;
     printMode?: boolean; // Static render for PDF export
+    onMaximize?: () => void; // Optional callback for full-screen mode
+    isMaximized?: boolean;
 }
 
 interface ProcessNode {
@@ -204,10 +207,41 @@ function getVisibleTree(node: ProcessNode): ProcessNode {
 // ────────────────────────────────────────────
 // COMPONENT
 // ────────────────────────────────────────────
-export default function FishboneDiagram({ events, width = 1000, height = 400, mitreData, printMode = false }: FishboneProps) {
+export default function ProcessLineage({
+    events,
+    width,
+    height,
+    mitreData,
+    printMode = false,
+    onMaximize,
+    isMaximized
+}: ProcessLineageProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const [, forceUpdate] = useState(0); // trigger re-render on collapse
+    const [dimensions, setDimensions] = useState({ width: width || 800, height: height || 400 });
+
+    // Handle resizing
+    useEffect(() => {
+        if (width && height) {
+            setDimensions({ width, height });
+            return;
+        }
+
+        const resizeObserver = new ResizeObserver(entries => {
+            if (entries[0]) {
+                const { width, height } = entries[0].contentRect;
+                setDimensions({ width, height: height || 400 }); // Ensure minimum height
+            }
+        });
+
+        if (containerRef.current) {
+            resizeObserver.observe(containerRef.current);
+        }
+
+        return () => resizeObserver.disconnect();
+    }, [width, height]);
 
     const root = useMemo(() => {
         return buildHierarchy(events, mitreData);
@@ -226,7 +260,7 @@ export default function FishboneDiagram({ events, width = 1000, height = 400, mi
         // D3 tree layout
         const treeLayout = d3.tree<ProcessNode>()
             .nodeSize([NODE_W + NODE_GAP_X, NODE_H + NODE_GAP_Y])
-            .separation((a, b) => a.parent === b.parent ? 1 : 1.3);
+            .separation((a: TreeNode, b: TreeNode) => a.parent === b.parent ? 1 : 1.3);
 
         const treeData = treeLayout(hierarchy) as TreeNode;
         const nodes = treeData.descendants();
@@ -272,8 +306,8 @@ export default function FishboneDiagram({ events, width = 1000, height = 400, mi
             const treeBoundsW = (xExtent[1] - xExtent[0]) + NODE_W + 80;
             const treeBoundsH = (yExtent[1] - yExtent[0]) + NODE_H + 80;
 
-            const scale = Math.min(width / treeBoundsW, height / treeBoundsH, 1);
-            const tx = (width / 2) - ((xExtent[0] + xExtent[1]) / 2) * scale;
+            const scale = Math.min(dimensions.width / treeBoundsW, dimensions.height / treeBoundsH, 1);
+            const tx = (dimensions.width / 2) - ((xExtent[0] + xExtent[1]) / 2) * scale;
             const ty = 40 * scale; // Small top margin
 
             svg.call(zoom.transform, d3.zoomIdentity.translate(tx, ty).scale(scale));
@@ -283,8 +317,8 @@ export default function FishboneDiagram({ events, width = 1000, height = 400, mi
             const yExtent = d3.extent(nodes, (d: TreeNode) => d.y) as [number, number];
             const treeBoundsW = (xExtent[1] - xExtent[0]) + NODE_W + 80;
             const treeBoundsH = (yExtent[1] - yExtent[0]) + NODE_H + 80;
-            const scale = Math.min(width / treeBoundsW, height / treeBoundsH, 1);
-            const tx = (width / 2) - ((xExtent[0] + xExtent[1]) / 2) * scale;
+            const scale = Math.min(dimensions.width / treeBoundsW, dimensions.height / treeBoundsH, 1);
+            const tx = (dimensions.width / 2) - ((xExtent[0] + xExtent[1]) / 2) * scale;
             const ty = 30 * scale;
             g.attr('transform', `translate(${tx},${ty}) scale(${scale})`);
         }
@@ -473,7 +507,7 @@ export default function FishboneDiagram({ events, width = 1000, height = 400, mi
                 if (!tooltipRef.current || d.data.type === 'root') return;
                 const tip = tooltipRef.current;
                 const startStr = d.data.startTime ? new Date(d.data.startTime).toLocaleTimeString([], { hour12: false }) : 'N/A';
-                const cmdLine = d.data.commandLine || d.data.events.find(e => e.event_type === 'PROCESS_CREATE')?.details || '';
+                const cmdLine = d.data.commandLine || d.data.events.find((e: AgentEvent) => e.event_type === 'PROCESS_CREATE')?.details || '';
 
                 tip.innerHTML = `
                     <div style="font-size:11px;font-weight:bold;color:white;margin-bottom:4px">${d.data.name}</div>
@@ -520,7 +554,7 @@ export default function FishboneDiagram({ events, width = 1000, height = 400, mi
             });
         }
 
-    }, [root, width, height, printMode]);
+    }, [root, dimensions, printMode]);
 
     // Trigger redraw on collapse state changes
     useEffect(() => {
@@ -544,7 +578,7 @@ export default function FishboneDiagram({ events, width = 1000, height = 400, mi
     }
 
     return (
-        <div className={`w-full h-full bg-[#0a0a0a] border border-white/5 rounded-lg overflow-hidden relative ${printMode ? 'print-lineage-tree' : ''}`}>
+        <div ref={containerRef} className={`w-full h-full bg-[#0a0a0a] border border-white/5 rounded-lg overflow-hidden relative ${printMode ? 'print-lineage-tree' : ''}`}>
             {!printMode && (
                 <div className="absolute top-2 left-2 text-[10px] uppercase font-black tracking-widest text-zinc-500 z-10">
                     Process Lineage
@@ -552,6 +586,15 @@ export default function FishboneDiagram({ events, width = 1000, height = 400, mi
             )}
             {!printMode && (
                 <div className="absolute top-2 right-2 flex items-center gap-3 z-10">
+                    {onMaximize && (
+                        <button
+                            onClick={onMaximize}
+                            className="p-1 hover:bg-white/10 rounded text-zinc-400 hover:text-white transition-colors"
+                            title={isMaximized ? "Restore" : "Maximize"}
+                        >
+                            {isMaximized ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                        </button>
+                    )}
                     <div className="flex items-center gap-1.5 text-[8px] uppercase tracking-wider font-bold">
                         <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLOR.target.border }}></span>
                         <span className="text-zinc-600">Target</span>
@@ -568,9 +611,9 @@ export default function FishboneDiagram({ events, width = 1000, height = 400, mi
             )}
             <svg
                 ref={svgRef}
-                width={width}
-                height={height}
-                viewBox={`0 0 ${width} ${height}`}
+                width={dimensions.width}
+                height={dimensions.height}
+                viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
                 className={`block mx-auto ${printMode ? '' : 'cursor-grab active:cursor-grabbing'}`}
             />
             {/* Tooltip container */}
@@ -594,3 +637,4 @@ export default function FishboneDiagram({ events, width = 1000, height = 400, mi
         </div>
     );
 }
+

@@ -27,19 +27,21 @@ import {
     Fingerprint,
     ExternalLink,
     Share2,
-    Target
+    Target,
+    Maximize2
 } from 'lucide-react';
 import { AgentEvent, voodooApi, ForensicReport, Tag, AnalysisTask } from './voodooApi';
 import AIInsightPanel from './AIInsightPanel';
 import AnalystNotepad from './AnalystNotepad';
 import NeuralReport from './NeuralReport';
 import Split from './lib/split';
-import FishboneDiagram from './FishboneDiagram';
+import ProcessLineage from './ProcessLineage';
 
 interface Props {
     taskId: string | null;
     events: AgentEvent[];
     onBack: () => void;
+    onOpenLineage: (events: AgentEvent[]) => void;
 }
 
 interface ProcessNode {
@@ -76,7 +78,7 @@ const NOISE_FILTER_PROCESSES = [
     'tiworker.exe'
 ];
 
-export default function ReportView({ taskId, events: globalEvents, onBack }: Props) {
+export default function ReportView({ taskId, events: globalEvents, onBack, onOpenLineage }: Props) {
     const [selectedPid, setSelectedPid] = useState<number | null>(null);
     const [activeTab, setActiveTab] = useState<'neural' | 'timeline' | 'network' | 'web' | 'files' | 'registry' | 'console' | 'ghidra' | 'tactics' | 'intelligence' | 'screenshots' | 'notes' | 'decoder' | 'remnux'>('neural');
     const [localEvents, setLocalEvents] = useState<AgentEvent[]>([]);
@@ -645,9 +647,18 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                 {/* Left: Enhanced Process Tree (Fluid Sidebar) */}
                 <div id="split-0" className="w-full lg:w-80 xl:w-[350px] lg:border-r border-b lg:border-b-0 border-white/10 bg-[#0c0c0c] flex flex-col shrink-0 min-h-0 h-64 lg:h-auto no-print">
                     <div className="p-4 border-b border-white/10 bg-[#111] flex flex-col gap-3 shadow-sm">
-                        <div className="flex items-center gap-2">
-                            <Activity size={14} className="text-brand-500" />
-                            <span className="text-xs font-black uppercase tracking-wider text-zinc-300">Process Lineage</span>
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Activity size={14} className="text-brand-500" />
+                                <span className="text-xs font-black uppercase tracking-wider text-zinc-300">Process Lineage</span>
+                            </div>
+                            <button
+                                onClick={() => onOpenLineage(globalEvents)}
+                                className="p-1 hover:bg-white/10 rounded text-zinc-500 hover:text-brand-500 transition-colors"
+                                title="Expand Lineage View"
+                            >
+                                <Maximize2 size={12} />
+                            </button>
                         </div>
                         <div className="relative">
                             <Terminal size={12} className="absolute left-3 top-2.5 text-zinc-600" />
@@ -1165,7 +1176,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack }: Pro
                         <div className="print-section">
                             <div className="print-section-header">Process Lineage</div>
                             <div className="print-lineage-tree" style={{ height: '350px', background: '#0a0a0a', border: '1px solid rgba(255,255,255,0.05)', borderRadius: '8px', overflow: 'hidden' }}>
-                                <FishboneDiagram
+                                <ProcessLineage
                                     events={globalEvents}
                                     width={700}
                                     height={350}
