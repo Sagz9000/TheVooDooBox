@@ -67,7 +67,7 @@ pub async fn ensure_collection_by_name(name: &str) -> Result<(), Box<dyn std::er
 
     println!("[HiveMind] Ensuring collection '{}' exists at {}...", name, chroma_url);
 
-    let resp = client.post(format!("{}/api/v2/collections", chroma_url))
+    let resp = client.post(format!("{}/api/v1/collections", chroma_url))
         .json(&json!({
             "name": name,
             "metadata": { "hnsw:space": "cosine" }
@@ -91,13 +91,12 @@ pub async fn ensure_collection_by_name(name: &str) -> Result<(), Box<dyn std::er
 }
 
 pub async fn get_collection_id(client: &reqwest::Client, chroma_url: &str, name: &str) -> Result<String, Box<dyn std::error::Error>> {
-    // Try v2 API first (Modern)
-    let url_v2 = format!("{}/api/v2/collections", chroma_url);
-    println!("[HiveMind] Listing collections via v2 API: {}", url_v2);
-    let res_v2 = client.get(&url_v2).send().await?;
-
-    if res_v2.status().is_success() {
-        let collections: Vec<serde_json::Value> = res_v2.json().await?;
+    let url = format!("{}/api/v1/collections", chroma_url);
+    println!("[HiveMind] Listing collections via v1 API: {}", url);
+    let res = client.get(&url).send().await?;
+    
+    if res.status().is_success() {
+        let collections: Vec<serde_json::Value> = res.json().await?;
         for col in collections {
             if let Some(n) = col["name"].as_str() {
                 if n == name {
@@ -107,34 +106,11 @@ pub async fn get_collection_id(client: &reqwest::Client, chroma_url: &str, name:
                 }
             }
         }
-    } else if res_v2.status().as_u16() == 404 {
-        // Fallback to v1 API (Legacy)
-        println!("[HiveMind] v2 API not found (404). Falling back to v1 API...");
-        let url_v1 = format!("{}/api/v1/collections", chroma_url);
-        let res_v1 = client.get(&url_v1).send().await?;
-        
-        if res_v1.status().is_success() {
-            let collections: Vec<serde_json::Value> = res_v1.json().await?;
-            for col in collections {
-                if let Some(n) = col["name"].as_str() {
-                    if n == name {
-                        return col["id"].as_str()
-                            .map(|s| s.to_string())
-                            .ok_or_else(|| "Collection found in v1 but has no ID".into());
-                    }
-                }
-            }
-        } else {
-             return Err(format!("Failed to list collections via v1 (Fallback): {}", res_v1.status()).into());
-        }
     } else {
-        return Err(format!("Failed to list collections via v2: {}", res_v2.status()).into());
+         return Err(format!("Failed to list collections via v1: {}", res.status()).into());
     }
     
-    // If we get here, listing worked but collection wasn't found.
-    // Last ditch: Try to GET the specific collection by name creating a dummy "get or create" behavior?
-    // Actually, ensure_collection should have created it. If strictly not found in list:
-    Err(format!("Collection '{}' not found in listing (v2 or v1)", name).into())
+    Err(format!("Collection '{}' not found in listing", name).into())
 }
 
 pub async fn store_fingerprint(fingerprint: BehavioralFingerprint, text_representation: String) -> Result<(), Box<dyn std::error::Error>> {
@@ -169,7 +145,7 @@ pub async fn store_fingerprint(fingerprint: BehavioralFingerprint, text_represen
         "documents": [fingerprint.summary] // We store the summary as the document
     });
 
-    client.post(format!("{}/api/v2/collections/{}/add", chroma_url, col_uuid))
+    client.post(format!("{}/api/v1/collections/{}/add", chroma_url, col_uuid))
         .json(&payload)
         .send()
         .await?;
@@ -202,7 +178,7 @@ pub async fn query_similar_behaviors(current_text_representation: String) -> Res
         "include": ["metadatas", "documents", "distances"]
     });
 
-    let res = client.post(format!("{}/api/v2/collections/{}/query", chroma_url, col_uuid))
+    let res = client.post(format!("{}/api/v1/collections/{}/query", chroma_url, col_uuid))
         .json(&payload)
         .send()
         .await?;
@@ -357,7 +333,7 @@ pub async fn ingest_telemetry(task_id: &String, processes: &Vec<ProcessSummary>)
             "documents": batch_documents
         });
 
-        let res = client.post(format!("{}/api/v2/collections/{}/add", chroma_url, col_uuid))
+        let res = client.post(format!("{}/api/v1/collections/{}/add", chroma_url, col_uuid))
             .json(&payload)
             .send()
             .await?;
@@ -391,7 +367,7 @@ pub async fn query_telemetry_rag(task_id: &String, query_text: &str, n_results: 
         "include": ["documents"]
     });
 
-    let res = client.post(format!("{}/api/v2/collections/{}/query", chroma_url, col_uuid))
+    let res = client.post(format!("{}/api/v1/collections/{}/query", chroma_url, col_uuid))
         .json(&payload)
         .send()
         .await?;

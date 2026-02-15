@@ -14,7 +14,7 @@ services:
       - OLLAMA_URL=http://192.168.50.98:11434
       - OLLAMA_MODEL=llama-server
       - EMBEDDING_MODEL=llama-server
-      - CHROMADB_URL=http://192.168.50.98:8000
+      - CHROMADB_URL=http://192.168.50.98:8001
       - DATABASE_URL=postgres://voodoobox:${POSTGRES_PASSWORD}@db:5432/voodoobox_telemetry
       - RUST_LOG=debug
       - HOST_IP=${HOST_IP}
@@ -78,7 +78,7 @@ services:
       - BACKEND_URL=http://hyper-bridge:8080
       - GHIDRA_API=http://ghidra:8000
       - OLLAMA_HOST=http://192.168.50.98:11434
-      - CHROMADB_URL=http://192.168.50.98:8000
+      - CHROMADB_URL=http://192.168.50.98:8001
       - UVICORN_HOST=0.0.0.0
       - UVICORN_PORT=8001
     ports:
