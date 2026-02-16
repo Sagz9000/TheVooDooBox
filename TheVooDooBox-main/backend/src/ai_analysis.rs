@@ -772,8 +772,13 @@ pub async fn generate_ai_report(
     let mut map_insights: Vec<String> = Vec::new();
     
     // --- MAP PHASE (Local LLM) ---
-    // Parallelize chunk processing for maximum throughput
-    let futures = chunks.iter().enumerate().map(|(i, chunk)| {
+    // Parallelize chunk processing with CONCURRENCY LIMITS to prevent hanging
+    use futures::StreamExt; // Ensure StreamExt is available
+
+    let concurrency_limit = if matches!(ai_mode, crate::ai::manager::AIMode::LocalOnly) { 2 } else { 5 };
+    println!("[AI] Starting Map Phase with Concurrency Limit: {}", concurrency_limit);
+
+    let map_futures = chunks.iter().enumerate().map(|(i, chunk)| {
         let ai_manager = ai_manager.clone(); 
         let ai_mode = ai_mode.clone();
         let chunk = chunk.clone();
@@ -834,8 +839,21 @@ pub async fn generate_ai_report(
         }
     });
 
-    // Execute all chunks concurrently
-    let results = futures::future::join_all(futures).await;
+    // Execute with concurrency limit and global timeout
+    let results_result = tokio::time::timeout(
+        std::time::Duration::from_secs(360), // 6 minutes max for all chunks
+        futures::stream::iter(map_futures)
+            .buffer_unordered(concurrency_limit)
+            .collect::<Vec<Option<Vec<String>>>>()
+    ).await;
+
+    let results = match results_result {
+        Ok(res) => res,
+        Err(_) => {
+            println!("[AI] CRITICAL: Map Phase Timed Out! Proceeding with partial analysis.");
+            vec![] 
+        }
+    };
 
     // Aggregate results AND save each insight as a Forensic Memory note
     let total_chunks = chunks.len();
@@ -937,12 +955,22 @@ pub async fn generate_ai_report(
     println!("[AI] Starting Reduce Phase (Cloud LLM)...");
     
     // Ask Manager (Phase: "reduce")
-    let response_result = ai_manager.ask_with_mode(
-        vec![crate::ai::provider::ChatMessage { role: "user".to_string(), content: reduce_prompt }],
-        system_reduce.to_string(),
-        &ai_mode,
-        "reduce"
-    ).await;
+    // We strictly limit the Reduce phase to 10 minutes to prevent indefinite hangs.
+    let response_result = match tokio::time::timeout(
+        std::time::Duration::from_secs(600),
+        ai_manager.ask_with_mode(
+            vec![crate::ai::provider::ChatMessage { role: "user".to_string(), content: reduce_prompt }],
+            system_reduce.to_string(),
+            &ai_mode,
+            "reduce"
+        )
+    ).await {
+        Ok(res) => res,
+        Err(_) => {
+            println!("[AI] CRITICAL: Reduce Phase Timed Out (600s)!");
+            return Err("AI Analysis timed out during Reduce Phase.".into());
+        }
+    };
 
     let mut response_text = match response_result {
         Ok(t) => t,

@@ -14,8 +14,11 @@ impl GeminiProvider {
     pub fn new(api_key: String) -> Self {
         Self {
             api_key,
-            model: "gemini-3-flash-preview".to_string(), // User requested specific preview model
-            client: Client::new(),
+            model: "gemini-1.5-flash".to_string(), // Updated to stable model
+            client: Client::builder()
+                .timeout(std::time::Duration::from_secs(120))
+                .build()
+                .unwrap_or_default(),
         }
     }
 }

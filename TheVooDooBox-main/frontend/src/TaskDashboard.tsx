@@ -166,6 +166,35 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
         }
     };
 
+    // Auto-update expanded task details (Smart Polling)
+    useEffect(() => {
+        if (!expandedTaskId) return;
+
+        const currentTask = tasks.find(t => t.id === expandedTaskId);
+        const isRunning = currentTask?.status === 'Running' || currentTask?.status === 'Detonating Sample' || currentTask?.status === 'Starting VM' || currentTask?.status === 'Waiting for Agent';
+
+        if (isRunning) {
+            // Poll every 3 seconds for new events while running
+            const interval = setInterval(async () => {
+                if (activeRequestId.current === expandedTaskId) {
+                    try {
+                        const newEvents = await voodooApi.fetchHistory(expandedTaskId);
+                        // Simple check to avoid unnecessary re-renders if length is same? 
+                        // For now just set it, React will handle diffing or we can optimize later.
+                        setRawEvents(newEvents);
+
+                        const newScreenshots = await voodooApi.listScreenshots(expandedTaskId);
+                        setExpandedScreenshots(newScreenshots);
+                    } catch (e) {
+                        console.error("[TaskDashboard] Auto-update failed", e);
+                    }
+                }
+            }, 3000);
+            return () => clearInterval(interval);
+        }
+    }, [expandedTaskId, tasks]);
+
+
     useEffect(() => {
         fetchTasks();
         const interval = setInterval(() => {

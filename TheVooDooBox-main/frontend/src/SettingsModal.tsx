@@ -73,9 +73,12 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
             await voodooApi.setAIMode(aiMode);
             setStatus({ type: 'success', message: 'Configuration Synchronized' });
             onConfigUpdated(provider);
+            // removing timeout here to let the user see the success message
+            // or we could close it automatically after a delay
             setTimeout(() => {
                 setStatus(null);
-            }, 3000);
+                onClose(); // Optional: Close modal on success for better UX? Or just let them close it.
+            }, 1000);
         } catch (err) {
             setStatus({ type: 'error', message: String(err) });
         } finally {

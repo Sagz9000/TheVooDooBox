@@ -180,6 +180,29 @@ export default function ReportView({ taskId, events: globalEvents, onBack, onOpe
         }
     }, [taskId, consoleSearch]);
 
+    // Auto-update polling for ReportView
+    useEffect(() => {
+        if (!task || !taskId) return;
+
+        const isRunning = task.status === 'Running' || task.status === 'Detonating Sample' || task.status === 'Starting VM' || task.status === 'Waiting for Agent';
+
+        if (isRunning) {
+            const interval = setInterval(() => {
+                voodooApi.fetchHistory(taskId, consoleSearch).then(evts => {
+                    setLocalEvents(evts);
+                }).catch(err => console.error("[ReportView] Auto-update failed", err));
+
+                // Also refresh task status to know when to stop
+                voodooApi.fetchTasks().then(tasks => {
+                    const currentTask = tasks.find(t => t.id === taskId);
+                    if (currentTask) setTask(currentTask);
+                }).catch(err => console.error("[ReportView] Task status refresh failed", err));
+            }, 3000);
+            return () => clearInterval(interval);
+        }
+    }, [task, taskId, consoleSearch]);
+
+
     const fetchTags = () => {
         if (taskId) {
             voodooApi.getTags(taskId).then(setTags).catch(err => console.error("Failed to fetch tags", err));
