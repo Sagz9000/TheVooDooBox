@@ -74,7 +74,9 @@ const NOISE_FILTER_PROCESSES = [
     'officeclicktorun.exe',
     'werfault.exe',
     'trustedinstaller.exe',
-    'tiworker.exe'
+    'tiworker.exe',
+    'mallab-agent.exe',
+    'mallab-agent'
 ];
 
 

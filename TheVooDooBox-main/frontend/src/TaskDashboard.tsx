@@ -53,7 +53,9 @@ const NOISE_FILTER_PROCESSES = [
     'dwm.exe',
     'ctfmon.exe',
     'system',
-    'smss.exe'
+    'smss.exe',
+    'mallab-agent.exe',
+    'mallab-agent'
 ];
 
 export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLineage }: {

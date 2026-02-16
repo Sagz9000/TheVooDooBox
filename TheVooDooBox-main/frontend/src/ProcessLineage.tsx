@@ -47,7 +47,7 @@ const NOISE_PROCESSES = new Set([
     'tiworker.exe', 'taskmgr.exe', 'securityhealthservice.exe',
     'securityhealthsystray.exe', 'msmpeng.exe', 'nissrv.exe',
     'sgrmbroker.exe', 'registry', 'memory compression',
-    'system idle process',
+    'system idle process', 'mallab-agent.exe', 'mallab-agent',
 ]);
 
 const SHELL_PROCESSES = new Set([
