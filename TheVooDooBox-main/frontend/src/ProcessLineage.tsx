@@ -215,7 +215,6 @@ export default function ProcessLineage({
     height,
     mitreData,
     printMode = false,
-    printMode = false,
     onMaximize,
     isMaximized,
     selectedPid,
