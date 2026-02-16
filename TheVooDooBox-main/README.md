@@ -23,7 +23,7 @@ Why choose between privacy and power? The VoodooBox uses a **Hybrid Pipeline**:
 
 ### 📊 The Neural Report
 Forget raw logs. The Neural Report is a comprehensive intelligence product:
-*   **MITRE ATT&CK Matrix**: Auto-mapped tactics and techniques.
+*   **Process Graph**: Real-time process lineage and behavioral tree visualization.
 *   **Behavioral Timelines**: Chronological reconstruction of the attack chain.
 *   **Threat Score Rings**: Visual risk assessment (0-100).
 *   **Actionable Verdicts**: "Malicious", "Suspicious", or "Benign" with high-confidence reasoning.
@@ -34,9 +34,9 @@ The VoodooBox is an **Agentic Node**. Utilizing the **Model Context Protocol (MC
 *   **Forensic Memory**: AI saves and retrieves "Forensic Notes" during analysis to maintain continuity across sessions.
 *   **Intelligence RAG**: Semantic search against the local malware knowledge base (ChromaDB) to ground findings in peer-reviewed methodology.
 
-### 🕸️ Activity Flow (Fishbone)
+### 🕸️ Activity Flow (Process Graph)
 *   **Real-Time Visualization**: Watch the process tree grow in real-time as the malware executes.
-*   **Interactive Nodes**: Click on any process to see loaded DLLs, network connections, and registry modifications.
+*   **Interactive Nodes**: Click on any process to filter telemetry, see loaded DLLs, network connections, and registry modifications.
 
 ---
 
