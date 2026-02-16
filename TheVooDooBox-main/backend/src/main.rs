@@ -57,7 +57,9 @@ const NOISE_PROCESSES: &[&str] = &[
     "fontdrvhost.exe",
     "dwm.exe",
     "ctfmon.exe",
-    "taskmgr.exe"
+    "taskmgr.exe",
+    "mallab-agent.exe",
+    "mallab-agent"
 ];
 
 #[get("/health")]
