@@ -43,6 +43,40 @@ interface Props {
     onOpenLineage: (events: AgentEvent[]) => void;
 }
 
+interface ProcessNode {
+    pid: number;
+    ppid: number;
+    name: string;
+    children: ProcessNode[];
+    events: AgentEvent[];
+    startTime: number;
+}
+
+const NOISE_FILTER_PROCESSES = [
+    'voodoobox-agent-windows.exe',
+    'voodoobox-agent.exe',
+    'conhost.exe',
+    'svchost.exe',
+    'lsass.exe',
+    'services.exe',
+    'wininit.exe',
+    'smss.exe',
+    'csrss.exe',
+    'winlogon.exe',
+    'spoolsv.exe',
+    'searchindexer.exe',
+    'taskhostw.exe',
+    'sppsvc.exe',
+    'fontdrvhost.exe',
+    'dwm.exe',
+    'ctfmon.exe',
+    'taskmgr.exe',
+    'officeclicktorun.exe',
+    'werfault.exe',
+    'trustedinstaller.exe',
+    'tiworker.exe'
+];
+
 
 
 
