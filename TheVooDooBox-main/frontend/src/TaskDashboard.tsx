@@ -88,6 +88,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
     const [activeGhidraTask, setActiveGhidraTask] = useState<{ id: string, filename: string } | null>(null);
     const [progressMap, setProgressMap] = useState<Record<string, TaskProgressEvent>>({});
     const [aiReport, setAiReport] = useState<ForensicReport | null>(null);
+    const [expandedTab, setExpandedTab] = useState<'info' | 'mitre' | 'thinking' | 'fishbone' | 'screenshots' | 'telemetry'>('mitre');
 
     const selectedTask = useMemo(() => tasks.find(t => t.id === expandedTaskId), [tasks, expandedTaskId]);
 
@@ -133,7 +134,9 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
         activeRequestId.current = task.id; // Mark this as the active request
         setRawEvents([]);
         setExpandedScreenshots([]);
+
         setAiReport(null);
+        setExpandedTab('mitre');
         setIsLoadingDetails(true);
 
         try {
@@ -444,49 +447,225 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
                                             <div className="col-span-12 bg-[#0b0b0b] border-b border-white/10 animate-in slide-in-from-top-2 duration-200 shadow-inner">
                                                 <div className="p-4">
                                                     {/* Inline Details Content - Simplified from previous right pane */}
-                                                    <div className="flex flex-col gap-4">
-                                                        <div className="flex items-center justify-between border-b border-white/5 pb-2">
-                                                            <h3 className="text-xs font-black uppercase text-zinc-400">Quick Analysis ID: <span className="text-brand-500">#{task.id}</span></h3>
-                                                            <button onClick={(e) => { e.stopPropagation(); onSelectTask(task.id); }} className="text-[10px] text-brand-400 hover:text-brand-300 font-bold uppercase flex items-center gap-1">
-                                                                Open Full Report <ChevronRight size={10} />
-                                                            </button>
-                                                        </div>
+                                                    {/* Expanded Tabs Navigation - Horizontal Scrollable */}
+                                                    <div className="flex items-center gap-2 mb-4 overflow-x-auto custom-scrollbar pb-2 border-b border-white/10">
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setExpandedTab('mitre'); }}
+                                                            className={`px-3 py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 border ${expandedTab === 'mitre' ? 'bg-brand-500 text-black border-brand-500' : 'bg-[#111] text-zinc-500 border-white/5 hover:border-brand-500/30 hover:text-brand-400'}`}
+                                                        >
+                                                            <Shield size={12} /> MITRE & Intel
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setExpandedTab('thinking'); }}
+                                                            className={`px-3 py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 border ${expandedTab === 'thinking' ? 'bg-brand-500 text-black border-brand-500' : 'bg-[#111] text-zinc-500 border-white/5 hover:border-brand-500/30 hover:text-brand-400'}`}
+                                                        >
+                                                            <Brain size={12} /> AI Thinking
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setExpandedTab('fishbone'); }}
+                                                            className={`px-3 py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 border ${expandedTab === 'fishbone' ? 'bg-brand-500 text-black border-brand-500' : 'bg-[#111] text-zinc-500 border-white/5 hover:border-brand-500/30 hover:text-brand-400'}`}
+                                                        >
+                                                            <Activity size={12} /> Process Graph
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setExpandedTab('telemetry'); }}
+                                                            className={`px-3 py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 border ${expandedTab === 'telemetry' ? 'bg-brand-500 text-black border-brand-500' : 'bg-[#111] text-zinc-500 border-white/5 hover:border-brand-500/30 hover:text-brand-400'}`}
+                                                        >
+                                                            <Monitor size={12} /> Telemetry
+                                                        </button>
+                                                        <button
+                                                            onClick={(e) => { e.stopPropagation(); setExpandedTab('screenshots'); }}
+                                                            className={`px-3 py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 border ${expandedTab === 'screenshots' ? 'bg-brand-500 text-black border-brand-500' : 'bg-[#111] text-zinc-500 border-white/5 hover:border-brand-500/30 hover:text-brand-400'}`}
+                                                        >
+                                                            <Monitor size={12} /> Screenshots ({expandedScreenshots.length})
+                                                        </button>
+                                                    </div>
 
-                                                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                                                            {/* Summary Cards */}
-                                                            <div className="bg-[#111] p-3 rounded border border-white/5">
-                                                                <div className="text-[9px] font-black uppercase text-zinc-500 mb-1">Threat Score</div>
-                                                                <div className={`text-xl font-black ${task.risk_score && task.risk_score > 70 ? 'text-red-500' : 'text-green-500'}`}>
-                                                                    {task.risk_score || 0}%
-                                                                </div>
+                                                    {/* Tab Content */}
+                                                    <div className="min-h-[300px]">
+                                                        {isLoadingDetails ? (
+                                                            <div className="flex flex-col items-center justify-center h-48 gap-4 text-brand-500/50">
+                                                                <RefreshCw size={24} className="animate-spin" />
+                                                                <span className="text-xs font-mono uppercase tracking-widest animate-pulse">Decrypting Telemetry...</span>
                                                             </div>
-                                                            <div className="bg-[#111] p-3 rounded border border-white/5">
-                                                                <div className="text-[9px] font-black uppercase text-zinc-500 mb-1">Events Captured</div>
-                                                                <div className="text-xl font-black text-blue-400">
-                                                                    {rawEvents.length || (isLoadingDetails ? '...' : 0)}
-                                                                </div>
-                                                            </div>
-                                                            <div className="bg-[#111] p-3 rounded border border-white/5">
-                                                                <div className="text-[9px] font-black uppercase text-zinc-500 mb-1">Screenshots</div>
-                                                                <div className="text-xl font-black text-purple-400">
-                                                                    {expandedScreenshots.length || (isLoadingDetails ? '...' : 0)}
-                                                                </div>
-                                                            </div>
-                                                            <div className="bg-[#111] p-3 rounded border border-white/5">
-                                                                <div className="text-[9px] font-black uppercase text-zinc-500 mb-1">MITRE Techniques</div>
-                                                                <div className="text-xl font-black text-orange-400">
-                                                                    {aiReport?.mitre_techniques?.length || (isLoadingDetails ? '...' : 0)}
-                                                                </div>
-                                                            </div>
-                                                        </div>
+                                                        ) : (
+                                                            <>
+                                                                {expandedTab === 'mitre' && (
+                                                                    <div className="space-y-4 animate-in fade-in duration-300">
+                                                                        <div className="flex items-center justify-between">
+                                                                            <h3 className="text-xs font-black uppercase text-zinc-400">Analysis Summary: <span className="text-brand-500">#{task.id}</span></h3>
+                                                                            <button onClick={(e) => { e.stopPropagation(); onSelectTask(task.id); }} className="text-[10px] text-brand-400 hover:text-brand-300 font-bold uppercase flex items-center gap-1">
+                                                                                Open Full Report <ChevronRight size={10} />
+                                                                            </button>
+                                                                        </div>
 
-                                                        {/* Preview of Process Lineage (just a small graph placeholder or similar if easy, but maybe just text for now) */}
-                                                        <div className="bg-[#111] p-3 rounded border border-white/5">
-                                                            <div className="text-[9px] font-black uppercase text-zinc-500 mb-2">Process Activity Preview</div>
-                                                            <div className="h-24 bg-black/50 rounded flex items-center justify-center text-xs text-zinc-600 font-mono">
-                                                                {isLoadingDetails ? 'Loading...' : `${rawEvents.length} events processed. Click Full Report to view lineage.`}
-                                                            </div>
-                                                        </div>
+                                                                        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                                                                            <div className="bg-[#111] p-3 rounded border border-white/5">
+                                                                                <div className="text-[9px] font-black uppercase text-zinc-500 mb-1">Threat Score</div>
+                                                                                <div className={`text-xl font-black ${task.risk_score && task.risk_score > 70 ? 'text-red-500' : 'text-green-500'}`}>
+                                                                                    {task.risk_score || 0}%
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="bg-[#111] p-3 rounded border border-white/5">
+                                                                                <div className="text-[9px] font-black uppercase text-zinc-500 mb-1">Events</div>
+                                                                                <div className="text-xl font-black text-blue-400">{rawEvents.length}</div>
+                                                                            </div>
+                                                                            <div className="bg-[#111] p-3 rounded border border-white/5">
+                                                                                <div className="text-[9px] font-black uppercase text-zinc-500 mb-1">Duration</div>
+                                                                                <div className="text-xl font-black text-purple-400">
+                                                                                    {task.completed_at && task.created_at ? `${Math.round((task.completed_at - task.created_at) / 1000)}s` : '...'}
+                                                                                </div>
+                                                                            </div>
+                                                                            <div className="bg-[#111] p-3 rounded border border-white/5">
+                                                                                <div className="text-[9px] font-black uppercase text-zinc-500 mb-1">MITRE IDs</div>
+                                                                                <div className="text-xl font-black text-orange-400">{aiReport?.mitre_techniques?.length || 0}</div>
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* MITRE Matrix Visualization */}
+                                                                        <div className="bg-[#111] border border-white/5 rounded-lg p-6">
+                                                                            <h4 className="text-[10px] font-black uppercase text-zinc-500 tracking-wider flex items-center gap-2 mb-4">
+                                                                                <Shield size={14} /> MITRE ATT&CK Matrix
+                                                                            </h4>
+                                                                            {aiReport?.mitre_matrix ? (
+                                                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                                                    {Object.entries(aiReport.mitre_matrix).map(([tactic, techniques]: [string, any]) => (
+                                                                                        <div key={tactic} className="bg-black/40 p-3 rounded border border-white/5">
+                                                                                            <div className="text-[9px] font-bold text-brand-400 uppercase mb-2 border-b border-brand-500/20 pb-1">{tactic.replace(/_/g, ' ')}</div>
+                                                                                            <div className="space-y-1">
+                                                                                                {Array.isArray(techniques) && techniques.map((tech: string, i: number) => (
+                                                                                                    <div key={i} className="text-[10px] text-zinc-400 flex items-start gap-1">
+                                                                                                        <span className="text-brand-500/50">•</span> {tech}
+                                                                                                    </div>
+                                                                                                ))}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    ))}
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="text-center text-zinc-600 text-xs font-mono py-8">
+                                                                                    No MITRE ATT&CK data mapped.
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {expandedTab === 'thinking' && (
+                                                                    <div className="space-y-4 animate-in fade-in duration-300 h-full flex flex-col">
+                                                                        <div className="bg-[#111] border border-white/5 rounded-lg p-0 flex-1 flex flex-col overflow-hidden max-h-[500px]">
+                                                                            <div className="px-4 py-3 border-b border-white/5 bg-white/2 flex justify-between items-center">
+                                                                                <h4 className="text-[10px] font-black uppercase text-zinc-500 tracking-wider flex items-center gap-2">
+                                                                                    <Brain size={14} /> AI Chain of Thought
+                                                                                </h4>
+                                                                            </div>
+                                                                            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 bg-black/20">
+                                                                                {aiReport?.thinking ? (
+                                                                                    <pre className="text-xs text-brand-400/80 font-mono whitespace-pre-wrap leading-relaxed">
+                                                                                        {aiReport.thinking}
+                                                                                    </pre>
+                                                                                ) : (
+                                                                                    <div className="text-center text-zinc-600 text-xs font-mono py-12">
+                                                                                        No Chain of Thought record available for this analysis.
+                                                                                    </div>
+                                                                                )}
+                                                                            </div>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {expandedTab === 'fishbone' && (
+                                                                    <div className="animate-in fade-in duration-300 h-[500px] border border-white/5 rounded-lg overflow-hidden bg-[#000] relative group">
+                                                                        <ProcessLineage
+                                                                            events={expandedEvents}
+                                                                            onMaximize={() => onOpenLineage(task.id)}
+                                                                        />
+                                                                        <div className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                            <button
+                                                                                onClick={(e) => { e.stopPropagation(); onOpenLineage(task.id); }}
+                                                                                className="bg-black/80 hover:bg-brand-500 text-brand-500 hover:text-black border border-brand-500/50 rounded p-1.5 text-[10px] font-bold uppercase transition-all flex items-center gap-1"
+                                                                            >
+                                                                                Maximize <Monitor size={12} />
+                                                                            </button>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {expandedTab === 'telemetry' && (
+                                                                    <div className="animate-in fade-in duration-300 h-[500px] border border-white/5 rounded-lg overflow-hidden bg-[#111] flex flex-col">
+                                                                        <div className="p-2 border-b border-white/5 bg-black/20 flex justify-between items-center">
+                                                                            <h4 className="text-[10px] font-black uppercase text-zinc-500 tracking-wider">Raw Event Stream</h4>
+                                                                            <span className="text-[10px] text-zinc-600 font-mono">{rawEvents.length} Events</span>
+                                                                        </div>
+                                                                        <div className="flex-1 overflow-y-auto custom-scrollbar p-0">
+                                                                            <table className="w-full text-left border-collapse">
+                                                                                <thead className="sticky top-0 bg-[#0a0a0a] z-10 text-[9px] uppercase font-black text-zinc-500 tracking-wider">
+                                                                                    <tr>
+                                                                                        <th className="p-2 border-b border-white/5 w-24">Time</th>
+                                                                                        <th className="p-2 border-b border-white/5 w-16">PID</th>
+                                                                                        <th className="p-2 border-b border-white/5 w-40">Process</th>
+                                                                                        <th className="p-2 border-b border-white/5 w-24">Type</th>
+                                                                                        <th className="p-2 border-b border-white/5">Details</th>
+                                                                                    </tr>
+                                                                                </thead>
+                                                                                <tbody className="font-mono text-[10px] text-zinc-400">
+                                                                                    {rawEvents.slice(0, 200).map((evt, idx) => (
+                                                                                        <tr key={idx} className="hover:bg-white/5 border-b border-white/5">
+                                                                                            <td className="p-2 whitespace-nowrap text-zinc-600">{new Date(evt.timestamp).toLocaleTimeString()}</td>
+                                                                                            <td className="p-2 text-brand-500/80">{evt.process_id}</td>
+                                                                                            <td className="p-2 truncate max-w-[150px]" title={evt.process_name}>{evt.process_name}</td>
+                                                                                            <td className="p-2">
+                                                                                                <span className={`px-1 rounded ${evt.event_type === 'PROCESS_CREATE' ? 'bg-brand-500/10 text-brand-500' :
+                                                                                                    evt.event_type.includes('NETWORK') ? 'bg-blue-500/10 text-blue-500' :
+                                                                                                        evt.event_type.includes('FILE') ? 'bg-yellow-500/10 text-yellow-500' :
+                                                                                                            'bg-zinc-800 text-zinc-400'
+                                                                                                    }`}>{evt.event_type}</span>
+                                                                                            </td>
+                                                                                            <td className="p-2 truncate max-w-[300px] text-zinc-500" title={evt.details}>{evt.details}</td>
+                                                                                        </tr>
+                                                                                    ))}
+                                                                                    {rawEvents.length > 200 && (
+                                                                                        <tr>
+                                                                                            <td colSpan={5} className="p-4 text-center text-zinc-600 italic">
+                                                                                                ... {rawEvents.length - 200} more events ...
+                                                                                            </td>
+                                                                                        </tr>
+                                                                                    )}
+                                                                                </tbody>
+                                                                            </table>
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+
+                                                                {expandedTab === 'screenshots' && (
+                                                                    <div className="animate-in fade-in duration-300">
+                                                                        <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+                                                                            {expandedScreenshots.length > 0 ? expandedScreenshots.map((filename: string, idx: number) => (
+                                                                                <div key={idx} className="group relative aspect-video bg-black border border-white/10 rounded overflow-hidden cursor-pointer hover:border-brand-500/50 transition-all">
+                                                                                    <img
+                                                                                        src={voodooApi.getScreenshotUrl(filename, task.id)}
+                                                                                        alt={`Screenshot ${idx}`}
+                                                                                        className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                                                                                        onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+                                                                                            const target = e.currentTarget;
+                                                                                            target.style.display = 'none';
+                                                                                            if (target.parentElement) target.parentElement.innerText = 'Image Load Error';
+                                                                                        }}
+                                                                                    />
+                                                                                    <div className="absolute bottom-0 left-0 right-0 bg-black/80 p-1 text-[9px] font-mono text-center text-zinc-400 truncate">
+                                                                                        {filename}
+                                                                                    </div>
+                                                                                </div>
+                                                                            )) : (
+                                                                                <div className="col-span-full h-32 flex items-center justify-center text-zinc-600 border border-white/5 border-dashed rounded">
+                                                                                    <span className="text-[10px] uppercase font-black tracking-widest">No Screenshots Available</span>
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                )}
+                                                            </>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </div>
