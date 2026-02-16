@@ -34,7 +34,6 @@ import { AgentEvent, voodooApi, ForensicReport, Tag, AnalysisTask } from './vood
 import AIInsightPanel from './AIInsightPanel';
 import AnalystNotepad from './AnalystNotepad';
 import NeuralReport from './NeuralReport';
-import Split from './lib/split';
 import ProcessLineage from './ProcessLineage';
 
 interface Props {
@@ -44,39 +43,9 @@ interface Props {
     onOpenLineage: (events: AgentEvent[]) => void;
 }
 
-interface ProcessNode {
-    pid: number;
-    ppid: number;
-    name: string;
-    children: ProcessNode[];
-    events: AgentEvent[];
-    startTime: number;
-}
 
-const NOISE_FILTER_PROCESSES = [
-    'voodoobox-agent-windows.exe',
-    'voodoobox-agent.exe',
-    'conhost.exe',
-    'svchost.exe',
-    'lsass.exe',
-    'services.exe',
-    'wininit.exe',
-    'smss.exe',
-    'csrss.exe',
-    'winlogon.exe',
-    'spoolsv.exe',
-    'searchindexer.exe',
-    'taskhostw.exe',
-    'sppsvc.exe',
-    'fontdrvhost.exe',
-    'dwm.exe',
-    'ctfmon.exe',
-    'taskmgr.exe',
-    'officeclicktorun.exe',
-    'werfault.exe',
-    'trustedinstaller.exe',
-    'tiworker.exe'
-];
+
+
 
 export default function ReportView({ taskId, events: globalEvents, onBack, onOpenLineage }: Props) {
     const [selectedPid, setSelectedPid] = useState<number | null>(null);
@@ -137,54 +106,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack, onOpe
         }
     };
 
-    // Initialize Split.js
-    // Initialize Split.js with Robust DOM Polling
-    useEffect(() => {
-        if (loading) return;
 
-        let splitInstance: any = null;
-        let attempts = 0;
-        const maxAttempts = 20; // Try for ~2 seconds
-
-        const initSplit = () => {
-            const el0 = document.querySelector('#split-0');
-            const el1 = document.querySelector('#split-1');
-
-            if (el0 && el1 && typeof Split === 'function') {
-                try {
-                    console.log('[ReportView] Initializing Split.js...');
-                    splitInstance = Split(['#split-0', '#split-1'], {
-                        sizes: [25, 75],
-                        minSize: [200, 400],
-                        gutterSize: 8,
-                        cursor: 'col-resize',
-                        gutter: (index, direction) => {
-                            const gutter = document.createElement('div');
-                            gutter.className = `gutter gutter-${direction} bg-[#1a1a1a] bg-no-repeat bg-center hover:bg-brand-500/50 transition-colors`;
-                            return gutter;
-                        },
-                    });
-                } catch (err) {
-                    console.error('[ReportView] Split.js initialization failed:', err);
-                }
-                return true;
-            }
-            return false;
-        };
-
-        // Poll for elements
-        const intervalId = setInterval(() => {
-            if (initSplit() || attempts >= maxAttempts) {
-                clearInterval(intervalId);
-            }
-            attempts++;
-        }, 100);
-
-        return () => {
-            clearInterval(intervalId);
-            if (splitInstance) splitInstance.destroy();
-        };
-    }, [loading]);
 
     useEffect(() => {
         const nav = navRef.current;
@@ -581,6 +503,23 @@ export default function ReportView({ taskId, events: globalEvents, onBack, onOpe
                                 <span className="hidden xs:inline">SHARE</span>
                             </button>
 
+                            {/* Active Filter Indicator */}
+                            {selectedPid && selectedProcessNode && (
+                                <div className="flex items-center gap-2 px-3 py-1.5 rounded-md bg-brand-900/20 border border-brand-500/30 text-[10px] font-mono animate-in fade-in">
+                                    <Activity size={12} className="text-brand-400" />
+                                    <span className="text-zinc-400">FILTER:</span>
+                                    <span className="text-brand-300 font-bold max-w-[100px] truncate">{selectedProcessNode.name}</span>
+                                    <span className="text-zinc-500">({selectedPid})</span>
+                                    <button
+                                        onClick={() => setSelectedPid(null)}
+                                        className="ml-1 p-0.5 hover:bg-white/10 rounded-full text-zinc-500 hover:text-white transition-colors"
+                                        title="Clear Filter"
+                                    >
+                                        <Maximize2 size={10} className="rotate-45" /> {/* Using rotate-45 Maximize2 as a generic X close since X icon might not be imported or available efficiently */}
+                                    </button>
+                                </div>
+                            )}
+
                             <div className="relative no-print">
                                 <button
                                     onClick={() => setExportMenuOpen(!exportMenuOpen)}
@@ -643,89 +582,11 @@ export default function ReportView({ taskId, events: globalEvents, onBack, onOpe
                 </div>
             </header>
 
-            <div className="flex-1 flex flex-col lg:flex-row overflow-hidden min-h-0" id="split-container">
-                {/* Left: Enhanced Process Tree (Fluid Sidebar) */}
-                <div id="split-0" className="w-full lg:w-80 xl:w-[350px] lg:border-r border-b lg:border-b-0 border-white/10 bg-[#0c0c0c] flex flex-col shrink-0 min-h-0 h-64 lg:h-auto no-print">
-                    <div className="p-4 border-b border-white/10 bg-[#111] flex flex-col gap-3 shadow-sm">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <Activity size={14} className="text-brand-500" />
-                                <span className="text-xs font-black uppercase tracking-wider text-zinc-300">Process Lineage</span>
-                            </div>
-                            <button
-                                onClick={() => onOpenLineage(globalEvents)}
-                                className="p-1 hover:bg-white/10 rounded text-zinc-500 hover:text-brand-500 transition-colors"
-                                title="Expand Lineage View"
-                            >
-                                <Maximize2 size={12} />
-                            </button>
-                        </div>
-                        <div className="relative">
-                            <Terminal size={12} className="absolute left-3 top-2.5 text-zinc-600" />
-                            <input
-                                type="text"
-                                placeholder="Search Name or PID..."
-                                className="w-full bg-black/40 border border-white/5 rounded-md pl-9 pr-3 py-2 text-[11px] text-zinc-200 focus:outline-none focus:border-brand-500/50 transition-all font-mono"
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                            />
-                        </div>
-                    </div>
-                    <div className="flex-1 overflow-y-auto p-4 custom-scrollbar">
-                        {filteredProcessTree.map(root => (
-                            <ProcessTreeNode
-                                key={root.pid}
-                                node={root}
-                                selectedPid={selectedPid}
-                                onSelect={setSelectedPid}
-                                tags={tags}
-                                onTag={onEventContextMenu}
-                                level={0}
-                            />
-                        ))}
-                    </div>
-                </div>
+            <div className="flex-1 flex flex-col overflow-hidden min-h-0">
 
-                {/* Right: Detailed Analysis Panel */}
-                <div id="split-1" className="flex-1 flex flex-col bg-[#050505] min-w-0">
-                    {/* Process Detail Card */}
-                    {selectedProcessNode ? (
-                        <div className="bg-[#0a0a0a] border-b border-white/10 p-6 flex flex-col shadow-lg z-10">
-                            <div className="flex items-start gap-4 mb-4">
-                                <div className="p-3 bg-brand-900/20 rounded-xl border border-brand-500/20 shadow-[0_0_15px_rgba(59,130,246,0.1)]">
-                                    <Terminal size={24} className="text-brand-400" />
-                                </div>
-                                <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between">
-                                        <h2 className="text-xl font-bold text-white tracking-tight truncate">{selectedProcessNode.name}</h2>
-                                        <span className="px-2 py-1 rounded bg-zinc-800 text-zinc-400 font-mono text-[10px] border border-white/5">
-                                            {new Date(selectedProcessNode.startTime).toLocaleTimeString()}
-                                        </span>
-                                    </div>
+                {/* Main Content Area - Full Width */}
+                <div className="flex-1 flex flex-col bg-[#050505] min-w-0">
 
-                                    <div className="flex items-center gap-6 text-xs text-zinc-400 font-mono mt-1">
-                                        <span className="flex items-center gap-1.5"><Hash size={12} className="text-zinc-600" /> PID: <span className="text-zinc-200">{selectedPid}</span></span>
-                                        <span className="flex items-center gap-1.5"><Activity size={12} className="text-zinc-600" /> PPID: <span className="text-zinc-200">{selectedProcessNode.ppid}</span></span>
-                                        <span className="flex items-center gap-1.5"><List size={12} className="text-zinc-600" /> Events: <span className="text-zinc-200">{selectedProcessNode.events.length}</span></span>
-                                    </div>
-                                </div>
-                            </div>
-
-                            {/* Command Line Section */}
-                            <div className="relative group">
-                                <div className="absolute -top-2.5 left-2 px-1 bg-[#0a0a0a] text-[9px] font-bold text-brand-500 uppercase tracking-widest leading-none">Command Line</div>
-                                <div className="bg-black/40 p-3 rounded-lg border border-white/10 font-mono text-xs text-zinc-300 break-all leading-relaxed hover:bg-black/60 transition-colors">
-                                    <span className="text-brand-500/50 select-none mr-2">$</span>
-                                    {getProcessCreateDetail()}
-                                </div>
-                            </div>
-                        </div>
-                    ) : (
-                        <div className="h-48 bg-[#0a0a0a] border-b border-white/10 flex flex-col items-center justify-center text-zinc-600 space-y-3">
-                            <Activity size={32} className="opacity-20" />
-                            <p className="text-sm font-bold uppercase tracking-widest">Select a process to inspect details</p>
-                        </div>
-                    )}
 
                     {/* Tabs Navigation - Scrollable */}
                     <div className="relative border-b border-white/10 bg-[#0a0a0a]">
@@ -792,6 +653,8 @@ export default function ReportView({ taskId, events: globalEvents, onBack, onOpe
                                 <ProcessLineage
                                     events={events}
                                     onMaximize={() => onOpenLineage(events)}
+                                    selectedPid={selectedPid}
+                                    onSelect={setSelectedPid}
                                 />
                             </div>
                         )}
@@ -1391,96 +1254,7 @@ const TabButton = ({ active, onClick, icon, label, count }: TabButtonProps) => (
     </button>
 );
 
-const ProcessTreeNode = ({ node, selectedPid, onSelect, tags, onTag, level }: { node: ProcessNode, selectedPid: number | null, onSelect: (pid: number) => void, tags: Tag[], onTag: (e: React.MouseEvent, eventId?: number) => void, level: number }) => {
-    const isSelected = selectedPid === node.pid;
-    const processEventId = node.events.length > 0 ? node.events[0].id : undefined;
 
-    return (
-        <div className="select-none relative">
-            <div
-                className={`flex items-center gap-3 py-1.5 px-3 rounded-lg mb-0.5 cursor-pointer transition-all border group ${isSelected
-                    ? 'bg-brand-500/10 border-brand-500/30'
-                    : 'border-transparent hover:bg-white/5 hover:border-white/10'
-                    } ${getTagStyle(tags, processEventId)}`}
-                style={{ marginLeft: `${level * 20}px` }}
-                onClick={() => onSelect(node.pid)}
-                onContextMenu={(e) => onTag(e, processEventId)}
-            >
-                <div className="p-1.5 rounded-md bg-zinc-800 border border-white/5 text-zinc-400 shrink-0">
-                    <Terminal size={12} />
-                </div>
-
-                <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2 truncate">
-                            <span className={`text-[11px] truncate ${getProcessColor(node.name, isSelected)}`} title={node.name}>
-                                {node.name}
-                            </span>
-                            {/* NET Badge for Powershell or Network Tools */}
-                            {['powershell.exe', 'curl.exe', 'wget.exe'].includes(node.name.toLowerCase()) && (
-                                <span className="px-1 py-0.5 rounded bg-red-500/20 text-red-500 text-[8px] font-black uppercase tracking-wider">
-                                    NET
-                                </span>
-                            )}
-                            {/* Lightning for Sample */}
-                            {node.name.toLowerCase() === 'sample.exe' && (
-                                <Activity size={10} className="text-red-500 animate-pulse" />
-                            )}
-                        </div>
-                        <div className="flex items-center gap-2 shrink-0">
-                            {/* Tag Indicator for Sidebar */}
-                            {tags.some(t => node.events.some(ev => ev.id === t.event_id)) && (
-                                <div className={`w-2 h-2 rounded-full ${tags.find(t => node.events.some(ev => ev.id === t.event_id))?.tag_type === 'Malicious' ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.5)]' : 'bg-yellow-500 animate-pulse'}`}></div>
-                            )}
-                            <span className="text-[9px] font-mono text-zinc-600 bg-zinc-900 px-1 rounded border border-white/5">
-                                {node.pid}
-                            </span>
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    onTag(e, processEventId);
-                                }}
-                                className="p-1 hover:bg-white/10 rounded text-zinc-600 hover:text-brand-500 opacity-20 group-hover:opacity-100 transition-opacity"
-                                title="Tag Process"
-                            >
-                                <Fingerprint size={12} />
-                            </button>
-                        </div>
-                    </div>
-                </div>
-
-                {isSelected && <ChevronRight size={14} className="text-brand-500 shrink-0" />}
-            </div>
-
-            <div className="relative">
-                {level > 0 && (
-                    <div className="absolute left-0 top-0 bottom-0 w-px bg-zinc-800" style={{ left: `${(level * 20) - 10}px` }}></div>
-                )}
-                {node.children.map(child => (
-                    <ProcessTreeNode
-                        key={child.pid}
-                        node={child}
-                        selectedPid={selectedPid}
-                        onSelect={onSelect}
-                        tags={tags}
-                        onTag={onTag}
-                        level={level + 1}
-                    />
-                ))}
-            </div>
-        </div>
-    );
-};
-
-// Helper for Mockup V4 Colors
-const getProcessColor = (nodeName: string, isSelected: boolean): string => {
-    const name = nodeName.toLowerCase();
-    if (isSelected) return 'text-white';
-    if (name === 'cmd.exe') return 'text-orange-400 font-bold';
-    if (name === 'powershell.exe') return 'text-red-400 font-bold';
-    if (name === 'sample.exe') return 'text-brand-400 font-bold';
-    return 'text-zinc-300';
-};
 
 const getTagStyle = (tags: Tag[], eventId?: number) => {
     if (!eventId) return "";

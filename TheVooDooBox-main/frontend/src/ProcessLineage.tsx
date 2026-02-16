@@ -12,6 +12,8 @@ interface ProcessLineageProps {
     printMode?: boolean; // Static render for PDF export
     onMaximize?: () => void; // Optional callback for full-screen mode
     isMaximized?: boolean;
+    selectedPid?: number | null;
+    onSelect?: (pid: number | null) => void;
 }
 
 interface ProcessNode {
@@ -213,8 +215,11 @@ export default function ProcessLineage({
     height,
     mitreData,
     printMode = false,
+    printMode = false,
     onMaximize,
-    isMaximized
+    isMaximized,
+    selectedPid,
+    onSelect
 }: ProcessLineageProps) {
     const rootRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
@@ -418,10 +423,14 @@ export default function ProcessLineage({
                 return getNodeStyle(d.data.name, d.data.type).bg;
             })
             .attr('stroke', (d: TreeNode) => {
+                if (selectedPid && d.data.pid === selectedPid) return '#ffffff'; // White border for selected
                 if (d.data._collapsed) return COLOR.collapsed.border;
                 return getNodeStyle(d.data.name, d.data.type).border;
             })
-            .attr('stroke-width', 1.5)
+            .attr('stroke-width', (d: TreeNode) => {
+                if (selectedPid && d.data.pid === selectedPid) return 3;
+                return 1.5;
+            })
             .style('box-shadow', (d: TreeNode) => getNodeStyle(d.data.name, d.data.type).glow);
 
         // Glow effect for target processes
@@ -517,22 +526,15 @@ export default function ProcessLineage({
 
         // ── Interactivity (non-print only) ──
         if (!printMode) {
-            // Click to collapse/expand
+            // Click to Select Node
             nodeGroup.on('click', (_event: any, d: TreeNode) => {
-                if (d.data.children.length === 0 && !d.data._collapsed) return;
-                // Find the original node in root and toggle
-                const toggle = (node: ProcessNode, targetId: number): boolean => {
-                    if (node.id === targetId) {
-                        node._collapsed = !node._collapsed;
-                        return true;
-                    }
-                    for (const child of node.children) {
-                        if (toggle(child, targetId)) return true;
-                    }
-                    return false;
-                };
-                toggle(root, d.data.id);
-                forceUpdate(prev => prev + 1);
+                // If onSelect is provided, use it to set the global filter
+                if (onSelect) {
+                    // Toggle: if clicking the already selected node, deselect it (or keep it selected? modifying to deselect on second click makes sense for a filter)
+                    // Actually, for a persistent filter, clicking another selects that one. user can clear filter via the top UI.
+                    // Let's just select it.
+                    onSelect(d.data.pid);
+                }
             });
 
             // Hover tooltip
@@ -569,21 +571,40 @@ export default function ProcessLineage({
             nodeGroup.on('mouseover.links', function (_event: MouseEvent, d: TreeNode) {
                 linkGroup.select('path')
                     .attr('stroke', (l: any) => {
-                        return (l.source.data.id === d.data.id || l.target.data.id === d.data.id)
-                            ? getNodeStyle(d.data.name, d.data.type).border
-                            : COLOR.link;
+                        // Highlight if connected to hovered node OR if connected to selected node
+                        const isHovered = l.source.data.id === d.data.id || l.target.data.id === d.data.id;
+                        const isSelected = selectedPid && (l.source.data.pid === selectedPid || l.target.data.pid === selectedPid);
+
+                        if (isHovered) return getNodeStyle(d.data.name, d.data.type).border;
+                        if (isSelected) return '#ffffff';
+
+                        return COLOR.link;
                     })
                     .attr('stroke-opacity', (l: any) => {
-                        return (l.source.data.id === d.data.id || l.target.data.id === d.data.id) ? 1 : 0.3;
+                        const isHovered = l.source.data.id === d.data.id || l.target.data.id === d.data.id;
+                        const isSelected = selectedPid && (l.source.data.pid === selectedPid || l.target.data.pid === selectedPid);
+                        return (isHovered || isSelected) ? 1 : 0.3;
                     })
                     .attr('stroke-width', (l: any) => {
-                        return (l.source.data.id === d.data.id || l.target.data.id === d.data.id) ? 2.5 : 1.5;
+                        const isHovered = l.source.data.id === d.data.id || l.target.data.id === d.data.id;
+                        const isSelected = selectedPid && (l.source.data.pid === selectedPid || l.target.data.pid === selectedPid);
+                        return (isHovered || isSelected) ? 2.5 : 1.5;
                     });
             }).on('mouseout.links', function () {
+                // Return to state based on selection only
                 linkGroup.select('path')
-                    .attr('stroke', COLOR.link)
-                    .attr('stroke-opacity', 0.6)
-                    .attr('stroke-width', 1.5);
+                    .attr('stroke', (l: any) => {
+                        if (selectedPid && (l.source.data.pid === selectedPid || l.target.data.pid === selectedPid)) return '#ffffff';
+                        return COLOR.link;
+                    })
+                    .attr('stroke-opacity', (l: any) => {
+                        if (selectedPid && (l.source.data.pid === selectedPid || l.target.data.pid === selectedPid)) return 1;
+                        return 0.6;
+                    })
+                    .attr('stroke-width', (l: any) => {
+                        if (selectedPid && (l.source.data.pid === selectedPid || l.target.data.pid === selectedPid)) return 2.5;
+                        return 1.5;
+                    });
             });
         }
 
