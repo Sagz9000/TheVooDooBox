@@ -585,7 +585,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack, onOpe
             <div className="flex-1 flex flex-col overflow-hidden min-h-0">
 
                 {/* Main Content Area - Full Width */}
-                <div className="flex-1 flex flex-col bg-[#050505] min-w-0">
+                <div className="flex-1 flex flex-col bg-[#050505] min-w-0 h-full">
 
 
                     {/* Tabs Navigation - Scrollable */}
@@ -637,7 +637,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack, onOpe
                     </div>
 
                     {/* Tab Content Area */}
-                    <div className="flex-1 overflow-hidden relative bg-[#080808]">
+                    <div className="flex-1 flex flex-col overflow-hidden relative bg-[#080808]">
                         {activeTab === 'neural' && (
                             <NeuralReport
                                 aiReport={aiReport}
