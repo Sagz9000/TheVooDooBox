@@ -273,7 +273,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
             {/* Action Header - Responsive */}
             <div className="p-4 md:p-6 bg-security-surface border-b border-security-border flex flex-col sm:flex-row items-center justify-between shadow-xl z-20 gap-4">
                 <div className="flex items-center gap-4 md:gap-8 w-full sm:w-auto overflow-hidden">
-                    <img src="/logo.png" alt="VooDooBox" className="h-12 md:h-16 w-auto object-contain drop-shadow-[4px_4px_0px_rgba(0,0,0,1)] shrink-0 brightness-0 invert" />
+                    <img src="/logo.png" alt="VooDooBox" className="h-12 md:h-16 w-auto object-contain drop-shadow-[4px_4px_0px_rgba(0,0,0,1)] shrink-0" />
                     <div className="hidden lg:block shrink-0">
                         <div className="text-[10px] font-black text-security-muted uppercase tracking-[0.2em] mb-1">Status</div>
                         <div className="flex items-center gap-2">

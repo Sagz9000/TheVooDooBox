@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useMemo, useState, useCallback } from 'react';
 import * as d3 from 'd3';
 import { AgentEvent } from './voodooApi';
-import { Maximize2, Minimize2 } from 'lucide-react';
+import { Maximize2, Minimize2, ChevronRight, ChevronDown, Terminal, Radio, Search } from 'lucide-react';
 
 // ── Types ──
 interface ProcessLineageProps {
@@ -216,13 +216,20 @@ export default function ProcessLineage({
     onMaximize,
     isMaximized
 }: ProcessLineageProps) {
+    const rootRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const svgRef = useRef<SVGSVGElement>(null);
     const tooltipRef = useRef<HTMLDivElement>(null);
     const [, forceUpdate] = useState(0); // trigger re-render on collapse
     const [dimensions, setDimensions] = useState({ width: width || 800, height: height || 400 });
 
-    // Handle resizing
+    // Sidebar state
+    const [sidebarWidth, setSidebarWidth] = useState(240);
+    const [isResizing, setIsResizing] = useState(false);
+    const [expandedListNodes, setExpandedListNodes] = useState<Set<number>>(new Set([-999]));
+    const [searchTerm, setSearchTerm] = useState('');
+
+    // Handle resizing (main logic for Graph Container)
     useEffect(() => {
         if (width && height) {
             setDimensions({ width, height });
@@ -242,6 +249,32 @@ export default function ProcessLineage({
 
         return () => resizeObserver.disconnect();
     }, [width, height]);
+
+    // Handle Sidebar Resizing
+    const startResizing = useCallback(() => setIsResizing(true), []);
+    const stopResizing = useCallback(() => setIsResizing(false), []);
+    const resize = useCallback((e: MouseEvent) => {
+        if (isResizing && rootRef.current) {
+            const rootRect = rootRef.current.getBoundingClientRect();
+            const newWidth = e.clientX - rootRect.left;
+            // Min width 150, Max width 50% of screen or 600
+            if (newWidth > 150 && newWidth < 600) {
+                setSidebarWidth(newWidth);
+            }
+        }
+    }, [isResizing]);
+
+    useEffect(() => {
+        if (isResizing) {
+            window.addEventListener('mousemove', resize);
+            window.addEventListener('mouseup', stopResizing);
+        }
+        return () => {
+            window.removeEventListener('mousemove', resize);
+            window.removeEventListener('mouseup', stopResizing);
+        };
+    }, [isResizing, resize, stopResizing]);
+
 
     const root = useMemo(() => {
         return buildHierarchy(events, mitreData);
@@ -561,6 +594,60 @@ export default function ProcessLineage({
         drawTree();
     }, [drawTree]);
 
+    // Recursive sidebar list renderer
+    const renderSidebarNode = (node: ProcessNode, depth: number) => {
+        const isExpanded = expandedListNodes.has(node.id);
+        const hasChildren = node.children.length > 0;
+        const style = getNodeStyle(node.name, node.type);
+
+        const toggleExpand = (e: React.MouseEvent) => {
+            e.stopPropagation();
+            const newSet = new Set(expandedListNodes);
+            if (newSet.has(node.id)) {
+                newSet.delete(node.id);
+            } else {
+                newSet.add(node.id);
+            }
+            setExpandedListNodes(newSet);
+        };
+
+        const matchesSearch = !searchTerm || node.name.toLowerCase().includes(searchTerm.toLowerCase());
+
+        return (
+            <div key={node.id} className="select-none">
+                {matchesSearch && (
+                    <div
+                        className={`flex items-center gap-1 py-1 px-2 hover:bg-white/5 cursor-pointer text-[10px] group transition-colors border-l-2`}
+                        style={{
+                            paddingLeft: `${depth * 12 + 8}px`,
+                            borderLeftColor: style.border
+                        }}
+                        onClick={toggleExpand}
+                    >
+                        <div className="w-3 h-3 flex items-center justify-center shrink-0">
+                            {hasChildren && (
+                                isExpanded ? <ChevronDown size={10} className="text-zinc-500" /> : <ChevronRight size={10} className="text-zinc-500" />
+                            )}
+                        </div>
+                        <div className="flex items-center gap-2 min-w-0">
+                            {node.type === 'root' ? (
+                                <Radio size={12} className="text-zinc-500 shrink-0" />
+                            ) : (
+                                <Terminal size={12} style={{ color: style.text }} className="shrink-0" />
+                            )}
+                            <span className="truncate font-mono" style={{ color: style.text }}>{node.name}</span>
+                        </div>
+                    </div>
+                )}
+                {isExpanded && hasChildren && (
+                    <div>
+                        {node.children.map(child => renderSidebarNode(child, depth + 1))}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     if (!events || events.length === 0) {
         return (
             <div className="w-full h-full bg-[#0a0a0a] border border-white/5 rounded-lg overflow-hidden flex items-center justify-center">
@@ -578,62 +665,101 @@ export default function ProcessLineage({
     }
 
     return (
-        <div ref={containerRef} className={`w-full h-full bg-[#0a0a0a] border border-white/5 rounded-lg overflow-hidden relative ${printMode ? 'print-lineage-tree' : ''}`}>
+        <div ref={rootRef} className={`w-full h-full bg-[#0a0a0a] border border-white/5 rounded-lg overflow-hidden relative flex ${printMode ? 'print-lineage-tree' : ''}`}>
+
+            {/* Left Sidebar (Process List) - Only visible in non-print mode */}
             {!printMode && (
-                <div className="absolute top-2 left-2 text-[10px] uppercase font-black tracking-widest text-zinc-500 z-10">
-                    Process Lineage
-                </div>
+                <>
+                    <div
+                        style={{ width: sidebarWidth }}
+                        className="flex-shrink-0 flex flex-col border-r border-white/5 bg-[#050505] overflow-hidden"
+                    >
+                        <div className="p-2 border-b border-white/5 shrink-0 flex items-center gap-2">
+                            <div className="relative flex-1">
+                                <Search size={10} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-600" />
+                                <input
+                                    type="text"
+                                    placeholder="Filter Processes..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full bg-[#111] border border-white/5 rounded px-2 pl-6 py-1 text-[9px] text-zinc-300 outline-none focus:border-white/10"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="flex-1 overflow-y-auto custom-scrollbar p-1">
+                            {renderSidebarNode(root, 0)}
+                        </div>
+                    </div>
+
+                    {/* Resizer */}
+                    <div
+                        onMouseDown={startResizing}
+                        className={`w-1 cursor-col-resize hover:bg-brand-500 transition-colors z-50 flex-shrink-0 relative ${isResizing ? 'bg-brand-500' : 'bg-[#111] border-l border-white/5'}`}
+                    >
+                        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-4 w-0.5 bg-zinc-700 rounded-full"></div>
+                    </div>
+                </>
             )}
-            {!printMode && (
-                <div className="absolute top-2 right-2 flex items-center gap-3 z-10">
-                    {onMaximize && (
-                        <button
-                            onClick={onMaximize}
-                            className="p-1 hover:bg-white/10 rounded text-zinc-400 hover:text-white transition-colors"
-                            title={isMaximized ? "Restore" : "Maximize"}
-                        >
-                            {isMaximized ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-                        </button>
-                    )}
-                    <div className="flex items-center gap-1.5 text-[8px] uppercase tracking-wider font-bold">
-                        <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLOR.target.border }}></span>
-                        <span className="text-zinc-600">Target</span>
+
+            {/* Right Pane: Graph */}
+            <div ref={containerRef} className="flex-1 relative h-full min-w-0 bg-[#0a0a0a]">
+                {!printMode && (
+                    <div className="absolute top-2 left-2 text-[10px] uppercase font-black tracking-widest text-zinc-500 z-10 pointer-events-none">
+                        Process Graph
                     </div>
-                    <div className="flex items-center gap-1.5 text-[8px] uppercase tracking-wider font-bold">
-                        <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLOR.shell.border }}></span>
-                        <span className="text-zinc-600">Shell</span>
+                )}
+                {!printMode && (
+                    <div className="absolute top-2 right-2 flex items-center gap-3 z-10">
+                        {onMaximize && (
+                            <button
+                                onClick={onMaximize}
+                                className="p-1 hover:bg-white/10 rounded text-zinc-400 hover:text-white transition-colors"
+                                title={isMaximized ? "Restore" : "Maximize"}
+                            >
+                                {isMaximized ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                            </button>
+                        )}
+                        <div className="flex items-center gap-1.5 text-[8px] uppercase tracking-wider font-bold">
+                            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLOR.target.border }}></span>
+                            <span className="text-zinc-600">Target</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[8px] uppercase tracking-wider font-bold">
+                            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLOR.shell.border }}></span>
+                            <span className="text-zinc-600">Shell</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 text-[8px] uppercase tracking-wider font-bold">
+                            <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLOR.standard.border }}></span>
+                            <span className="text-zinc-600">Process</span>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-1.5 text-[8px] uppercase tracking-wider font-bold">
-                        <span className="w-2 h-2 rounded-sm" style={{ backgroundColor: COLOR.standard.border }}></span>
-                        <span className="text-zinc-600">Process</span>
-                    </div>
-                </div>
-            )}
-            <svg
-                ref={svgRef}
-                width={dimensions.width}
-                height={dimensions.height}
-                viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
-                className={`block mx-auto ${printMode ? '' : 'cursor-grab active:cursor-grabbing'}`}
-            />
-            {/* Tooltip container */}
-            {!printMode && (
-                <div
-                    ref={tooltipRef}
-                    style={{
-                        display: 'none',
-                        position: 'absolute',
-                        zIndex: 50,
-                        background: COLOR.tooltip.bg,
-                        border: `1px solid ${COLOR.tooltip.border}`,
-                        borderRadius: '6px',
-                        padding: '8px 12px',
-                        maxWidth: '320px',
-                        pointerEvents: 'none',
-                        boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
-                    }}
+                )}
+                <svg
+                    ref={svgRef}
+                    width={dimensions.width}
+                    height={dimensions.height}
+                    viewBox={`0 0 ${dimensions.width} ${dimensions.height}`}
+                    className={`block mx-auto ${printMode ? '' : 'cursor-grab active:cursor-grabbing'}`}
                 />
-            )}
+                {/* Tooltip container */}
+                {!printMode && (
+                    <div
+                        ref={tooltipRef}
+                        style={{
+                            display: 'none',
+                            position: 'absolute',
+                            zIndex: 50,
+                            background: COLOR.tooltip.bg,
+                            border: `1px solid ${COLOR.tooltip.border}`,
+                            borderRadius: '6px',
+                            padding: '8px 12px',
+                            maxWidth: '320px',
+                            pointerEvents: 'none',
+                            boxShadow: '0 8px 32px rgba(0,0,0,0.6)',
+                        }}
+                    />
+                )}
+            </div>
         </div>
     );
 }
