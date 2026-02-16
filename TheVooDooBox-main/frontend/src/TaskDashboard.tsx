@@ -9,13 +9,12 @@ import {
     Play,
     Monitor,
     ChevronRight,
-    Brain,
     Clock,
     Search,
     ChevronDown,
     RefreshCcw
 } from 'lucide-react';
-import { voodooApi, AgentEvent, BASE_URL, TaskProgressEvent, ForensicReport } from './voodooApi';
+import { voodooApi, AgentEvent, BASE_URL, TaskProgressEvent } from './voodooApi';
 import GhidraConsole from './GhidraConsole';
 import ProcessLineage from './ProcessLineage';
 
@@ -87,8 +86,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
     const [isLoadingDetails, setIsLoadingDetails] = useState(false);
     const [activeGhidraTask, setActiveGhidraTask] = useState<{ id: string, filename: string } | null>(null);
     const [progressMap, setProgressMap] = useState<Record<string, TaskProgressEvent>>({});
-    const [aiReport, setAiReport] = useState<ForensicReport | null>(null);
-    const [expandedTab, setExpandedTab] = useState<'info' | 'mitre' | 'thinking' | 'fishbone' | 'screenshots' | 'telemetry'>('mitre');
+    const [expandedTab, setExpandedTab] = useState<'info' | 'fishbone' | 'screenshots' | 'telemetry'>('info');
 
     const selectedTask = useMemo(() => tasks.find(t => t.id === expandedTaskId), [tasks, expandedTaskId]);
 
@@ -126,7 +124,6 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
             activeRequestId.current = null; // Cancel current interest
             setRawEvents([]);
             setExpandedScreenshots([]);
-            setAiReport(null);
             return;
         }
 
@@ -134,9 +131,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
         activeRequestId.current = task.id; // Mark this as the active request
         setRawEvents([]);
         setExpandedScreenshots([]);
-
-        setAiReport(null);
-        setExpandedTab('mitre');
+        setExpandedTab('info');
         setIsLoadingDetails(true);
 
         try {
@@ -158,15 +153,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
             console.log(`[TaskDashboard] screenshots found: ${relevantScreenshots.length}`);
             setExpandedScreenshots(relevantScreenshots);
 
-            // Fetch AI Report for MITRE data
-            try {
-                const report = await voodooApi.getAIAnalysis(allEvents);
-                if (activeRequestId.current === task.id) {
-                    setAiReport(report);
-                }
-            } catch (err) {
-                console.error("[TaskDashboard] Failed to fetch AI report", err);
-            }
+
 
         } catch (e) {
             console.error("Failed to fetch expanded details", e);
@@ -430,7 +417,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
                                                     className="p-1.5 hover:bg-brand-500/20 text-brand-500 border border-transparent hover:border-brand-500/30 rounded transition-all flex items-center gap-1"
                                                 >
                                                     <span className="text-[9px] font-bold hidden xl:inline">REPORT</span>
-                                                    <Brain size={14} />
+                                                    <FileText size={14} />
                                                 </button>
                                                 <button
                                                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleDeleteTask(task.id, e); }}
@@ -450,16 +437,10 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
                                                     {/* Expanded Tabs Navigation - Horizontal Scrollable */}
                                                     <div className="flex items-center gap-2 mb-4 overflow-x-auto custom-scrollbar pb-2 border-b border-white/10">
                                                         <button
-                                                            onClick={(e) => { e.stopPropagation(); setExpandedTab('mitre'); }}
-                                                            className={`px-3 py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 border ${expandedTab === 'mitre' ? 'bg-brand-500 text-black border-brand-500' : 'bg-[#111] text-zinc-500 border-white/5 hover:border-brand-500/30 hover:text-brand-400'}`}
+                                                            onClick={(e) => { e.stopPropagation(); setExpandedTab('info'); }}
+                                                            className={`px-3 py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 border ${expandedTab === 'info' ? 'bg-brand-500 text-black border-brand-500' : 'bg-[#111] text-zinc-500 border-white/5 hover:border-brand-500/30 hover:text-brand-400'}`}
                                                         >
-                                                            <Shield size={12} /> MITRE & Intel
-                                                        </button>
-                                                        <button
-                                                            onClick={(e) => { e.stopPropagation(); setExpandedTab('thinking'); }}
-                                                            className={`px-3 py-1.5 rounded text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-2 border ${expandedTab === 'thinking' ? 'bg-brand-500 text-black border-brand-500' : 'bg-[#111] text-zinc-500 border-white/5 hover:border-brand-500/30 hover:text-brand-400'}`}
-                                                        >
-                                                            <Brain size={12} /> AI Thinking
+                                                            <Shield size={12} /> Overview
                                                         </button>
                                                         <button
                                                             onClick={(e) => { e.stopPropagation(); setExpandedTab('fishbone'); }}
@@ -490,8 +471,9 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
                                                             </div>
                                                         ) : (
                                                             <>
-                                                                {expandedTab === 'mitre' && (
+                                                                {expandedTab === 'info' && (
                                                                     <div className="space-y-4 animate-in fade-in duration-300">
+                                                                        {/* Summary Header */}
                                                                         <div className="flex items-center justify-between">
                                                                             <h3 className="text-xs font-black uppercase text-zinc-400">Analysis Summary: <span className="text-brand-500">#{task.id}</span></h3>
                                                                             <button onClick={(e) => { e.stopPropagation(); onSelectTask(task.id); }} className="text-[10px] text-brand-400 hover:text-brand-300 font-bold uppercase flex items-center gap-1">
@@ -499,6 +481,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
                                                                             </button>
                                                                         </div>
 
+                                                                        {/* Stats Cards */}
                                                                         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                                                                             <div className="bg-[#111] p-3 rounded border border-white/5">
                                                                                 <div className="text-[9px] font-black uppercase text-zinc-500 mb-1">Threat Score</div>
@@ -517,58 +500,59 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
                                                                                 </div>
                                                                             </div>
                                                                             <div className="bg-[#111] p-3 rounded border border-white/5">
-                                                                                <div className="text-[9px] font-black uppercase text-zinc-500 mb-1">MITRE IDs</div>
-                                                                                <div className="text-xl font-black text-orange-400">{aiReport?.mitre_techniques?.length || 0}</div>
+                                                                                <div className="text-[9px] font-black uppercase text-zinc-500 mb-1">Screenshots</div>
+                                                                                <div className="text-xl font-black text-orange-400">{expandedScreenshots.length}</div>
                                                                             </div>
                                                                         </div>
 
-                                                                        {/* MITRE Matrix Visualization */}
-                                                                        <div className="bg-[#111] border border-white/5 rounded-lg p-6">
+                                                                        {/* Screenshots Section */}
+                                                                        <div className="bg-[#111] border border-white/5 rounded-lg p-4">
                                                                             <h4 className="text-[10px] font-black uppercase text-zinc-500 tracking-wider flex items-center gap-2 mb-4">
-                                                                                <Shield size={14} /> MITRE ATT&CK Matrix
+                                                                                <Monitor size={14} /> Sandbox Screenshots
                                                                             </h4>
-                                                                            {aiReport?.mitre_matrix ? (
-                                                                                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                                                                                    {Object.entries(aiReport.mitre_matrix).map(([tactic, techniques]: [string, any]) => (
-                                                                                        <div key={tactic} className="bg-black/40 p-3 rounded border border-white/5">
-                                                                                            <div className="text-[9px] font-bold text-brand-400 uppercase mb-2 border-b border-brand-500/20 pb-1">{tactic.replace(/_/g, ' ')}</div>
-                                                                                            <div className="space-y-1">
-                                                                                                {Array.isArray(techniques) && techniques.map((tech: string, i: number) => (
-                                                                                                    <div key={i} className="text-[10px] text-zinc-400 flex items-start gap-1">
-                                                                                                        <span className="text-brand-500/50">•</span> {tech}
-                                                                                                    </div>
-                                                                                                ))}
-                                                                                            </div>
+                                                                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                                                                                {expandedScreenshots.length > 0 ? expandedScreenshots.map((filename: string, idx: number) => (
+                                                                                    <div key={idx} className="group relative aspect-video bg-black border border-white/10 rounded overflow-hidden cursor-pointer hover:border-brand-500/50 transition-all">
+                                                                                        <img
+                                                                                            src={voodooApi.getScreenshotUrl(filename, task.id)}
+                                                                                            alt={`Screenshot ${idx}`}
+                                                                                            className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition-opacity"
+                                                                                            onError={(e: React.SyntheticEvent<HTMLImageElement, Event>) => {
+                                                                                                const target = e.currentTarget;
+                                                                                                target.style.display = 'none';
+                                                                                                if (target.parentElement) target.parentElement.innerText = 'Image Load Error';
+                                                                                            }}
+                                                                                        />
+                                                                                        <div className="absolute bottom-0 left-0 right-0 bg-black/80 p-1 text-[9px] font-mono text-center text-zinc-400 truncate">
+                                                                                            {filename}
                                                                                         </div>
-                                                                                    ))}
-                                                                                </div>
-                                                                            ) : (
-                                                                                <div className="text-center text-zinc-600 text-xs font-mono py-8">
-                                                                                    No MITRE ATT&CK data mapped.
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                )}
-
-                                                                {expandedTab === 'thinking' && (
-                                                                    <div className="space-y-4 animate-in fade-in duration-300 h-full flex flex-col">
-                                                                        <div className="bg-[#111] border border-white/5 rounded-lg p-0 flex-1 flex flex-col overflow-hidden max-h-[500px]">
-                                                                            <div className="px-4 py-3 border-b border-white/5 bg-white/2 flex justify-between items-center">
-                                                                                <h4 className="text-[10px] font-black uppercase text-zinc-500 tracking-wider flex items-center gap-2">
-                                                                                    <Brain size={14} /> AI Chain of Thought
-                                                                                </h4>
-                                                                            </div>
-                                                                            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 bg-black/20">
-                                                                                {aiReport?.thinking ? (
-                                                                                    <pre className="text-xs text-brand-400/80 font-mono whitespace-pre-wrap leading-relaxed">
-                                                                                        {aiReport.thinking}
-                                                                                    </pre>
-                                                                                ) : (
-                                                                                    <div className="text-center text-zinc-600 text-xs font-mono py-12">
-                                                                                        No Chain of Thought record available for this analysis.
+                                                                                    </div>
+                                                                                )) : (
+                                                                                    <div className="col-span-full h-24 flex items-center justify-center text-zinc-600 border border-white/5 border-dashed rounded">
+                                                                                        <span className="text-[10px] uppercase font-black tracking-widest">No Screenshots Available</span>
                                                                                     </div>
                                                                                 )}
+                                                                            </div>
+                                                                        </div>
+
+                                                                        {/* Process Graph Section */}
+                                                                        <div className="bg-[#111] border border-white/5 rounded-lg overflow-hidden">
+                                                                            <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+                                                                                <h4 className="text-[10px] font-black uppercase text-zinc-500 tracking-wider flex items-center gap-2">
+                                                                                    <Activity size={14} /> Process Graph
+                                                                                </h4>
+                                                                                <button
+                                                                                    onClick={(e) => { e.stopPropagation(); onOpenLineage(task.id); }}
+                                                                                    className="text-[9px] font-bold uppercase text-brand-400 hover:text-brand-300 flex items-center gap-1 transition-colors"
+                                                                                >
+                                                                                    Maximize <Monitor size={10} />
+                                                                                </button>
+                                                                            </div>
+                                                                            <div className="h-[400px] relative">
+                                                                                <ProcessLineage
+                                                                                    events={expandedEvents}
+                                                                                    onMaximize={() => onOpenLineage(task.id)}
+                                                                                />
                                                                             </div>
                                                                         </div>
                                                                     </div>
