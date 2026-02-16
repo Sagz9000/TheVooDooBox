@@ -15,7 +15,8 @@ import {
     Clock,
     Search,
     Share2,
-    X
+    X,
+    ChevronDown
 } from 'lucide-react';
 import { voodooApi, AgentEvent, BASE_URL, TaskProgressEvent, ForensicReport, MitreTechnique } from './voodooApi';
 import GhidraConsole from './GhidraConsole';
@@ -158,9 +159,13 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
         return rawEvents.filter(e => e.process_name && !NOISE_FILTER_PROCESSES.includes(e.process_name.toLowerCase()));
     }, [rawEvents, showNoise]);
 
+    // Race condition protection
+    const activeRequestId = useRef<string | null>(null);
+
     const handleRowClick = async (task: AnalysisTask) => {
         if (expandedTaskId === task.id) {
             setExpandedTaskId(null);
+            activeRequestId.current = null; // Cancel current interest
             setRawEvents([]);
             setExpandedScreenshots([]);
             setAiReport(null);
@@ -168,6 +173,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
         }
 
         setExpandedTaskId(task.id);
+        activeRequestId.current = task.id; // Mark this as the active request
         setRawEvents([]);
         setExpandedScreenshots([]);
         setAiReport(null);
@@ -176,17 +182,28 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
         try {
             console.log(`[TaskDashboard] expanding task ${task.id}, fetching history...`);
             const allEvents = await voodooApi.fetchHistory(task.id);
+
+            // Race check: if the user clicked another row while this was fetching, ignore results
+            if (activeRequestId.current !== task.id) {
+                console.log(`[TaskDashboard] Ignoring stale events for ${task.id}, active is ${activeRequestId.current}`);
+                return;
+            }
+
             console.log(`[TaskDashboard] fetchHistory result: ${allEvents.length} events`);
             setRawEvents(allEvents);
 
             const relevantScreenshots = await voodooApi.listScreenshots(task.id);
+            if (activeRequestId.current !== task.id) return; // Race check again
+
             console.log(`[TaskDashboard] screenshots found: ${relevantScreenshots.length}`);
             setExpandedScreenshots(relevantScreenshots);
 
             // Fetch AI Report for MITRE data
             try {
                 const report = await voodooApi.getAIAnalysis(allEvents);
-                setAiReport(report);
+                if (activeRequestId.current === task.id) {
+                    setAiReport(report);
+                }
             } catch (err) {
                 console.error("[TaskDashboard] Failed to fetch AI report", err);
             }
@@ -194,7 +211,9 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
         } catch (e) {
             console.error("Failed to fetch expanded details", e);
         } finally {
-            setIsLoadingDetails(false);
+            if (activeRequestId.current === task.id) {
+                setIsLoadingDetails(false);
+            }
         }
     };
 
@@ -379,7 +398,7 @@ export default function TaskDashboard({ onSelectTask, onOpenSubmission, onOpenLi
                                                 className={`grid grid-cols-12 gap-2 p-3 items-center hover:bg-brand-500/5 transition-colors group cursor-pointer border-b border-security-border/40 shadow-sm ${isSelected ? 'bg-brand-500/10 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
                                             >
                                                 <div className="col-span-1 flex items-center gap-1 hover:bg-white/5 p-1 rounded cursor-pointer z-10">
-                                                    {isSelected ? <ChevronRight size={12} className="text-brand-500" /> : <ChevronRight size={12} className="text-security-muted/50" />}
+                                                    {isSelected ? <ChevronDown size={12} className="text-brand-500" /> : <ChevronRight size={12} className="text-security-muted/50" />}
                                                     <span className={`text-[10px] font-black cursor-text select-text block truncate ${isSelected ? 'text-brand-500' : 'text-brand-500/80'}`}>
                                                         #{task.id}
                                                     </span>

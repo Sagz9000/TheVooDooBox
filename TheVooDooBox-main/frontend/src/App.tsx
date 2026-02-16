@@ -150,7 +150,7 @@ release-cursor=shift+f12
             {/* Sidebar */}
             <div className="w-20 bg-[#080808] border-r border-white/5 flex flex-col items-center py-6 gap-6 z-50">
                 <div className="mb-2">
-                    <Biohazard size={28} className="text-brand-500 animate-pulse-slow" />
+                    <Biohazard size={28} className="text-voodoo-toxic-green animate-pulse-slow" />
                 </div>
 
                 <nav className="flex flex-col gap-4 w-full px-2">
