@@ -80,7 +80,7 @@ const NOISE_FILTER_PROCESSES = [
 
 export default function ReportView({ taskId, events: globalEvents, onBack, onOpenLineage }: Props) {
     const [selectedPid, setSelectedPid] = useState<number | null>(null);
-    const [activeTab, setActiveTab] = useState<'neural' | 'timeline' | 'network' | 'web' | 'files' | 'registry' | 'console' | 'ghidra' | 'tactics' | 'intelligence' | 'screenshots' | 'notes' | 'decoder' | 'remnux'>('neural');
+    const [activeTab, setActiveTab] = useState<'neural' | 'timeline' | 'network' | 'web' | 'files' | 'registry' | 'console' | 'ghidra' | 'tactics' | 'intelligence' | 'screenshots' | 'notes' | 'decoder' | 'remnux' | 'graph'>('neural');
     const [localEvents, setLocalEvents] = useState<AgentEvent[]>([]);
     const [task, setTask] = useState<AnalysisTask | null>(null);
     const [ghidraFindings, setGhidraFindings] = useState<any[]>([]);
@@ -746,6 +746,7 @@ export default function ReportView({ taskId, events: globalEvents, onBack, onOpe
                             className="flex items-center px-12 overflow-x-auto overflow-y-hidden custom-scrollbar whitespace-nowrap scroll-smooth min-h-[48px] relative z-20"
                         >
                             <TabButton active={activeTab === 'neural'} onClick={() => setActiveTab('neural')} icon={<Sparkles size={14} />} label="Neural Report" />
+                            <TabButton active={activeTab === 'graph'} onClick={() => setActiveTab('graph')} icon={<Share2 size={14} />} label="Process Graph" />
                             <TabButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} icon={<List size={14} />} label="Timeline" count={timelineEvents.length} />
                             <TabButton active={activeTab === 'screenshots'} onClick={() => setActiveTab('screenshots')} icon={<Image size={14} />} label="Screenshots" count={screenshots.length} />
                             <TabButton active={activeTab === 'network'} onClick={() => setActiveTab('network')} icon={<Globe size={14} />} label="Network" count={networkEvents.length} />
@@ -785,6 +786,14 @@ export default function ReportView({ taskId, events: globalEvents, onBack, onOpe
                                 taskId={taskId}
                                 onNavigateTab={(tab: string) => setActiveTab(tab as any)}
                             />
+                        )}
+                        {activeTab === 'graph' && (
+                            <div className="absolute inset-0 bg-[#0a0a0a] overflow-hidden">
+                                <ProcessLineage
+                                    events={events}
+                                    onMaximize={() => onOpenLineage(events)}
+                                />
+                            </div>
                         )}
                         {activeTab === 'timeline' && (
                             <TimelineView
