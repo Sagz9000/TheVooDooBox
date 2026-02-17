@@ -1425,6 +1425,7 @@ struct ConfigRequest {
     gemini_key: Option<String>,
     gemini_model: Option<String>,
     ollama_url: Option<String>,
+    ollama_model: Option<String>,
     anthropic_key: Option<String>,
     anthropic_model: Option<String>,
     openai_key: Option<String>,
