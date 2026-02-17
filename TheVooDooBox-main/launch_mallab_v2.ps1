@@ -56,7 +56,7 @@ if ($ArchChoice -eq "1") {
 else {
     $DetectedIP = (Get-NetIPAddress -AddressFamily IPv4 -InterfaceAlias (Get-NetAdapter | Where-Object Status -eq Up).Name).IPAddress | Select-Object -First 1
     $HostIP = GetInput "Enter Host LAN IP" $DetectedIP
-    $OllamaHost = GetInput "Enter Ollama URL" "http://$HostIP:11434"
+    $OllamaHost = GetInput "Enter Local AI URL (Llama.cpp/Ollama)" "http://$HostIP:11434"
 }
 WriteEnv "HOST_IP" $HostIP
 WriteEnv "OLLAMA_URL" $OllamaHost
@@ -64,15 +64,16 @@ WriteEnv "EMBEDDING_URL" $OllamaHost
 
 # -> AI Configuration
 Write-Host "`n[2] AI Neural Core" -ForegroundColor Green
-Write-Host "1. Ollama (Local)"
+Write-Host "1. Llama.cpp / Ollama (Local)"
 Write-Host "2. Gemini (Cloud)"
-Write-Host "3. Hybrid"
+Write-Host "3. Hybrid (Recommended for Performance)"
 $AIChoice = GetInput "Select Provider" "3"
 
 if ($AIChoice -eq "1") {
     WriteEnv "AI_PROVIDER" "ollama"
     WriteEnv "AI_MODE" "local_only"
-    $Model = GetInput "Ollama Model" "llama3"
+    Write-Host "Note: Llama.cpp is recommended over Ollama for better performance." -ForegroundColor Cyan
+    $Model = GetInput "Model Name (e.g. llama-server)" "llama-server"
     WriteEnv "OLLAMA_MODEL" $Model
 }
 elseif ($AIChoice -eq "2") {
@@ -84,7 +85,8 @@ elseif ($AIChoice -eq "2") {
 elseif ($AIChoice -eq "3") {
     WriteEnv "AI_PROVIDER" "ollama"
     WriteEnv "AI_MODE" "hybrid"
-    $Model = GetInput "Local Model" "llama3"
+    Write-Host "Note: Llama.cpp is recommended over Ollama for better performance." -ForegroundColor Cyan
+    $Model = GetInput "Local Model Name" "llama-server"
     WriteEnv "OLLAMA_MODEL" $Model
     $Key = GetInput "Gemini API Key" $CurrentOps["GEMINI_API_KEY"]
     WriteEnv "GEMINI_API_KEY" $Key
