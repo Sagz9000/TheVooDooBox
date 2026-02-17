@@ -38,7 +38,7 @@ The script will prompt you for:
 
 2.  **AI Neural Core**:
     *   **Ollama (Local)**: Free, privacy-focused. Requires decent hardware.
-    *   **Gemini/OpenAI (Cloud)**: Fast, smarter, costs money (or uses free tier).
+    *   **Gemini/OpenAI (Cloud)**: Fast, smarter (uses Gemini 3 Flash by default).
     *   **Hybrid**: Local privacy + Cloud power.
 
 3.  **Launch**:
