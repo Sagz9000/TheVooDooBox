@@ -12,15 +12,6 @@ pub struct BehavioralFingerprint {
     pub tags: Vec<String>,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
-struct OpenAIEmbeddingResponse {
-    data: Vec<EmbeddingData>,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct EmbeddingData {
-    embedding: Vec<f32>,
-}
 
 #[derive(Serialize, Deserialize, Debug)]
 struct ChromaQueryResponse {
