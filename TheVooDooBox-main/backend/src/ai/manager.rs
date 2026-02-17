@@ -48,6 +48,7 @@ pub struct AIManager {
     provider: Arc<RwLock<Box<dyn AIProvider>>>,
     
     gemini_key: Arc<RwLock<String>>,
+    gemini_model: Arc<RwLock<String>>,
     
     ollama_url: Arc<RwLock<String>>,
     ollama_model: Arc<RwLock<String>>,
@@ -72,6 +73,8 @@ impl AIManager {
         openai_key: String,
         copilot_token: String
     ) -> Self {
+        // Load GEMINI_MODEL from env, defaulting to gemini-3-flash
+        let env_gemini_model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3-flash".to_string());
         // 1. Try to load from disk
         let saved_mode = Self::load_mode_config();
         
@@ -91,7 +94,7 @@ impl AIManager {
         };
 
         let provider: Box<dyn AIProvider> = if !gemini_key.is_empty() && (initial_mode == AIMode::Hybrid || initial_mode == AIMode::CloudOnly) {
-            Box::new(GeminiProvider::new(gemini_key.clone()))
+            Box::new(GeminiProvider::new(gemini_key.clone(), Some(env_gemini_model.clone())))
         } else {
             Box::new(OllamaProvider::new(ollama_url.clone(), "llama-server".to_string()))
         };
@@ -99,6 +102,7 @@ impl AIManager {
         let manager = Self {
             provider: Arc::new(RwLock::new(provider)),
             gemini_key: Arc::new(RwLock::new(gemini_key)),
+            gemini_model: Arc::new(RwLock::new(env_gemini_model)),
             ollama_url: Arc::new(RwLock::new(ollama_url)),
             ollama_model: Arc::new(RwLock::new("llama-server".to_string())),
             
@@ -145,6 +149,7 @@ impl AIManager {
         provider_type: ProviderType, 
         // Optional updates to configs
         gemini_key: Option<String>, 
+        gemini_model: Option<String>,
         ollama_url: Option<String>,
         ollama_model: Option<String>,
         anthropic_key: Option<String>,
@@ -156,6 +161,7 @@ impl AIManager {
     ) {
         // Update RwLocks if values provided
         if let Some(v) = gemini_key { *self.gemini_key.write().await = v; }
+        if let Some(v) = gemini_model { *self.gemini_model.write().await = v; }
         if let Some(v) = ollama_url { *self.ollama_url.write().await = v; }
         if let Some(v) = ollama_model { *self.ollama_model.write().await = v; }
         
@@ -172,7 +178,8 @@ impl AIManager {
         match provider_type {
             ProviderType::Gemini => {
                 let key = self.gemini_key.read().await;
-                *provider_lock = Box::new(GeminiProvider::new(key.clone()));
+                let model = self.gemini_model.read().await;
+                *provider_lock = Box::new(GeminiProvider::new(key.clone(), Some(model.clone())));
             }
             ProviderType::Ollama => {
                 let url = self.ollama_url.read().await;
@@ -222,7 +229,9 @@ impl AIManager {
         serde_json::json!({
             "provider": self.get_current_provider_name().await,
             "ai_mode": self.get_ai_mode().await.to_str(),
+            "ai_mode": self.get_ai_mode().await.to_str(),
             "gemini_key": self.gemini_key.read().await.as_str(),
+            "gemini_model": self.gemini_model.read().await.as_str(),
             "ollama_url": self.ollama_url.read().await.as_str(),
             "ollama_model": self.ollama_model.read().await.as_str(),
             "anthropic_key": self.anthropic_key.read().await.as_str(),
@@ -253,7 +262,8 @@ impl AIManager {
                 if g_key.is_empty() {
                     return Err("Gemini API key not configured. Cannot use Cloud provider.".into());
                 }
-                let cloud_provider = GeminiProvider::new(g_key.clone());
+                let g_model = self.gemini_model.read().await;
+                let cloud_provider = GeminiProvider::new(g_key.clone(), Some(g_model.clone()));
                 cloud_provider.ask(history, system_prompt).await
             }
             _ => {

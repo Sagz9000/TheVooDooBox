@@ -1,5 +1,5 @@
-
 # THE VOODOO BOX - INSTALLATION & LAUNCH WIZARD (V2)
+# Updated to support Gemini 3 Flash
 
 $ErrorActionPreference = "Stop"
 $ProjectRoot = $PSScriptRoot

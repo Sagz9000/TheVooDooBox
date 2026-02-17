@@ -11,10 +11,10 @@ pub struct GeminiProvider {
 }
 
 impl GeminiProvider {
-    pub fn new(api_key: String) -> Self {
+    pub fn new(api_key: String, model: Option<String>) -> Self {
         Self {
             api_key,
-            model: "gemini-1.5-flash".to_string(), // Updated to stable model
+            model: model.unwrap_or_else(|| "gemini-3-flash".to_string()),
             client: Client::builder()
                 .timeout(std::time::Duration::from_secs(120))
                 .build()

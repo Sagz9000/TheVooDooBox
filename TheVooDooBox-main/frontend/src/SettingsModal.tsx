@@ -11,6 +11,7 @@ interface SettingsModalProps {
 export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: SettingsModalProps) {
     const [provider, setProvider] = useState<string>('ollama');
     const [geminiKey, setGeminiKey] = useState('');
+    const [geminiModel, setGeminiModel] = useState('');
     const [ollamaUrl, setOllamaUrl] = useState('');
     const [ollamaModel, setOllamaModel] = useState('');
     const [anthropicKey, setAnthropicKey] = useState('');
@@ -32,6 +33,7 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
 
                 // Load existing keys/models if available
                 if (config.gemini_key) setGeminiKey(config.gemini_key);
+                if (config.gemini_model) setGeminiModel(config.gemini_model);
                 if (config.ollama_url) setOllamaUrl(config.ollama_url);
                 if (config.ollama_model) setOllamaModel(config.ollama_model);
 
@@ -61,6 +63,7 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
             await voodooApi.setAIConfig({
                 provider,
                 gemini_key: geminiKey || undefined,
+                gemini_model: geminiModel || undefined,
                 ollama_url: ollamaUrl || undefined,
                 ollama_model: ollamaModel || undefined,
                 anthropic_key: anthropicKey || undefined,
@@ -236,6 +239,22 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
                                         <button onClick={() => setShowKey(!showKey)} className="absolute right-3 top-1/2 -translate-y-1/2 text-security-muted hover:text-white">
                                             {showKey ? <EyeOff size={18} /> : <Eye size={18} />}
                                         </button>
+                                    </div>
+                                    <div className="mt-4">
+                                        <label className="text-[10px] text-security-muted font-black uppercase tracking-widest mb-2 block flex items-center gap-2">
+                                            <Cpu size={12} className="text-brand-500" />
+                                            Model ID (Optional)
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={geminiModel}
+                                            onChange={(e) => setGeminiModel(e.target.value)}
+                                            placeholder="gemini-3-flash"
+                                            className="w-full bg-security-panel border border-security-border rounded-lg px-4 py-3 text-sm text-white focus:border-brand-500 transition-colors font-mono"
+                                        />
+                                        <p className="text-[9px] text-zinc-500 mt-1 italic">
+                                            Defaults to <code>gemini-3-flash</code>.
+                                        </p>
                                     </div>
                                 </div>
                             )}

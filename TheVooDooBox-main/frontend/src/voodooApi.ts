@@ -504,6 +504,7 @@ export const voodooApi = {
     setAIConfig: async (config: {
         provider: string,
         gemini_key?: string,
+        gemini_model?: string,
         ollama_url?: string,
         ollama_model?: string,
         anthropic_key?: string,
