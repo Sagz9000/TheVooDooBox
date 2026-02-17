@@ -666,20 +666,20 @@ export default function ReportView({ taskId, events: globalEvents, onBack, onOpe
                             className="flex items-center px-12 overflow-x-auto overflow-y-hidden custom-scrollbar whitespace-nowrap scroll-smooth min-h-[48px] relative z-20"
                         >
                             <TabButton active={activeTab === 'neural'} onClick={() => setActiveTab('neural')} icon={<Sparkles size={14} />} label="Neural Report" />
+                            <TabButton active={activeTab === 'intelligence'} icon={<Sparkles size={14} />} label="Neural Correlation Engine" onClick={() => setActiveTab('intelligence')} />
                             <TabButton active={activeTab === 'graph'} onClick={() => setActiveTab('graph')} icon={<Share2 size={14} />} label="Process Graph" />
                             <TabButton active={activeTab === 'timeline'} onClick={() => setActiveTab('timeline')} icon={<List size={14} />} label="Timeline" count={timelineEvents.length} />
-                            <TabButton active={activeTab === 'screenshots'} onClick={() => setActiveTab('screenshots')} icon={<Image size={14} />} label="Screenshots" count={screenshots.length} />
+                            <TabButton active={activeTab === 'tactics'} onClick={() => setActiveTab('tactics')} icon={<Target size={14} />} label="MITRE Matrix" />
+                            <TabButton active={activeTab === 'remnux'} icon={<ShieldAlert size={14} />} label="Remnux Analysis" onClick={() => setActiveTab('remnux')} count={task?.remnux_status === 'Completed' ? 1 : 0} />
+                            <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Static Findings" count={ghidraFindings.length} />
                             <TabButton active={activeTab === 'network'} onClick={() => setActiveTab('network')} icon={<Globe size={14} />} label="Network" count={networkEvents.length} />
                             <TabButton active={activeTab === 'web'} onClick={() => setActiveTab('web')} icon={<Globe size={14} />} label="Web" count={webEvents.length} />
                             <TabButton active={activeTab === 'files'} onClick={() => setActiveTab('files')} icon={<FileText size={14} />} label="Files" count={fileEvents.length} />
                             <TabButton active={activeTab === 'registry'} onClick={() => setActiveTab('registry')} icon={<Server size={14} />} label="Registry" count={registryEvents.length} />
-                            <TabButton active={activeTab === 'ghidra'} onClick={() => setActiveTab('ghidra')} icon={<Code2 size={14} />} label="Static Findings" count={ghidraFindings.length} />
-                            <TabButton active={activeTab === 'tactics'} onClick={() => setActiveTab('tactics')} icon={<Target size={14} />} label="MITRE Matrix" />
-                            <TabButton active={activeTab === 'intelligence'} icon={<Sparkles size={14} />} label="Neural Correlation Engine" onClick={() => setActiveTab('intelligence')} />
-                            <TabButton active={activeTab === 'remnux'} icon={<ShieldAlert size={14} />} label="Remnux Analysis" onClick={() => setActiveTab('remnux')} count={task?.remnux_status === 'Completed' ? 1 : 0} />
+                            <TabButton active={activeTab === 'screenshots'} onClick={() => setActiveTab('screenshots')} icon={<Image size={14} />} label="Screenshots" count={screenshots.length} />
                             <TabButton active={activeTab === 'notes'} onClick={() => setActiveTab('notes')} icon={<Pencil size={14} />} label="Notes" />
-                            <TabButton active={activeTab === 'decoder'} onClick={() => setActiveTab('decoder')} icon={<Binary size={14} />} label="Decoder" />
                             <TabButton active={activeTab === 'console'} onClick={() => setActiveTab('console')} icon={<Terminal size={14} />} label="Raw Feed" count={stats.count} />
+                            <TabButton active={activeTab === 'decoder'} onClick={() => setActiveTab('decoder')} icon={<Binary size={14} />} label="Decoder" />
                         </div>
 
                         {/* Right Gradient/Indicator */}
