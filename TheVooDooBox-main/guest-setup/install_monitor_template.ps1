@@ -1,7 +1,7 @@
 # VOODOOBOX MASTER INSTALLER
 # Generated from Template
 
-param([string]$ServerAddr = "172.23.176.1:9001") # Placeholder replaced by wizard
+param([string]$ServerAddr = "{{SERVER_ADDR}}") # Placeholder replaced by wizard
 
 if ($ServerAddr -match "{{") {
     # Fallback if replacement failed or script ran manually without wizard
@@ -52,4 +52,3 @@ Register-ScheduledTask -TaskName "VoodooWatchdog" -Action $Action -Trigger $Trig
 
 Write-Host "Installation Complete! Agent starting..." -ForegroundColor Green
 Start-Process "powershell.exe" -ArgumentList "-WindowStyle Hidden -File `"$InstallDir\watchdog.ps1`""
-

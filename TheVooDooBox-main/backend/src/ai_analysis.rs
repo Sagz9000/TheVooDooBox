@@ -783,6 +783,7 @@ pub async fn generate_ai_report(
         let ai_mode = ai_mode.clone();
         let chunk = chunk.clone();
         let target_filename = target_filename.to_string();
+        let digital_signature = digital_signature.clone();
         let total_chunks = chunks.len();
 
         async move {
@@ -792,6 +793,7 @@ pub async fn generate_ai_report(
             let map_prompt = format!(
                 "Analyze this telemetry chunk (Part {}/{}). Identify suspicious behavior.
                  Target File: {}
+                 Digital Signature: {}
                  
                  PROCESS DATA:
                  {}
@@ -800,8 +802,12 @@ pub async fn generate_ai_report(
                  Return a JSON array of strings, where each string is a concise insight about a specific suspicious action.
                  Example: [\"Process powershell.exe (PID 454) established network connection to 45.33.2.1\", \"Process cmd.exe deleted shadow copies\"]
                  If nothing suspicious is found, return empty array [].
-                 DO NOT produce a full report. Only precise insights.", 
-                 i+1, total_chunks, target_filename, chunk_json
+                 DO NOT produce a full report. Only precise insights.
+                 
+                 CONTEXT:
+                 - If SIGNED by a reputable vendor (Microsoft, EA, Adobe, Google, etc.), treat System Queries, File Creation, and Registry Mods as NORMAL installer behavior. 
+                 - ONLY flag behavior as suspicious if it is clearly malicious (e.g. Process Injection, Shadow Copy Deletion, Ransomware Extensions).", 
+                 i+1, total_chunks, target_filename, digital_signature, chunk_json
             );
 
             let system_prompt = "You are a Forensic Pre-Processor. Your job is to extract raw technical facts from telemetry chunks.";
@@ -940,6 +946,14 @@ pub async fn generate_ai_report(
              \"Command and Control\": [...]
            }}
          }}
+
+         STRICT VERDICT RULES:
+         1. IF THE FILE HAS A VERIFIED DIGITAL SIGNATURE from a known vendor (Microsoft, EA, Adobe, Google, etc.):
+            - Default to BENIGN or SUSPICIOUS (Score < 50).
+            - WMI Queries, System Info Discovery, and Dropping Files are NORMAL behavior for installers. DO NOT flag as malicious.
+            - ONLY verdict as MALICIOUS if there is conclusive evidence of Process Injection (Hollowing, Doppelganging), Shellcode Execution, or Ransomware activity.
+         2. IF UNSIGNED or INVALID SIGNATURE:
+            - Treat evasion and persistence as high-risk indicators.
 
          STRICT OUTPUT RULES:
          1. OUTPUT RAW JSON ONLY.
