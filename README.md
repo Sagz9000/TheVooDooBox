@@ -1,4 +1,4 @@
-# The VoodooBox (Mallab v3)
+# The VoodooBox 
 
 **The Ultimate Hybrid AI Malware Analysis Platform**
 
