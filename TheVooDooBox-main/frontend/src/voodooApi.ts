@@ -322,11 +322,6 @@ export const voodooApi = {
         return ws;
     },
 
-    purgeAll: async () => {
-        const resp = await fetch(`${BASE_URL}/tasks/purge`, { method: 'POST' });
-        return resp.ok;
-    },
-
     chat: async (
         message: string,
         history: Array<{ role: string; content: string }>,
