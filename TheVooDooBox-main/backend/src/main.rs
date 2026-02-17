@@ -1423,8 +1423,8 @@ async fn query_vector_db(query: &str, n_results: usize) -> Result<Vec<String>, B
 struct ConfigRequest {
     provider: String,
     gemini_key: Option<String>,
+    gemini_model: Option<String>,
     ollama_url: Option<String>,
-    ollama_model: Option<String>,
     anthropic_key: Option<String>,
     anthropic_model: Option<String>,
     openai_key: Option<String>,
@@ -1449,6 +1449,7 @@ async fn set_ai_config(
     ai_manager.switch_provider(
         provider, 
         req.gemini_key.clone(), 
+        req.gemini_model.clone(),
         req.ollama_url.clone(), 
         req.ollama_model.clone(),
         req.anthropic_key.clone(),
