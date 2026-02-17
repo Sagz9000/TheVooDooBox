@@ -1,74 +1,82 @@
-# The VoodooBox
+# The VoodooBox (Mallab v3)
 
-**Hybrid AI Malware Analysis Platform**
-The Voodoo, who do
-What you don't dare do
-![TheVooDooBox Logo](TheVooDooBox-main/frontend/public/logo.png)
+**The Ultimate Hybrid AI Malware Analysis Platform**
 
-![VoodooBox Dashboard](TheVooDooBox-main/pictures/preview.png)
+![VoodooBox Dashboard](pictures/preview.png)
 
-> **"From Logging to Streaming"**
-TheVooDooBox acts as your automated orchestrator, handling the "don't dare-to" tasks of malware research. By automating detonation, kernel-level behavioral capture, and AI-driven synthesis, it strips the "voodoo" from malicious code... leaving only actionable intelligence behind.
+The VoodooBox is a next-generation forensic orchestration engine that fuses **Kernel-Level Telemetry**, **Advanced Statistical Analysis**, and **Hybrid AI Reasoning** into a single, cohesive "Rave/Hacker" aesthetic dashboard. It doesn't just run malware; it *understands* it.
 
 ---
 
 ## 🚀 Key Features (v2.8)
 
 ### 🧠 Hybrid AI Core (Map-Reduce)
-The VoodooBox uses a unique **Map-Reduce** pipeline to balance privacy and reasoning power:
-*   **Map Phase (Local)**: Raw telemetry is processed locally by **Ollama** (Llama-3/DeepSeek) to extract technical facts without data leakage.
-*   **Reduce Phase (Cloud/Local)**: Aggregated insights are sent to high-reasoning models like **Google Gemini 1.5 Pro** for final verdict synthesis and threat scoring.
-*   *Configurable strategies: Local Only, Cloud Only, or Hybrid.*
+Why choose between privacy and power? The VoodooBox uses a **Hybrid Pipeline**:
+*   **Map Phase (Local)**: Raw telemetry is chunked and processed locally by **Ollama** (Llama-3/DeepSeek) to extract privacy-sensitive technical insights without data leakage.
+*   **Reduce Phase (Cloud)**: Aggregated insights are sent to **Google Gemini 1.5 Pro** for high-level reasoning, threat scoring, and report synthesis.
+*   *Configurable Strategies: Go fully Local, fully Cloud, or Hybrid.*
 
 ### 🕵️ Full-Spectrum Orchestration
-*   **Dynamic Windows Sandbox**: SECURE detonation with Sysmon, Kernel Drivers ("The Eye"), and out-of-band communication via VirtIO Serial.
-*   **Remnux Linux Integration**: Offloads deep static analysis to a dedicated Remnux node running **Floss**, **Capa**, **YARA**, and **Manalyze**.
-*   **Ghidra Automation**: Automated decompilation pipeline that feeds suspicious code logic directly into the AI analyzer.
+*   **Dynamic Windows Sandbox**: Automated detonation with Sysmon, Kernel Drivers, and API hooking to capture behaviors.
+*   **Remnux Linux Integration**: Seamlessly offloads static analysis to a dedicated Remnux node running **Floss**, **Capa**, **YARA**, and **Manalyze** via the Voodoo Gateway.
+*   **Ghidra Automation**: Headless decompilation pipeline that extracts functions and strings, which are then analyzed by the AI for suspicious logic.
 
 ### 📊 The Neural Report
-Forget manual log correlation. The Neural Report provides:
-*   **MITRE ATT&CK Matrix**: Automated mapping of observed tactics and techniques.
-*   **Behavioral Timelines**: Chronological reconstruction of the infection chain.
-*   **Threat Score Rings**: Visual assessment of risk level (0-100).
-*   **Verdict Triage**: High-confidence "Malicious", "Suspicious", or "Benign" judgments.
+Forget raw logs. The Neural Report is a comprehensive intelligence product:
+*   **Process Graph**: Real-time process lineage and behavioral tree visualization.
+*   **Behavioral Timelines**: Chronological reconstruction of the attack chain.
+*   **Threat Score Rings**: Visual risk assessment (0-100).
+*   **Actionable Verdicts**: "Malicious", "Suspicious", or "Benign" with high-confidence reasoning.
 
-### 🕸️ Activity Flow (Galaxy)
-*   **Real-Time Visualization**: Watch the process execution tree grow live during detonation.
-*   **Interactive Inspection**: Drill down into any process to see loaded DLLs, network connections, and registry modifications.
+### 🕵️ Active Investigator (MCP)
+The VoodooBox is an **Agentic Node**. Utilizing the **Model Context Protocol (MCP)**, it exposes a suite of investigative tools to external AI agents:
+*   **Virtual Operations**: Rollback VMs, trigger Ghidra analysis, and decompile code.
+*   **Forensic Memory**: AI saves and retrieves "Forensic Notes" during analysis to maintain continuity across sessions.
+*   **Intelligence RAG**: Semantic search against the local malware knowledge base (ChromaDB) to ground findings in peer-reviewed methodology.
+
+### 🕸️ Activity Flow (Process Graph)
+*   **Real-Time Visualization**: Watch the process tree grow in real-time as the malware executes.
+*   **Interactive Nodes**: Click on any process to filter telemetry, see loaded DLLs, network connections, and registry modifications.
 
 ---
 
-## 📚 Documentation
+## 🏗️ Architecture
 
-The full documentation is available in the `docs/` directory.
+The VoodooBox operates on a distributed microservices architecture:
 
-| Guide | Description |
-| :--- | :--- |
-| **[01. Overview & Vision](docs/01_OVERVIEW.md)** | Core capabilities and safety requirements. |
-| **[02. Architecture & Logic](docs/02_ARCHITECTURE.md)** | System design, Map-Reduce flow, and DB schema. |
-| **[07. Installation Guide](docs/07_INSTALLATION.md)** | Step-by-step deployment (Docker + Proxmox). |
-| **[15. Analyst Manual](docs/15_ANALYSIS.md)** | How to run investigations and interpret results. |
-| **[21. Remnux Setup](docs/21_REMNUX_VM_DEPLOYMENT.md)** | Deploying the Linux static analysis node. |
+| Component | Tech Stack | Role |
+| :--- | :--- | :--- |
+| **Backend** | **Rust** (Actix-Web, SQLx) | High-performance API, orchestration, and state management. |
+| **Frontend** | **React** (TypeScript, Tailwind) | "Cyber-Rave" dashboard with real-time WebSockets. |
+| **Database** | **PostgreSQL** | Relational storage for tasks, telemetry, and reports. |
+| **Agent** | **Rust** (Windows API) | Lightweight kernel monitor running inside the guest VM. |
+| **Gateway** | **Node.js** | Bridge service for Remnux tools and MCP integration. |
 
 ---
 
 ## ⚡ Quick Start
 
+### Prerequisites
+*   **Docker & Docker Compose**
+*   **Proxmox** (or a dedicated Windows VM for the sandbox)
+*   **Ollama** (running locally or on a network node)
+
+### Deployment
+
 1.  **Clone the Repository**:
     ```bash
     git clone https://github.com/Sagz9000/TheVooDooBox.git
-    cd TheVooDooBox
+    cd TheVooDooBox-main
     ```
 
 2.  **Configure Environment**:
     ```bash
-    cp TheVooDooBox-main/.env.example TheVooDooBox-main/.env
-    # Edit the .env with your credentials and API keys.
+    cp .env.example .env
+    # Edit .env: Set DB credentials, API Keys, and IP addresses for Proxmox/Remnux.
     ```
 
 3.  **Launch the Stack**:
     ```bash
-    cd TheVooDooBox-main
     docker-compose up -d --build
     ```
 
@@ -78,11 +86,22 @@ The full documentation is available in the `docs/` directory.
 
 ---
 
-## 🏗️ Technical Philosophy
+## 📚 Documentation
 
-Traditional sandboxes are "black boxes" for batch processing. TheVooDooBox is a **live streaming engine** for deep forensic dissection. Using our custom **Windows Kernel Driver**, we bypass noisy user-mode hooks that malware can detect, providing a high-fidelity window into the core of the infection.
+Detailed documentation is available in the `docs/` directory:
 
-*Built with ❤️ by the AntiCode Team. Maintained by JP.*
+| Guide | Description |
+| :--- | :--- |
+| **[01_OVERVIEW.md](docs/01_OVERVIEW.md)** | Conceptual capability overview. |
+| **[02_ARCHITECTURE.md](docs/02_ARCHITECTURE.md)** | Deep dive into system design and data flow. |
+| **[07_INSTALLATION.md](docs/07_INSTALLATION.md)** | Step-by-step setup guide. |
+| **[15_ANALYSIS.md](docs/15_ANALYSIS.md)** | Analyst's manual for running tasks. |
+| **[21_REMNUX_VM_DEPLOYMENT.md](docs/21_REMNUX_VM_DEPLOYMENT.md)** | Setting up the Remnux integration. |
 
 ---
-> "I got the poison (I got the remedy)"
+
+## 🤝 Contributing
+
+We welcome contributions! Please check the **[Architecture Guide](docs/02_ARCHITECTURE.md)** before submitting Pull Requests.
+
+*Built with ❤️ (and a lot of caffeine) by the AntiCode Team.*
