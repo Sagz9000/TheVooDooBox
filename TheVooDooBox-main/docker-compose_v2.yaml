@@ -1,0 +1,96 @@
+services:
+  hyper-bridge:
+    build: ./backend
+    container_name: voodoobox-backend
+    ports:
+      - "8080:8080"
+      - "9001:9001"
+    environment:
+      - PROXMOX_URL=${PROXMOX_URL}
+      - PROXMOX_USER=${PROXMOX_USER}
+      - PROXMOX_TOKEN_ID=${PROXMOX_TOKEN_ID}
+      - PROXMOX_TOKEN_SECRET=${PROXMOX_TOKEN_SECRET}
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - COPILOT_TOKEN=${COPILOT_TOKEN}
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY}
+      - OLLAMA_URL=${OLLAMA_URL}
+      - OLLAMA_MODEL=${OLLAMA_MODEL}
+      - EMBEDDING_URL=${EMBEDDING_URL}
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL}
+      - CHROMADB_URL=${CHROMADB_URL}
+      - DATABASE_URL=postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+      - RUST_LOG=debug
+      - HOST_IP=${HOST_IP}
+      - REMNUX_MCP_URL=${REMNUX_MCP_URL}
+      - REMNUX_MCP_TOKEN=${REMNUX_MCP_TOKEN}
+      - SHARED_MALWARE_DIR=/mnt/voodoo_samples
+      - AI_PROVIDER=${AI_PROVIDER}
+      - AI_MODE=${AI_MODE}
+    depends_on:
+      - db
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/screenshots:/app/screenshots
+      - ./backend/reports:/app/reports
+      - ${SHARED_MALWARE_DIR}:/mnt/voodoo_samples
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
+    container_name: voodoobox-db
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: always
+
+  frontend:
+    build: ./frontend
+    container_name: voodoobox-frontend
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - REACT_APP_API_URL=http://${HOST_IP}:8080
+    restart: always
+
+  ghidra:
+    build: ./ghidra
+    container_name: voodoobox-ghidra
+    ports:
+      - "8005:8000"
+    volumes:
+      - ./ghidra/projects:/data/projects
+      - ./backend/uploads:/data/binaries
+      - ./ghidra/scripts:/app/scripts
+    environment:
+      - HOST_IP=${HOST_IP}
+    restart: unless-stopped
+
+  mcp-server:
+    build: ./mcp-server
+    container_name: voodoobox-mcp
+    environment:
+      - BACKEND_URL=http://hyper-bridge:8080
+      - GHIDRA_API=http://ghidra:8000
+      - OLLAMA_HOST=${OLLAMA_URL}
+      - CHROMADB_URL=${CHROMADB_URL}
+      - UVICORN_HOST=0.0.0.0
+      - UVICORN_PORT=8001
+    ports:
+      - "8001:8001"
+    depends_on:
+      - hyper-bridge
+      - ghidra
+    restart: unless-stopped
+
+volumes:
+  postgres_data:

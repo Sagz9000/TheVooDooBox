@@ -1,0 +1,103 @@
+<Sysmon schemaversion="4.82">
+  <HashAlgorithms>sha256,md5</HashAlgorithms>
+  <CheckRevocation /> 
+  <EventFiltering>
+    <!-- Event ID 1: Process Creation -->
+    <RuleGroup name="" groupRelation="or">
+      <ProcessCreate onmatch="exclude">
+        <!-- Noise Reduction -->
+        <Image condition="is">C:\Windows\System32\smss.exe</Image>
+        <Image condition="is">C:\Windows\System32\csrss.exe</Image>
+        <Image condition="is">C:\Windows\System32\wininit.exe</Image>
+      </ProcessCreate>
+    </RuleGroup>
+
+    <!-- Event ID 2: File Creation Time Changed (Timestomping) -->
+    <RuleGroup name="" groupRelation="or">
+      <FileCreateTime onmatch="include">
+        <Image condition="image" name="T1070.006">sysmon_generator.exe</Image> 
+        <Image condition="begin with" name="T1070.006">C:\Users\</Image>
+      </FileCreateTime>
+    </RuleGroup>
+
+    <!-- Event ID 3: Network Connection -->
+    <RuleGroup name="" groupRelation="or">
+      <NetworkConnect onmatch="exclude" />
+    </RuleGroup>
+
+    <!-- Event ID 7: Image Load (DLL Injection / Hijacking) -->
+    <RuleGroup name="" groupRelation="or">
+      <ImageLoad onmatch="include">
+        <ImageLoaded condition="end with" name="T1574">.dll</ImageLoaded>
+      </ImageLoad>
+    </RuleGroup>
+
+    <!-- Event ID 8: CreateRemoteThread (Process Injection) -->
+    <RuleGroup name="" groupRelation="or">
+      <CreateRemoteThread onmatch="exclude">
+        <SourceImage condition="is">C:\Windows\System32\wbem\WmiPrvSE.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\svchost.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\wininit.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\csrss.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\services.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\winlogon.exe</SourceImage>
+        <SourceImage condition="is">C:\Windows\System32\audiodg.exe</SourceImage>
+      </CreateRemoteThread>
+    </RuleGroup>
+
+    <!-- Event ID 10: ProcessAccess (Credential Dumping / LSASS) -->
+    <RuleGroup name="" groupRelation="or">
+      <ProcessAccess onmatch="include">
+        <TargetImage condition="end with" name="T1003">lsass.exe</TargetImage>
+      </ProcessAccess>
+    </RuleGroup>
+
+    <!-- Event ID 11: FileCreate -->
+    <RuleGroup name="" groupRelation="or">
+      <FileCreate onmatch="exclude" />
+    </RuleGroup>
+
+    <!-- Event ID 12, 13, 14: RegistryEvent -->
+    <RuleGroup name="" groupRelation="or">
+      <!-- BROAD MONITORING: Log everything except specific noisy keys -->
+      <RegistryEvent onmatch="exclude">
+        <!-- System Noise -->
+        <TargetObject condition="contains">\Microsoft\Windows\CurrentVersion\WINEVT\Channels</TargetObject>
+        <TargetObject condition="contains">\Microsoft\Cryptography\RNG</TargetObject>
+        <TargetObject condition="contains">\Microsoft\Windows NT\CurrentVersion\Tracing</TargetObject>
+        <TargetObject condition="contains">\Microsoft\Windows\CurrentVersion\MMCSS</TargetObject>
+        <TargetObject condition="contains">\Microsoft\Windows Defender\</TargetObject>
+        <TargetObject condition="contains">\Microsoft\Windows Defender Advanced Threat Protection\</TargetObject>
+        
+        <!-- Browser / App Noise -->
+        <TargetObject condition="end with">\TypedURLs</TargetObject>
+        <TargetObject condition="end with">\TypedURLsTime</TargetObject>
+        <TargetObject condition="contains">\Software\Microsoft\Windows\CurrentVersion\Internet Settings\ZoneMap</TargetObject>
+        <TargetObject condition="contains">\Software\Microsoft\Windows\CurrentVersion\Explorer\UserAssist</TargetObject>
+        <TargetObject condition="contains">\AppModel\StateRepository\Cache\</TargetObject>
+
+        <!-- Kernel / Driver Noise -->
+        <TargetObject condition="begin with">HKLM\System\CurrentControlSet\Control\WMI\Autologger</TargetObject>
+        <TargetObject condition="begin with">HKLM\System\CurrentControlSet\Services\Tcpip\Parameters</TargetObject>
+      </RegistryEvent>
+    </RuleGroup>
+
+
+    <!-- Event ID 15: FileCreateStreamHash (ADS / Hidden Payloads) -->
+    <RuleGroup name="" groupRelation="or">
+      <FileCreateStreamHash onmatch="include">
+        <TargetFilename condition="contains" name="T1564.004">:</TargetFilename>
+      </FileCreateStreamHash>
+    </RuleGroup>
+
+    <!-- Event ID 22: DNSEvent -->
+    <RuleGroup name="" groupRelation="or">
+      <DnsQuery onmatch="exclude" />
+    </RuleGroup>
+
+    <!-- Event ID 25: ProcessTampering (Hollowing / Herpaderping) -->
+    <RuleGroup name="" groupRelation="or">
+        <ProcessTampering onmatch="exclude" />
+    </RuleGroup>
+  </EventFiltering>
+</Sysmon>
