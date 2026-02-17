@@ -16,8 +16,8 @@ C4Context
         System(frontend, "Frontend Dashboard", "React/Vite app with V5 Functional Fidelity UI.")
         System(backend, "Hyper-Bridge", "Rust API server. Orchestrates VMs, ingests telemetry, manages AI.")
         System(db, "Persistence Layer", "PostgreSQL (Relational) + ChromaDB (Vector).")
-        System(ai_local, "Local Inference", "Ollama (Llama-3/DeepSeek) for Map Phase.")
-        System(ai_cloud, "Cloud Reasoning", "Google Gemini 1.5 Pro for Reduce Phase (Optional).")
+        System(ai_local, "Local Inference", "Llama.cpp / Ollama for Map Phase.")
+        System(ai_cloud, "Cloud Reasoning", "Google Gemini 3 Flash Preview for Reduce Phase (Optional).")
     }
 
     System_Boundary(isolation, "Windows Sandbox (Proxmox/KVM)") {
@@ -63,7 +63,7 @@ TheVooDooBox uses a **Map-Reduce** architecture to process large volumes of tele
 ```mermaid
 sequenceDiagram
     participant B as Backend (Rust)
-    participant L as Local LLM (Ollama)
+    participant L as Local LLM (Llama.cpp / Ollama)
     participant C as Cloud AI (Gemini)
 
     Note over B: Analysis Complete (10k+ Telemetry Events)

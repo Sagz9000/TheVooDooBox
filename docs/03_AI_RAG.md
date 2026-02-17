@@ -5,7 +5,21 @@ The VoodooBox employs a specialized **Map-Reduce** pipeline to ensure high-fidel
 - **Reduce Phase**: Aggregated insights are synthesized into a final verdict (using Gemini 1.5 Pro or local reasoning).
 
 We utilize **llama.cpp** to run high-performance reasoning models locally (e.g., `DeepSeek-R1-Distill-Llama-8B`).
-- **Why llama.cpp?**: It provides superior control over the inference process, allowing us to extract the raw "Chain of Thought" (`<think>` tags) that standard APIs often hide.
+- **Why llama.cpp?**: It provides superior control over the inference process and significant performance advantages for high-throughput forensic analysis.
+
+### 🌐 Ollama vs. Llama.cpp: The Choice
+
+While TheVooDooBox is API-compatible with **Ollama**, we have transitioned to **llama.cpp (llama-server)** as the default local engine for the following reasons:
+
+| Feature | Ollama | Llama.cpp (Recommended) |
+| :--- | :--- | :--- |
+| **Performance** | Good (Standard) | **Superior** (Optimized for specialized hardware) |
+| **Context Control** | Abstracted / Automated | **Fine-grained** (Crucial for large telemetry ingestion) |
+| **Setup** | Easy (Binary install) | Moderate (Requires manual model downloading) |
+| **Raw Output** | Cleaned / Filtered | **Unfiltered** (Preserves `<think>` tags and raw logic) |
+
+> [!IMPORTANT]
+> The author of TheVooDooBox utilizes **Llama.cpp** due to its better performance and raw fidelity when processing multi-thousand-event telemetry batches.
 
 ![AI Kill Chain Reconstruction](../TheVooDooBox-main/pictures/aianalysis.png)
 

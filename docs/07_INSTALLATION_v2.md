@@ -37,8 +37,9 @@ The script will prompt you for:
     *   **Distributed**: Uses your LAN IP so other machines (like the Sandboxes!) can connect. **(Recommended)**
 
 2.  **AI Neural Core**:
-    *   **Ollama (Local)**: Free, privacy-focused. Requires decent hardware.
-    *   **Gemini/OpenAI (Cloud)**: Fast, smarter (uses Gemini 3 Flash by default).
+    *   **Local AI (Llama.cpp / Ollama)**: Free, privacy-focused. 
+        *   *Note: Llama.cpp is recommended for best performance.*
+    *   **Gemini/OpenAI (Cloud)**: Fast, smarter (uses Gemini 3 Flash Preview by default).
     *   **Hybrid**: Local privacy + Cloud power.
 
 3.  **Launch**:

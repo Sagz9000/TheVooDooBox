@@ -6,8 +6,8 @@
 
 ### 1. Hybrid AI Analysis (Map-Reduce)
 The platform uses a sophisticated **Map-Reduce** pipeline to balance privacy and intelligence:
-- **Map Phase (Local)**: A local LLM (Ollama/Llama-3) processes raw telemetry chunks in parallel to extract objective technical facts. No sensitive data leaves your network.
-- **Reduce Phase (Cloud/Local)**: The aggregated facts are sent to a "Smart Model" (Gemini 1.5 Pro or local DeepSeek) to synthesize a final forensic verdict.
+- **Map Phase (Local)**: A local LLM (**llama.cpp** or Ollama) processes raw telemetry chunks in parallel to extract objective technical facts. No sensitive data leaves your network.
+- **Reduce Phase (Cloud/Local)**: The aggregated facts are sent to a "Smart Model" (Gemini 3 Flash Preview or local DeepSeek via **llama.cpp**) to synthesize a final forensic verdict.
 - **Configurable Modes**: Choose **Hybrid** (Best of both), **Local Only** (Air-gapped), or **Cloud Only** (Maximum reasoning).
 
 ### 2. Remnux Integration (Linux VM)
@@ -36,7 +36,7 @@ A next-generation report that replaces flat logs with actionable intelligence:
 | **Frontend** | Analyst Console UI | React, TypeScript, TailwindCSS |
 | **Sandbox** | Dynamic Execution | Windows 10/11 VM, Kernel Driver (Rust) |
 | **Remnux** | Static Analysis Node | Remnux Linux VM, Node.js Gateway |
-| **AI Engine** | Reasoning & Synthesis | Ollama (Local) + Gemini (Cloud) |
+| **AI Engine** | Reasoning & Synthesis | Llama.cpp (Recommended) / Ollama + Gemini |
 
 ## Goals
 - **Eliminate Noise**: Filter out OS background activity to focus on the "Patient Zero" lineage.
