@@ -249,11 +249,11 @@ export default function SettingsModal({ isOpen, onClose, onConfigUpdated }: Sett
                                             type="text"
                                             value={geminiModel}
                                             onChange={(e) => setGeminiModel(e.target.value)}
-                                            placeholder="gemini-3-flash"
+                                            placeholder="gemini-3-flash-preview"
                                             className="w-full bg-security-panel border border-security-border rounded-lg px-4 py-3 text-sm text-white focus:border-brand-500 transition-colors font-mono"
                                         />
                                         <p className="text-[9px] text-zinc-500 mt-1 italic">
-                                            Defaults to <code>gemini-3-flash</code>.
+                                            Defaults to <code>gemini-3-flash-preview</code>.
                                         </p>
                                     </div>
                                 </div>

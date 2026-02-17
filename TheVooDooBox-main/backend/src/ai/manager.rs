@@ -73,8 +73,8 @@ impl AIManager {
         openai_key: String,
         copilot_token: String
     ) -> Self {
-        // Load GEMINI_MODEL from env, defaulting to gemini-3-flash
-        let env_gemini_model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3-flash".to_string());
+        // Load GEMINI_MODEL from env, defaulting to gemini-3-flash-preview
+        let env_gemini_model = std::env::var("GEMINI_MODEL").unwrap_or_else(|_| "gemini-3-flash-preview".to_string());
         // 1. Try to load from disk
         let saved_mode = Self::load_mode_config();
         

@@ -14,7 +14,7 @@ impl GeminiProvider {
     pub fn new(api_key: String, model: Option<String>) -> Self {
         Self {
             api_key,
-            model: model.unwrap_or_else(|| "gemini-3-flash".to_string()),
+            model: model.unwrap_or_else(|| "gemini-3-flash-preview".to_string()),
             client: Client::builder()
                 .timeout(std::time::Duration::from_secs(120))
                 .build()
