@@ -188,7 +188,7 @@ export default function NeuralReport({ aiReport, events, ghidraFindings, task, t
                                 )}
                             </div>
 
-                            <p className="mt-3 text-sm text-zinc-400 leading-relaxed line-clamp-3">
+                            <p className="mt-3 text-sm text-zinc-400 leading-relaxed">
                                 {aiReport.executive_summary}
                             </p>
                         </div>
