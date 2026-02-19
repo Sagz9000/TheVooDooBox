@@ -1,4 +1,4 @@
-# The VoodooBox 
+# The VoodooBox (Mallab v3)
 
 **The Ultimate Hybrid AI Malware Analysis Platform**
 
@@ -12,12 +12,12 @@ The VoodooBox is a next-generation forensic orchestration engine that fuses **Ke
 
 ### 🧠 Hybrid AI Core (Map-Reduce)
 Why choose between privacy and power? The VoodooBox uses a **Hybrid Pipeline**:
-*   **Map Phase (Local)**: Raw telemetry is chunked and processed locally by **Ollama** (Llama-3/DeepSeek) to extract privacy-sensitive technical insights without data leakage.
-*   **Reduce Phase (Cloud)**: Aggregated insights are sent to **Google Gemini 1.5 Pro** for high-level reasoning, threat scoring, and report synthesis.
+*   **Map Phase (Local)**: Raw telemetry is chunked and processed locally by **Ollama** (DeepCoder-14B / nomic-embed-text-v1) to extract privacy-sensitive technical insights without data leakage.
+*   **Reduce Phase (Cloud)**: Aggregated insights are sent to **Google Gemini 3 Flash** for high-level reasoning, threat scoring, and report synthesis.
 *   *Configurable Strategies: Go fully Local, fully Cloud, or Hybrid.*
 
 ### 🕵️ Full-Spectrum Orchestration
-*   **Dynamic Windows Sandbox**: Automated detonation with Sysmon, Kernel Drivers, and API hooking to capture behaviors.
+*   **Dynamic Windows Sandbox**: Automated detonation with Sysmon, API hooking, and **Optional Kernel Driver** (Classic "The Eye" mode) to capture behaviors.
 *   **Remnux Linux Integration**: Seamlessly offloads static analysis to a dedicated Remnux node running **Floss**, **Capa**, **YARA**, and **Manalyze** via the Voodoo Gateway.
 *   **Ghidra Automation**: Headless decompilation pipeline that extracts functions and strings, which are then analyzed by the AI for suspicious logic.
 
@@ -42,6 +42,42 @@ The VoodooBox is an **Agentic Node**. Utilizing the **Model Context Protocol (MC
 
 ## 🏗️ Architecture
 
+```mermaid
+C4Context
+    title System Context Diagram for TheVooDooBox (Mallab v3)
+    UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
+
+    Person(analyst, "Security Analyst", "Uploads malware, reviews reports, interacts with AI.")
+    
+    System_Boundary(host, "Host Environment (Docker)") {
+        System(frontend, "Frontend Dashboard", "React/Vite app with V5 Functional Fidelity UI.")
+        System(backend, "Hyper-Bridge", "Rust API server. Orchestrates VMs, ingests telemetry, manages AI.")
+        System(db, "Persistence Layer", "PostgreSQL (Relational) + ChromaDB (Vector).")
+        System(ai_local, "Local Inference", "DeepCoder-14B / nomic-embed-text-v1 (Ollama). Map Phase.")
+        System(ai_cloud, "Cloud Reasoning", "Google Gemini 3 Flash. Reduce Phase (Optional).")
+    }
+
+    System_Boundary(isolation, "Windows Sandbox (Proxmox/KVM)") {
+        System(vm, "Sandbox VM", "Windows 10/11 Guest. Isolated Network.")
+        System(agent, "TheVooDooBox Agent", "Rust binary. Kernel Driver (Optional) for Anti-Tamper.")
+    }
+
+    System_Boundary(remnux_zone, "Remnux Analysis Zone (Linux)") {
+        System(remnux_vm, "Remnux VM", "Ubuntu Linux dedicated to static analysis.")
+        System(gateway, "Voodoo Gateway", "Node.js service bridging tools (Floss/Capa) to Backend.")
+    }
+
+    Rel(analyst, frontend, "Interacts", "HTTPS")
+    Rel(frontend, backend, "Stream Telemetry", "WSS")
+    Rel(backend, db, "Read/Write", "SQL")
+    Rel(backend, ai_local, "Analyze Chunks", "HTTP")
+    Rel(backend, ai_cloud, "Generate Verdict", "HTTPS")
+    Rel(backend, vm, "Control/Telemetry", "VirtIO/TCP")
+    Rel(backend, gateway, "Trigger Analysis", "HTTP")
+    Rel(gateway, remnux_vm, "Execute Tools", "SSH/API")
+    Rel(agent, vm, "Monitors", "Kernel/User")
+```
+
 The VoodooBox operates on a distributed microservices architecture:
 
 | Component | Tech Stack | Role |
@@ -49,7 +85,7 @@ The VoodooBox operates on a distributed microservices architecture:
 | **Backend** | **Rust** (Actix-Web, SQLx) | High-performance API, orchestration, and state management. |
 | **Frontend** | **React** (TypeScript, Tailwind) | "Cyber-Rave" dashboard with real-time WebSockets. |
 | **Database** | **PostgreSQL** | Relational storage for tasks, telemetry, and reports. |
-| **Agent** | **Rust** (Windows API) | Lightweight kernel monitor running inside the guest VM. |
+| **Agent** | **Rust** (Windows API) | Lightweight monitor. Kernel Driver optional for Anti-Tamper. |
 | **Gateway** | **Node.js** | Bridge service for Remnux tools and MCP integration. |
 
 ---
