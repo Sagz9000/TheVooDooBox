@@ -1,6 +1,6 @@
 # VooDooBox - AI Node Deployment
 
-This package deploys **ChromaDB** on the AI server (`192.168.50.98`) to work alongside the existing llama.cpp / DeepCoder instance.
+This package deploys **ChromaDB** on the AI server (`192.168.50.98`) to work alongside the existing llama.cpp / DeepCoder-14B instance.
 
 ## Quick Start
 
@@ -25,7 +25,7 @@ curl http://localhost:8001/api/v1/heartbeat
 ```
 App Server (192.168.50.196)          AI Server (192.168.50.98)
 ┌─────────────────────────┐         ┌─────────────────────────┐
-│  hyper-bridge (backend)  │───────▶│  llama.cpp (DeepCoder)  │
+│  hyper-bridge (backend)  │───────▶│  llama.cpp (DeepCoder-14B)  │
 │  postgres                │        │  ChromaDB  ◀── NEW      │
 │  frontend                │        └─────────────────────────┘
 │  ghidra                  │

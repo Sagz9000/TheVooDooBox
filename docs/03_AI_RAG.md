@@ -294,6 +294,12 @@ During a chat session or automated report generation, the backend performs a sem
 *   **Example**: If the binary performs "Process Hollowing," the RAG pipeline retrieves the relevant sections from the SANS posters explaining how hollowing works and what registry/memory artifacts it leaves behind.
 *   **Benefit**: This grounds the LLM in peer-reviewed forensic methodology, significantly reducing hallucination and providing "Senior Researcher" levels of technical accuracy.
 
+### 4. Why SANS Posters?
+We utilize SANS Forensic Posters (e.g., "Windows Forensic Analysis", "Hunt Evil") as a **High-Density Knowledge Source**.
+*   **Ground Truth**: Unlike scraping the open web (which contains conflicting info), SANS posters represent a distilled, peer-reviewed "Golden Standard" of forensic truth.
+*   **Token Density**: Posters are information-dense. A singe vector embedding from a poster often contains an entire workflow (e.g., "If Event ID 4624 Type 3 -> Check Source IP"), allowing the RAG to retrieve complete investigative logic in a single chunk.
+*   **Hallucination firewall**: By forcing the AI to "cite its sources" from the Vector DB, we constrain it to only report findings that align with established forensic methodology.
+
 ## 📓 AI Forensic Memory (Phase 32)
 While the Vector DB (ChromaDB) provides global forensic knowledge, **Forensic Memory** provides task-specific, persistent recall.
 

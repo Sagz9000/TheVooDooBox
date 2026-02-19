@@ -8,7 +8,8 @@ TheVooDooBox is a **hybrid forensic platform** that acts as an orchestration lay
 
 ```mermaid
 C4Context
-    title System Context Diagram for TheVooDooBox
+    title System Context Diagram for TheVooDooBox (Mallab v3)
+    UpdateLayoutConfig($c4ShapeInRow="2", $c4BoundaryInRow="1")
 
     Person(analyst, "Security Analyst", "Uploads malware, reviews reports, interacts with AI.")
     
@@ -16,13 +17,13 @@ C4Context
         System(frontend, "Frontend Dashboard", "React/Vite app with V5 Functional Fidelity UI.")
         System(backend, "Hyper-Bridge", "Rust API server. Orchestrates VMs, ingests telemetry, manages AI.")
         System(db, "Persistence Layer", "PostgreSQL (Relational) + ChromaDB (Vector).")
-        System(ai_local, "Local Inference", "Llama.cpp / Ollama for Map Phase.")
-        System(ai_cloud, "Cloud Reasoning", "Google Gemini 3 Flash Preview for Reduce Phase (Optional).")
+        System(ai_local, "Local Inference", "DeepCoder-14B / nomic-embed-text-v1 (Ollama). Map Phase.")
+        System(ai_cloud, "Cloud Reasoning", "Google Gemini 3 Flash. Reduce Phase (Optional).")
     }
 
     System_Boundary(isolation, "Windows Sandbox (Proxmox/KVM)") {
         System(vm, "Sandbox VM", "Windows 10/11 Guest. Isolated Network.")
-        System(agent, "TheVooDooBox Agent", "Rust binary with Kernel Driver (The Eye).")
+        System(agent, "TheVooDooBox Agent", "Rust binary. Kernel Driver (Optional) for Anti-Tamper.")
     }
 
     System_Boundary(remnux_zone, "Remnux Analysis Zone (Linux)") {
@@ -30,14 +31,15 @@ C4Context
         System(gateway, "Voodoo Gateway", "Node.js service bridging tools (Floss/Capa) to Backend.")
     }
 
-    Rel(analyst, frontend, "Interacts/Views Reports")
-    Rel(frontend, backend, "HTTPS / WSS (Telemetry Stream)")
-    Rel(backend, db, "SQL / Vector Query")
-    Rel(backend, ai_local, "Map Phase (Filter Privacy)")
-    Rel(backend, ai_cloud, "Reduce Phase (Synthesize Verdict)")
-    Rel(backend, vm, "VirtIO Serial / TCP", "Control & Telemetry")
-    Rel(backend, gateway, "HTTP POST /analyze", "Triggers Static Analysis")
-    Rel(gateway, remnux_vm, "Executes Toolchain")
+    Rel(analyst, frontend, "Interacts", "HTTPS")
+    Rel(frontend, backend, "Stream Telemetry", "WSS")
+    Rel(backend, db, "Read/Write", "SQL")
+    Rel(backend, ai_local, "Analyze Chunks", "HTTP")
+    Rel(backend, ai_cloud, "Generate Verdict", "HTTPS")
+    Rel(backend, vm, "Control/Telemetry", "VirtIO/TCP")
+    Rel(backend, gateway, "Trigger Analysis", "HTTP")
+    Rel(gateway, remnux_vm, "Execute Tools", "SSH/API")
+    Rel(agent, vm, "Monitors", "Kernel/User")
 ```
 
 ---
@@ -121,7 +123,8 @@ Stores raw telemetry streamed from the Agent.
 - **Strict Firewall**: The Guest VM can *only* talk to the Hyper-Bridge on port `9001` (Telemetry) and `8080` (Artifact Uploads).
 - **No Internet (Default)**: Outbound internet is blocked by default to prevent C2 callbacks from reaching real threat actors. (Configurable for honey-potting).
 
-### The "Eye" (Kernel Driver)
-The Agent is protected by a custom Kernel Driver (`voodoobox_eye.sys`).
+### The "Eye" (Kernel Driver) - *Optional*
+The Agent can be hardened by a custom Kernel Driver (`voodoobox_eye.sys`).
+- **Optional**: The system functions fully without this driver. Use it for **Anti-Tamper** capabilities.
 - **Anti-Tamper**: Strips `PROCESS_TERMINATE` rights from any process attempting to open a handle to the Agent.
 - **Callback Registration**: Uses `PsSetCreateProcessNotifyRoutine` to capture process execution at the kernel level, ensuring no user-mode rootkit can hide execution.

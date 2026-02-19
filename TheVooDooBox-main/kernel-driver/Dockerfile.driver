@@ -1,0 +1,54 @@
+# escape=`
+
+# Use Windows Server Core 2022 as the base image
+FROM mcr.microsoft.com/windows/servercore:ltsc2022
+
+# Restore the default Windows shell for correct batch processing
+SHELL ["cmd", "/S", "/C"]
+
+# Install Chocolatey
+RUN powershell -NoProfile -InputFormat None -ExecutionPolicy Bypass -Command `
+    [System.Net.ServicePointManager]::SecurityProtocol = 3072; `
+    iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+# Install Build Dependencies
+# - Visual Studio Build Tools with C++ workload
+# - Rust
+# - LLVM (needed for bindgen)
+# - Git
+RUN choco install -y visualstudio2022buildtools --package-parameters "--add Microsoft.VisualStudio.Workload.VCTools --includeRecommended --quiet --norestart" && `
+    choco install -y rustup.install && `
+    choco install -y llvm && `
+    choco install -y git && `
+    refreshenv
+
+# Install Windows Driver Kit (WDK) - Using a known compatible version logic or direct download
+# For simplicity in this template, we attempt to use specific choco packages if available, 
+# or download the WDK installer directly. WDK installs are notoriously tricky in Docker.
+# We will use the 'wdk-sys' crate's recommended approach implicitly by ensuring VS is present.
+# Note: In a production pipeline, you might Mount the EWDK instead of installing WDK to save 20GB.
+
+# Install WDK via Chocolatey (if consistent source exists) OR direct download.
+# We will use the VS Build Tools "Windows 11 SDK" components included above,
+# but the WDK itself must be installed separately.
+RUN powershell -Command "Invoke-WebRequest -Uri 'https://go.microsoft.com/fwlink/?linkid=2196230' -OutFile 'wdksetup.exe'" && `
+    start /wait wdksetup.exe /quiet /norestart && `
+    del wdksetup.exe
+
+# Initialize Rust
+RUN rustup-init.exe -y --default-toolchain nightly --profile minimal
+RUN rustup target add x86_64-pc-windows-msvc
+
+# Set Environment Variables for WDK (Adjust version as needed based on install)
+# ENV WDK_ROOT="C:\Program Files (x86)\Windows Kits\10"
+
+WORKDIR C:\build
+
+# Copy Source Code
+COPY . .
+
+# Build the Driver
+# We use cargo build. The 'wdk' crate should handle the magic finding the WDK path.
+RUN cargo +nightly build --release --package voodoobox-filter
+
+# The output will be in target/x86_64-pc-windows-msvc/release/voodoobox_eye.sys

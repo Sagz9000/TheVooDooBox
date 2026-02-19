@@ -9,6 +9,12 @@ This guide explains how to configure a **Windows Sandbox VM** to work with TheVo
     *   Must be able to reach the **Control Center IP** (e.g., `192.168.1.100`) on ports `8080` and `9001`.
     *   *Tip*: Disable the VM's Firewall or allow ports 9001/TCP (Agent) and 8080/TCP (API).
 *   **Snapshotting**: You must have a way to revert the VM to a clean state (Proxmox Snapshots are standard).
+    *   **GOLD_IMAGE**: The snapshot **MUST** be named exactly `GOLD_IMAGE`.
+*   **Proxmox API Token**: If using Proxmox, create an API Token with the following permissions:
+    *   `VM.Audit`
+    *   `VM.Config.HW`
+    *   `VM.PowerMgmt`
+    *   `VM.Snapshot`
 
 ---
 
