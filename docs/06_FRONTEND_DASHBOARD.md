@@ -27,11 +27,16 @@ The "Executive View." It provides an overview of the entire laboratory infrastru
 The core workspace for an active malware dissection.
 *   **Live Stream**: The VNC/SPICE console allowing direct interaction with the malware.
 *   **Telemetry Feed**: A high-speed scrolling list of kernel events (Processes, Files, Network).
-*   **Process Galaxy** (v5.4): A force-directed simulation (D3.js) of the execution chain. Unlike static trees, the "Galaxy" uses charge repulsion and collision detection to handle thousands of spawned processes without overlap.
-    *   **Node Sizing**: Stars (nodes) grow based on their event volume.
-    *   **Time Deltas**: Links display the execution delay (e.g., `+50ms`) between parent and child.
-    *   **Interactive Navigation**: Zoom, pan, and drag nodes to isolate specific sub-lineages.
-*   **Digital Signatures**: Real-time validation of executable signatures displayed directly in the galaxy (Green shield for valid, Grey for unsigned).
+*   **Process Lineage Tree**: A hierarchical D3.js tree visualization that reconstructs the parent-child execution chain.
+    *   **Smart Layout**: Uses a clean tree structure to show ancestry clearly, avoiding the chaos of force-directed graphs.
+    *   **Time Deltas**: Connections between nodes display the exact execution delay (e.g., `+50ms` or `+1.2s`) to highlight rapid-fire spawning.
+    *   **Context Coloring**:
+        *   🟣 **Target**: The sample or key artifacts (Glow effect).
+        *   🔴 **Shell**: `cmd.exe`, `powershell.exe` (High alert).
+        *   🟢 **Standard**: Regular background processes.
+    *   **MITRE Integration**: Nodes display badges for detected ATT&CK techniques (e.g., `T1055`).
+    *   **Interactive Controls**: Collapsible branches with "child count" badges, zoom/pan navigation, and detailed hover tooltips showing command lines and timestamps.
+*   **Digital Signatures**: Real-time validation of executable signatures displayed via the node's visual style.
 *   **MCP Console**: Interface to trigger manual lab actions like snapshot rollbacks.
 
 ![Analysis Arena Telemetry](../TheVooDooBox-main/pictures/telemetry.png)
