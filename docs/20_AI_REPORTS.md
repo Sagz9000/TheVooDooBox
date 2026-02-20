@@ -1,5 +1,7 @@
 # Understanding AI Forensic Reports
 
+![Neural Report Overview](../TheVooDooBox-main/pictures/neuralreport.png)
+
 ## The Verdict System
 
 The AI assigns one of three verdicts to every analyzed binary:
@@ -18,6 +20,8 @@ The AI assigns one of three verdicts to every analyzed binary:
     - **Color**: Red
     - **Meaning**: Confirmed malicious activity (e.g., C2 beaconing, Ransomware encryption, Process Injection).
     - *Action*: Isolate and remediate immediately.
+
+![Verdict Examples](../TheVooDooBox-main/pictures/updatedreport.png)
 
 ## Threat Score Calculation
 
@@ -41,7 +45,9 @@ VoodooBox leverages the latest reasoning models (like DeepSeek-R1) via `llama.cp
 - **Verify**: Check if the AI hallucinated a connection or correctly cited a PID.
 - **Learn**: Understanding *why* a set of API calls is considered malicious.
 - **Debug**: If the AI gives a wrong verdict, the reasoning log will usually reveal the flawed assumption.
-b
+
+![Detailed Forensic Reasoning](../TheVooDooBox-main/pictures/forensic.png)
+
 ## Dealing with "Unknown" Families
 
 If the AI cannot identify a specific malware family (e.g., "Emotet"), it will label the family as **"Unknown"** but still provide a verdict based on behavior. This is common for novel or custom malware.

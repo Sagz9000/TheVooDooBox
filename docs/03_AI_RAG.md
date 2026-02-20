@@ -21,7 +21,7 @@ While TheVooDooBox is API-compatible with **Ollama**, we have transitioned to **
 > [!IMPORTANT]
 > The author of TheVooDooBox utilizes **Llama.cpp** due to its better performance and raw fidelity when processing multi-thousand-event telemetry batches.
 
-![AI Kill Chain Reconstruction](../TheVooDooBox-main/pictures/aianalysis.png)
+![AI Kill Chain Reconstruction](../TheVooDooBox-main/pictures/ai_analysis.png)
 
 ## The Theory: Hybrid Context
 
@@ -86,7 +86,11 @@ To prevent "runaway AI," all actions are gated by:
 2.  **Whitelist**: Only specific domains or action types are permitted.
 3.  **Human-in-the-Loop**: A UI toggle allows analysts to enable or disable this autonomous behavior globally.
 
+![AI Forensic Verdict Summary](../TheVooDooBox-main/pictures/neuralreport.png)
+
 ## Prompt Engineering & Reducing Hallucinations
+
+![AI Personas](../TheVooDooBox-main/pictures/ai_personas.png)
 
 We use a high-temperature (creative) model for narrative generation but constrain it with strict **System Instructions**:
 
@@ -114,7 +118,7 @@ The JSON context sent to the LLM looks like this:
 }
 ```
 
-![AI Forensic Verdict Summary](../TheVooDooBox-main/pictures/execaisummary.png)
+![AI Forensic Verdict Summary](../TheVooDooBox-main/pictures/updatedreport.png)
 
 ## Data Source Protocol (Anti-Hallucination)
 
@@ -133,7 +137,7 @@ To prevent "Source Conflation" (where the AI hallucinations static code capabili
 
 ## System Prompts
 
-![AI Detailed Executive Summary](../TheVooDooBox-main/pictures/execsummary.png)
+![AI Detailed Executive Summary](../TheVooDooBox-main/pictures/forensic.png)
 
 TheVooDooBox uses three distinct system prompts tailored for different analysis stages.
 

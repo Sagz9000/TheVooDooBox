@@ -3,6 +3,8 @@
 TheVooDooBox Frontend is a real-time React application designed to provide malware analysts with a "Pixel-Perfect" window into the sandbox telemetry.
 
 ![Lab Overview](../TheVooDooBox-main/pictures/labview.png)
+![Dashboard Overview](../TheVooDooBox-main/pictures/dashboard.png)
+![Mission Control](../TheVooDooBox-main/pictures/missioncontrol.png)
 
 ## 🏗️ Architecture & Tech Stack
 
@@ -20,6 +22,9 @@ The "Executive View." It provides an overview of the entire laboratory infrastru
 *   **Task History**: A filterable list of recent analysis sessions with their AI-generated verdicts.
 *   **Expanded Row Preview**: (New v5.1) Click any task row to instantly reveal an embedded mini-dashboard containing high-density telemetry stats, a session storyboard, and an activity flow preview.
 *   **Sample Submission**: A centralized portal to upload binaries or URLs for detonation.
+
+![Queue Analysis](../TheVooDooBox-main/pictures/queueanalys.png)
+![Full Analysis View](../TheVooDooBox-main/pictures/fullanalysis.png)
 *   **Deep Search**: Integrated search bar allows analysts to find sessions by hash, filename, or verdict.
 *   **Deep Linking**: Every analysis session has a unique, shareable URL, facilitating instant collaboration.
 
@@ -27,6 +32,8 @@ The "Executive View." It provides an overview of the entire laboratory infrastru
 The core workspace for an active malware dissection.
 *   **Live Stream**: The VNC/SPICE console allowing direct interaction with the malware.
 *   **Telemetry Feed**: A high-speed scrolling list of kernel events (Processes, Files, Network).
+
+![Process Tree visualization](../TheVooDooBox-main/pictures/processtree.png)
 *   **Process Lineage Tree**: A hierarchical D3.js tree visualization that reconstructs the parent-child execution chain.
     *   **Smart Layout**: Uses a clean tree structure to show ancestry clearly, avoiding the chaos of force-directed graphs.
     *   **Time Deltas**: Connections between nodes display the exact execution delay (e.g., `+50ms` or `+1.2s`) to highlight rapid-fire spawning.
@@ -40,6 +47,8 @@ The core workspace for an active malware dissection.
 *   **MCP Console**: Interface to trigger manual lab actions like snapshot rollbacks.
 
 ![Analysis Arena Telemetry](../TheVooDooBox-main/pictures/telemetry.png)
+![Real-time Sample Interaction](../TheVooDooBox-main/pictures/realsample.png)
+![Advanced Sample Triage](../TheVooDooBox-main/pictures/realsamplemore.png)
 
 ### 3. Report View (`ReportView.tsx`)
 The final forensic summary for a completed task.
@@ -66,6 +75,9 @@ Analysts can manually tag specific process events to guide the investigation or 
 
 ![Telemetry Event Tagging](../TheVooDooBox-main/pictures/telemetrytagging.png)
 *Figure: Tagging a specific process creation event in the telemetry timeline.*
+
+![Integrated Screenshots Tab](../TheVooDooBox-main/pictures/screenshots.png)
+*Figure: The integrated screenshots tab for visual verification.*
 
 #### Collaborative Notepad
 A slide-out drawer for persistent, task-specific notes.

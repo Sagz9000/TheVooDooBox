@@ -18,6 +18,8 @@ Welcome to the VoodooBox Dashboard. This guide explains how to conduct an analys
 
 Once the task starts, you enter the Analysis Arena.
 
+![VoodooBox Walkthrough](../TheVooDooBox-main/pictures/VooDooWalk.gif)
+
 ### The Screen (VNC)
 *   You see the VM desktop.
 *   **Interact**: Your mouse and keyboard are captured. Use this to install dependencies or click "Enable Content" on malicious documents.
@@ -48,6 +50,12 @@ For deeper analysis:
 After the analysis concludes (or you click **"Stop"**):
 *   View the **Forensic Report**.
 *   **Verdict**: Malware / Suspicious / clean.
+
+![Verdict Summary](../TheVooDooBox-main/pictures/verdict.png)
+
 *   **Timeline**: A reconstruction of the attack chain.
 *   **IOCs**: Downloadable list of IP addresses and file hashes.
 *   **PDF Export**: Download a professional forensic report for distribution.
+
+![VirusTotal Integration](../TheVooDooBox-main/pictures/virustotal.png)
+![Forensic Analysis Summary](../TheVooDooBox-main/pictures/virustotalforensic.png)

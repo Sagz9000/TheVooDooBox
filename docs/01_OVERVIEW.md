@@ -1,8 +1,12 @@
 # The VoodooBox Overview
 
+![Lab Overview](../TheVooDooBox-main/pictures/overview.png)
+
 **The VoodooBox** (v2.8) is an advanced **Hybrid AI** malware orchestration platform. It fuses kernel-level telemetry, static analysis, and LLM reasoning into a unified "Cyber-Rave" dashboard.
 
 ## Key Features (v2.8)
+
+![Mission Control](../TheVooDooBox-main/pictures/missioncontrol.png)
 
 ### 1. Hybrid AI Analysis (Map-Reduce)
 The platform uses a sophisticated **Map-Reduce** pipeline to balance privacy and intelligence:

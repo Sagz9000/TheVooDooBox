@@ -3,6 +3,7 @@
 **The Ultimate Hybrid AI Malware Analysis Platform**
 
 ![VoodooBox Dashboard](TheVooDooBox-main/pictures/preview.png)
+![VoodooBox Walkthrough](TheVooDooBox-main/pictures/VooDooWalk.gif)
 
 The VoodooBox is a next-generation forensic orchestration engine that fuses **Kernel-Level Telemetry**, **Advanced Statistical Analysis**, and **Hybrid AI Reasoning** into a single, cohesive "Rave/Hacker" aesthetic dashboard. It doesn't just run malware; it *understands* it.
 

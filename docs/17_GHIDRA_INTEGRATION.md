@@ -51,6 +51,8 @@ sequenceDiagram
     HB-->>UI: WebSocket: "Static Analysis Ready"
 ```
 
+![Hex-to-Code Decoding](../TheVooDooBox-main/pictures/decoding.png)
+
 ![Headless Ghidra Decompiler](../TheVooDooBox-main/pictures/ghidra.png)
 
 ## 🤖 Using Ghidra with AI Chat
