@@ -1,0 +1,33 @@
+# ExtensionDetox - Python Dependencies
+
+# HTTP & Scraping
+requests>=2.31.0
+aiohttp>=3.9.0
+
+# Database (PostgreSQL)
+psycopg2-binary>=2.9.9
+
+# FastAPI HTTP Server
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# Static Analysis
+yara-python>=4.5.0
+jsbeautifier>=1.14.0
+
+# AI Integration (OpenAI-compatible client for llama.cpp)
+openai>=1.12.0
+
+# Hashing & Forensics
+python-magic>=0.4.27
+
+# VirusTotal & Threat Intel
+vt-py>=0.18.0
+
+# CLI & Config
+pyyaml>=6.0.1
+click>=8.1.7
+
+# Testing
+pytest>=8.0.0
+pytest-asyncio>=0.23.0

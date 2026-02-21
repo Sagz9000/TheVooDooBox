@@ -1,0 +1,18 @@
+# ExtensionDetox - Local Development Stack
+# Mirrors TheVooDooBox docker-compose patterns
+
+services:
+  bouncer:
+    build: .
+    container_name: extensiondetox-bouncer
+    environment:
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY}
+      - PROXMOX_TOKEN_SECRET=${PROXMOX_TOKEN_SECRET}
+    volumes:
+      - ./data:/app/data
+      - ./rules:/app/rules
+      - ./prompts:/app/prompts
+      - ./config.yaml:/app/config.yaml
+      # Future: shared NFS mount for VooDooBox integration
+      # - /mnt/voodoo_vsix:/mnt/voodoo_vsix
+    restart: unless-stopped

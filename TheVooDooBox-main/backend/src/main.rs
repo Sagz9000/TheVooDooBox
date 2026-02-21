@@ -18,6 +18,7 @@ mod virustotal; // Registered
 mod remnux;
 mod progress_stream;
 mod notes;
+mod detox_api;
 mod memory;
 mod action_manager;
 use ai_analysis::{AnalysisRequest, AIReport, ManualAnalysisRequest};
@@ -2544,6 +2545,98 @@ async fn init_db() -> Pool<Postgres> {
 
     println!("[DATABASE] Analysis Reports migrations complete.");
 
+    // ── ExtensionDetox Tables ──
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS detox_publishers (
+            id SERIAL PRIMARY KEY,
+            publisher_id TEXT UNIQUE NOT NULL,
+            publisher_name TEXT NOT NULL,
+            display_name TEXT,
+            domain TEXT,
+            is_domain_verified BOOLEAN DEFAULT FALSE,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW()
+        )"
+    ).execute(&pool).await.expect("Failed to create detox_publishers table");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS detox_extensions (
+            id SERIAL PRIMARY KEY,
+            extension_id TEXT NOT NULL,
+            version TEXT NOT NULL,
+            display_name TEXT,
+            short_desc TEXT,
+            vsix_hash_sha256 TEXT,
+            published_date TEXT,
+            last_updated TEXT,
+            install_count INTEGER DEFAULT 0,
+            average_rating REAL DEFAULT 0.0,
+            publisher_id INTEGER REFERENCES detox_publishers(id),
+            scan_state TEXT DEFAULT 'QUEUED',
+            latest_state TEXT DEFAULT 'pending',
+            risk_score REAL,
+            created_at TIMESTAMPTZ DEFAULT NOW(),
+            updated_at TIMESTAMPTZ DEFAULT NOW(),
+            UNIQUE(extension_id, version)
+        )"
+    ).execute(&pool).await.expect("Failed to create detox_extensions table");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS detox_scan_history (
+            id SERIAL PRIMARY KEY,
+            extension_db_id INTEGER NOT NULL REFERENCES detox_extensions(id),
+            scan_type TEXT NOT NULL DEFAULT 'static',
+            started_at TIMESTAMPTZ DEFAULT NOW(),
+            completed_at TIMESTAMPTZ,
+            ai_vibe_score REAL,
+            static_score REAL,
+            behavioral_score REAL,
+            trust_score REAL,
+            composite_score REAL,
+            risk_score REAL,
+            findings_json JSONB,
+            raw_ai_response TEXT
+        )"
+    ).execute(&pool).await.expect("Failed to create detox_scan_history table");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS detox_blocklist (
+            id SERIAL PRIMARY KEY,
+            extension_id TEXT UNIQUE NOT NULL,
+            removal_date TEXT,
+            removal_type TEXT,
+            synced_at TIMESTAMPTZ DEFAULT NOW()
+        )"
+    ).execute(&pool).await.expect("Failed to create detox_blocklist table");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS detox_iocs (
+            id SERIAL PRIMARY KEY,
+            scan_history_id INTEGER NOT NULL REFERENCES detox_scan_history(id),
+            ioc_type TEXT NOT NULL,
+            ioc_value TEXT NOT NULL,
+            context TEXT,
+            vt_detection INTEGER,
+            discovered_at TIMESTAMPTZ DEFAULT NOW()
+        )"
+    ).execute(&pool).await.expect("Failed to create detox_iocs table");
+
+    sqlx::query(
+        "CREATE TABLE IF NOT EXISTS detox_static_findings (
+            id SERIAL PRIMARY KEY,
+            scan_history_id INTEGER NOT NULL REFERENCES detox_scan_history(id),
+            finding_type TEXT NOT NULL,
+            severity TEXT DEFAULT 'info',
+            file_path TEXT,
+            line_number INTEGER,
+            description TEXT NOT NULL,
+            raw_match TEXT,
+            created_at TIMESTAMPTZ DEFAULT NOW()
+        )"
+    ).execute(&pool).await.expect("Failed to create detox_static_findings table");
+
+    println!("[DATABASE] ExtensionDetox tables ready.");
+
     // --- Ghidra Findings Migration ---
     // 1. Clean up duplicates (keep most recent)
     let res_clean = sqlx::query(
@@ -2744,6 +2837,12 @@ async fn main() -> std::io::Result<()> {
             .service(get_ai_config)
             .service(set_ai_mode)
             .service(get_ai_mode_handler)
+            .service(detox_api::detox_dashboard)
+            .service(detox_api::detox_extensions)
+            .service(detox_api::detox_extension_detail)
+            .service(detox_api::detox_trigger_scan)
+            .service(detox_api::detox_blocklist)
+            .service(actix_files::Files::new("/vsix_archive", "/vsix_archive").show_files_listing())
             .route("/ws", web::get().to(stream::ws_route))
             .route("/ws/progress", web::get().to(progress_stream::ws_progress_route))
     })

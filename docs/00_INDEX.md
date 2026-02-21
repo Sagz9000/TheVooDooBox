@@ -19,6 +19,8 @@ Welcome to TheVooDooBox Documentation. Use the links below to navigate the techn
     *   *Orchestration*: How the backend works as an orchestration layer.
 *   [**06. Frontend Dashboard**](06_FRONTEND_DASHBOARD.md)
     *   *Analyst UI*: React/Vite architecture and real-time Neural Report rendering.
+*   [**22. Extension Detox**](22_EXTENSION_DETOX.md)
+    *   *Analysis Pipeline*: Architecture and APIs for the VS Code extension triage engine.
 
 ## 🤖 AI & Intelligence
 | Document | Description |

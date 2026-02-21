@@ -9,7 +9,8 @@ import {
     Box,
     Layers,
     Server,
-    Sliders
+    Sliders,
+    Shield
 } from 'lucide-react';
 import { AgentEvent, ViewModel, voodooApi, BASE_URL } from './voodooApi';
 import LabDashboard from './LabDashboard';
@@ -20,10 +21,11 @@ import LineagePage from './LineagePage';
 import ReportView from './ReportView';
 import SubmissionModal from './SubmissionModal';
 import SettingsModal from './SettingsModal';
+import DetoxDashboard from './DetoxDashboard';
 
 export default function App() {
     // ── State ──
-    const [view, setView] = useState<'tasks' | 'lab' | 'arena' | 'intel' | 'report' | 'lineage'>('lab');
+    const [view, setView] = useState<'tasks' | 'lab' | 'arena' | 'intel' | 'report' | 'lineage' | 'detox'>('lab');
     const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
     const [events, setEvents] = useState<AgentEvent[]>([]);
     const [vms, setVms] = useState<ViewModel[]>([]);
@@ -158,6 +160,7 @@ release-cursor=shift+f12
                     <NavItem icon={<LayoutDashboard size={20} />} label="Tasks" active={view === 'tasks'} onClick={() => setView('tasks')} />
                     <NavItem icon={<Zap size={20} />} label="Arena" active={view === 'arena'} onClick={() => setView('arena')} />
                     <NavItem icon={<Brain size={20} />} label="Intel" active={view === 'intel'} onClick={() => setView('intel')} />
+                    <NavItem icon={<Shield size={20} />} label="Detox" active={view === 'detox'} onClick={() => setView('detox')} />
                 </nav>
 
                 <div className="mt-auto flex flex-col gap-4 w-full px-2">
@@ -219,6 +222,8 @@ release-cursor=shift+f12
                 )}
 
                 {view === 'intel' && <IntelHub />}
+
+                {view === 'detox' && <DetoxDashboard />}
 
                 {/* Global Floating Components */}
                 <FloatingChat

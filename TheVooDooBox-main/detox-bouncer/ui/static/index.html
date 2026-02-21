@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ExtensionDetox — Mission Control</title>
+    <meta name="description" content="Automated VS Code Extension Detonation Chamber - Real-time triage and threat analysis dashboard">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* Inline critical above-fold styles */
+        .loading-screen {
+            position: fixed; inset: 0; z-index: 9999;
+            background: var(--bg-primary);
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column; gap: 20px;
+            transition: opacity 0.5s, visibility 0.5s;
+        }
+        .loading-screen.hidden { opacity: 0; visibility: hidden; }
+        .loading-logo { font-size: 3rem; animation: pulse-dot 1.5s infinite; }
+        .loading-text { color: var(--text-muted); font-size: 0.9rem; letter-spacing: 0.1em; text-transform: uppercase; }
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-logo">🧪</div>
+        <div class="loading-text">Initializing Mission Control...</div>
+        <div class="spinner" style="width:24px;height:24px;border-width:3px;"></div>
+    </div>
+
+    <div class="app" id="app">
+        <!-- Header -->
+        <header class="header fade-in">
+            <div class="header-left">
+                <div class="logo">🧪</div>
+                <div>
+                    <h1>ExtensionDetox</h1>
+                    <div style="font-size:0.75rem;color:var(--text-muted);margin-top:2px;">VS Code Extension Detonation Chamber</div>
+                </div>
+            </div>
+            <div class="header-right">
+                <div class="status-dot"></div>
+                <span style="font-size:0.8rem;color:var(--text-secondary);">Mission Control Online</span>
+            </div>
+        </header>
+
+        <!-- Stats Grid -->
+        <div class="stats-grid" id="statsGrid">
+            <div class="stat-card fade-in stagger-1" id="statTotal">
+                <div class="stat-label">Extensions Indexed</div>
+                <div class="stat-value" id="valTotal">—</div>
+                <div class="stat-sub" id="subTotal"></div>
+            </div>
+            <div class="stat-card success fade-in stagger-2" id="statClean">
+                <div class="stat-label">Clean</div>
+                <div class="stat-value" id="valClean">—</div>
+            </div>
+            <div class="stat-card danger fade-in stagger-3" id="statFlagged">
+                <div class="stat-label">Flagged</div>
+                <div class="stat-value" id="valFlagged">—</div>
+            </div>
+            <div class="stat-card warn fade-in stagger-4" id="statQueued">
+                <div class="stat-label">In Queue</div>
+                <div class="stat-value" id="valQueued">—</div>
+            </div>
+            <div class="stat-card fade-in stagger-5" id="statBlocklist">
+                <div class="stat-label">Blocklisted</div>
+                <div class="stat-value" id="valBlocklist">—</div>
+                <div class="stat-sub">Microsoft RemovedPackages</div>
+            </div>
+            <div class="stat-card fade-in stagger-6" id="statAvgRisk">
+                <div class="stat-label">Avg Risk Score</div>
+                <div class="stat-value" id="valAvgRisk">—</div>
+            </div>
+        </div>
+
+        <!-- Main Grid -->
+        <div class="main-grid">
+            <!-- Risk Overview -->
+            <div class="card fade-in">
+                <div class="card-header">
+                    <h3>📊 Risk Distribution</h3>
+                </div>
+                <div style="display:flex;align-items:center;gap:32px;justify-content:center;flex-wrap:wrap;">
+                    <div class="risk-ring" id="riskRing">
+                        <svg viewBox="0 0 120 120">
+                            <circle class="ring-bg" cx="60" cy="60" r="50"></circle>
+                            <circle class="ring-fill" id="riskRingFill" cx="60" cy="60" r="50"
+                                    stroke-dasharray="314.16" stroke-dashoffset="314.16" stroke="url(#ringGrad)"></circle>
+                            <defs>
+                                <linearGradient id="ringGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#34d399"/>
+                                    <stop offset="50%" style="stop-color:#fbbf24"/>
+                                    <stop offset="100%" style="stop-color:#f43f5e"/>
+                                </linearGradient>
+                            </defs>
+                        </svg>
+                        <div class="ring-label">
+                            <span id="riskRingValue">0.00</span>
+                            <span class="ring-sub">Avg Risk</span>
+                        </div>
+                    </div>
+                    <div style="display:flex;flex-direction:column;gap:12px;min-width:200px;">
+                        <div class="risk-bar">
+                            <span style="font-size:0.8rem;color:var(--text-secondary);min-width:65px;">Clean</span>
+                            <div class="risk-bar-track"><div class="risk-bar-fill" id="barClean" style="width:0;background:var(--gradient-success);"></div></div>
+                            <span class="risk-bar-label" id="barCleanLabel" style="color:var(--accent-green);">0</span>
+                        </div>
+                        <div class="risk-bar">
+                            <span style="font-size:0.8rem;color:var(--text-secondary);min-width:65px;">Suspicious</span>
+                            <div class="risk-bar-track"><div class="risk-bar-fill" id="barSuspicious" style="width:0;background:var(--gradient-warn);"></div></div>
+                            <span class="risk-bar-label" id="barSuspiciousLabel" style="color:var(--accent-yellow);">0</span>
+                        </div>
+                        <div class="risk-bar">
+                            <span style="font-size:0.8rem;color:var(--text-secondary);min-width:65px;">Malicious</span>
+                            <div class="risk-bar-track"><div class="risk-bar-fill" id="barMalicious" style="width:0;background:var(--gradient-danger);"></div></div>
+                            <span class="risk-bar-label" id="barMaliciousLabel" style="color:var(--accent-red);">0</span>
+                        </div>
+                        <div class="risk-bar">
+                            <span style="font-size:0.8rem;color:var(--text-secondary);min-width:65px;">Queued</span>
+                            <div class="risk-bar-track"><div class="risk-bar-fill" id="barQueued" style="width:0;background:var(--accent-secondary);"></div></div>
+                            <span class="risk-bar-label" id="barQueuedLabel" style="color:var(--accent-secondary);">0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Blocklist Panel -->
+            <div class="card fade-in">
+                <div class="card-header">
+                    <h3>🛡️ Microsoft Blocklist</h3>
+                    <span class="badge badge-malicious" id="blocklistTotal">0 entries</span>
+                </div>
+                <div id="blocklistBars">
+                    <div class="empty-state"><div class="icon">🔍</div>Loading...</div>
+                </div>
+            </div>
+
+            <!-- Scan Activity -->
+            <div class="card fade-in">
+                <div class="card-header">
+                    <h3>⚡ Recent Scan Scores</h3>
+                </div>
+                <div class="sparkline" id="sparkline" style="height:80px;">
+                    <!-- Sparkline bars will be injected -->
+                </div>
+            </div>
+
+            <!-- Scan Queue -->
+            <div class="card fade-in">
+                <div class="card-header">
+                    <h3>📋 Scan Queue</h3>
+                    <span class="badge badge-scanning" id="queueCount">0 pending</span>
+                </div>
+                <div id="queueList">
+                    <div class="empty-state"><div class="icon">✅</div>Queue is empty</div>
+                </div>
+            </div>
+
+            <!-- Extension Table -->
+            <div class="card full-width fade-in">
+                <div class="card-header">
+                    <h3>📦 Indexed Extensions</h3>
+                    <div style="display:flex;gap:8px;">
+                        <button class="badge badge-clean" onclick="filterExtensions(null)" id="btnAll">All</button>
+                        <button class="badge badge-queued" onclick="filterExtensions('QUEUED')">Queued</button>
+                        <button class="badge badge-clean" onclick="filterExtensions('CLEAN')">Clean</button>
+                        <button class="badge badge-malicious" onclick="filterExtensions('FLAGGED')">Flagged</button>
+                    </div>
+                </div>
+                <div style="overflow-x:auto;">
+                    <table class="ext-table" id="extTable">
+                        <thead>
+                            <tr>
+                                <th>Extension</th>
+                                <th>Version</th>
+                                <th>Publisher</th>
+                                <th>Installs</th>
+                                <th>State</th>
+                                <th>Risk</th>
+                            </tr>
+                        </thead>
+                        <tbody id="extTableBody">
+                            <tr><td colspan="6" class="empty-state">Loading extensions...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/dashboard.js"></script>
+</body>
+</html>

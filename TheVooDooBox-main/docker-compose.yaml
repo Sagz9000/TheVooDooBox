@@ -29,6 +29,7 @@ services:
       - ./backend/screenshots:/app/screenshots
       - ./backend/reports:/app/reports
       - /mnt/voodoo_samples:/mnt/voodoo_samples
+      - detox_vsix_data:/vsix_archive
     restart: unless-stopped
 
   # ChromaDB moved to AI Server (192.168.50.98) - see deploy-ai/
@@ -89,13 +90,28 @@ services:
       - ghidra
     restart: unless-stopped
 
-#  mock-agent:
-#    build: ./agent-mock
-#    environment:
-#      - AGENT_SERVER_ADDR=hyper-bridge:9001
-#    depends_on:
-#      - hyper-bridge
-#    restart: always
+  #  mock-agent:
+  #    build: ./agent-mock
+  #    environment:
+  #      - AGENT_SERVER_ADDR=hyper-bridge:9001
+  #    depends_on:
+  #      - hyper-bridge
+  #    restart: always
+
+  detox-bouncer:
+    build: ./detox-bouncer
+    ports:
+      - "8006:8000"
+    environment:
+      - DATABASE_URL=postgres://voodoobox:${POSTGRES_PASSWORD}@db:5432/voodoobox_telemetry
+      - VIRUSTOTAL_API_KEY=${VIRUSTOTAL_API_KEY}
+      - LLAMA_CPP_URL=${LLAMA_CPP_URL}
+    depends_on:
+      - db
+    volumes:
+      - detox_vsix_data:/app/data/vsix_archive
+    restart: unless-stopped
 
 volumes:
   postgres_data:
+  detox_vsix_data:

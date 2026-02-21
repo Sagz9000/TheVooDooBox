@@ -1,0 +1,246 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// ExtensionDetox API — Actix-Web Endpoints
+// ─────────────────────────────────────────────────────────────────────────────
+// Serves the React frontend with extension triage data from the shared
+// PostgreSQL database. Also proxies scan/scrape requests to the Python
+// detox-bouncer sidecar container.
+
+use actix_web::{get, post, web, HttpResponse};
+use serde::{Deserialize, Serialize};
+use sqlx::{Pool, Postgres, FromRow};
+
+// ── Data Types ──────────────────────────────────────────────────────────────
+
+#[derive(Serialize, FromRow)]
+pub struct DetoxDashboardStats {
+    pub total_extensions: i64,
+    pub clean: i64,
+    pub flagged: i64,
+    pub pending: i64,
+    pub avg_risk_score: f64,
+    pub blocklist_count: i64,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct DetoxExtensionRow {
+    pub id: i32,
+    pub extension_id: String,
+    pub version: String,
+    pub display_name: Option<String>,
+    pub short_desc: Option<String>,
+    pub install_count: Option<i32>,
+    pub scan_state: Option<String>,
+    pub latest_state: Option<String>,
+    pub risk_score: Option<f64>,
+    pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
+#[derive(Serialize, FromRow)]
+pub struct DetoxScanHistoryRow {
+    pub id: i32,
+    pub scan_type: Option<String>,
+    pub started_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub risk_score: Option<f64>,
+    pub composite_score: Option<f64>,
+    pub findings_json: Option<serde_json::Value>,
+}
+
+#[derive(Serialize)]
+pub struct DetoxExtensionDetail {
+    pub extension: DetoxExtensionRow,
+    pub scans: Vec<DetoxScanHistoryRow>,
+}
+
+#[derive(Deserialize)]
+pub struct ExtensionQuery {
+    pub state: Option<String>,
+}
+
+// ── Dashboard Stats ─────────────────────────────────────────────────────────
+
+#[get("/api/detox/dashboard")]
+pub async fn detox_dashboard(pool: web::Data<Pool<Postgres>>) -> HttpResponse {
+    let total: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM detox_extensions")
+        .fetch_one(pool.get_ref())
+        .await
+        .unwrap_or((0,));
+
+    let clean: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM detox_extensions WHERE latest_state = 'clean'",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or((0,));
+
+    let flagged: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM detox_extensions WHERE latest_state = 'flagged'",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or((0,));
+
+    let pending: (i64,) = sqlx::query_as(
+        "SELECT COUNT(*) FROM detox_extensions WHERE latest_state = 'pending'",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or((0,));
+
+    let avg_risk: (Option<f64>,) = sqlx::query_as(
+        "SELECT AVG(risk_score) FROM detox_scan_history WHERE risk_score IS NOT NULL",
+    )
+    .fetch_one(pool.get_ref())
+    .await
+    .unwrap_or((None,));
+
+    let blocklist: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM detox_blocklist")
+        .fetch_one(pool.get_ref())
+        .await
+        .unwrap_or((0,));
+
+    HttpResponse::Ok().json(DetoxDashboardStats {
+        total_extensions: total.0,
+        clean: clean.0,
+        flagged: flagged.0,
+        pending: pending.0,
+        avg_risk_score: avg_risk.0.unwrap_or(0.0),
+        blocklist_count: blocklist.0,
+    })
+}
+
+// ── Extension List ──────────────────────────────────────────────────────────
+
+#[get("/api/detox/extensions")]
+pub async fn detox_extensions(
+    pool: web::Data<Pool<Postgres>>,
+    query: web::Query<ExtensionQuery>,
+) -> HttpResponse {
+    let rows = if let Some(ref state) = query.state {
+        sqlx::query_as::<_, DetoxExtensionRow>(
+            "SELECT id, extension_id, version, display_name, short_desc, install_count, \
+             scan_state, latest_state, risk_score, updated_at \
+             FROM detox_extensions WHERE latest_state = $1 \
+             ORDER BY updated_at DESC LIMIT 200",
+        )
+        .bind(state)
+        .fetch_all(pool.get_ref())
+        .await
+    } else {
+        sqlx::query_as::<_, DetoxExtensionRow>(
+            "SELECT id, extension_id, version, display_name, short_desc, install_count, \
+             scan_state, latest_state, risk_score, updated_at \
+             FROM detox_extensions ORDER BY updated_at DESC LIMIT 200",
+        )
+        .fetch_all(pool.get_ref())
+        .await
+    };
+
+    match rows {
+        Ok(extensions) => HttpResponse::Ok().json(extensions),
+        Err(e) => {
+            eprintln!("[DETOX-API] Extension list error: {}", e);
+            HttpResponse::InternalServerError().body(e.to_string())
+        }
+    }
+}
+
+// ── Extension Detail ────────────────────────────────────────────────────────
+
+#[get("/api/detox/extension/{id}")]
+pub async fn detox_extension_detail(
+    pool: web::Data<Pool<Postgres>>,
+    path: web::Path<i32>,
+) -> HttpResponse {
+    let ext_id = path.into_inner();
+
+    let ext = sqlx::query_as::<_, DetoxExtensionRow>(
+        "SELECT id, extension_id, version, display_name, short_desc, install_count, \
+         scan_state, latest_state, risk_score, updated_at \
+         FROM detox_extensions WHERE id = $1",
+    )
+    .bind(ext_id)
+    .fetch_optional(pool.get_ref())
+    .await;
+
+    match ext {
+        Ok(Some(extension)) => {
+            let scans = sqlx::query_as::<_, DetoxScanHistoryRow>(
+                "SELECT id, scan_type, started_at, completed_at, risk_score, \
+                 composite_score, findings_json \
+                 FROM detox_scan_history WHERE extension_db_id = $1 \
+                 ORDER BY started_at DESC",
+            )
+            .bind(ext_id)
+            .fetch_all(pool.get_ref())
+            .await
+            .unwrap_or_default();
+
+            HttpResponse::Ok().json(DetoxExtensionDetail { extension, scans })
+        }
+        Ok(None) => HttpResponse::NotFound().body("Extension not found"),
+        Err(e) => {
+            eprintln!("[DETOX-API] Extension detail error: {}", e);
+            HttpResponse::InternalServerError().body(e.to_string())
+        }
+    }
+}
+
+// ── Trigger Scan (proxy to bouncer) ─────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct ScanTriggerRequest {
+    pub extension_id: String,
+    pub version: Option<String>,
+}
+
+#[post("/api/detox/scan")]
+pub async fn detox_trigger_scan(body: web::Json<ScanTriggerRequest>) -> HttpResponse {
+    let bouncer_url = std::env::var("DETOX_BOUNCER_URL")
+        .unwrap_or_else(|_| "http://detox-bouncer:8000".to_string());
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let scan_body = serde_json::json!({
+        "extension_id": body.extension_id,
+        "version": body.version,
+    });
+
+    match client
+        .post(format!("{}/scan", bouncer_url))
+        .json(&scan_body)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body_text = resp.text().await.unwrap_or_default();
+            HttpResponse::build(actix_web::http::StatusCode::from_u16(status).unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR))
+                .content_type("application/json")
+                .body(body_text)
+        }
+        Err(e) => {
+            eprintln!("[DETOX-API] Bouncer proxy error: {}", e);
+            HttpResponse::ServiceUnavailable().json(serde_json::json!({
+                "error": format!("Bouncer unreachable: {}", e)
+            }))
+        }
+    }
+}
+
+// ── Blocklist ───────────────────────────────────────────────────────────────
+
+#[get("/api/detox/blocklist")]
+pub async fn detox_blocklist(pool: web::Data<Pool<Postgres>>) -> HttpResponse {
+    let count: (i64,) = sqlx::query_as("SELECT COUNT(*) FROM detox_blocklist")
+        .fetch_one(pool.get_ref())
+        .await
+        .unwrap_or((0,));
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "total": count.0,
+    }))
+}

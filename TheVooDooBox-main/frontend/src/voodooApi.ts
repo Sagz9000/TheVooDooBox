@@ -568,8 +568,58 @@ export const voodooApi = {
         } catch {
             return false;
         }
-    }
+    },
+
+    // ── ExtensionDetox API ──────────────────────────────────────────────────
+
+    fetchDetoxDashboard: async (): Promise<DetoxDashboardStats> => {
+        const resp = await fetch(`${BASE_URL}/api/detox/dashboard`);
+        if (!resp.ok) throw new Error("Failed to fetch Detox dashboard");
+        return resp.json();
+    },
+
+    fetchDetoxExtensions: async (state?: string): Promise<DetoxExtension[]> => {
+        const url = state
+            ? `${BASE_URL}/api/detox/extensions?state=${state}`
+            : `${BASE_URL}/api/detox/extensions`;
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error("Failed to fetch Detox extensions");
+        return resp.json();
+    },
+
+    triggerDetoxScan: async (extensionId: string, version?: string): Promise<void> => {
+        const resp = await fetch(`${BASE_URL}/api/detox/scan`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ extension_id: extensionId, version }),
+        });
+        if (!resp.ok) throw new Error("Failed to trigger Detox scan");
+    },
 };
+
+// ── ExtensionDetox Types ────────────────────────────────────────────────────
+
+export interface DetoxDashboardStats {
+    total_extensions: number;
+    clean: number;
+    flagged: number;
+    pending: number;
+    avg_risk_score: number;
+    blocklist_count: number;
+}
+
+export interface DetoxExtension {
+    id: number;
+    extension_id: string;
+    version: string;
+    display_name: string | null;
+    short_desc: string | null;
+    install_count: number | null;
+    scan_state: string | null;
+    latest_state: string | null;
+    risk_score: number | null;
+    updated_at: string | null;
+}
 
 export interface TaskProgressEvent {
     task_id: string;
@@ -578,3 +628,4 @@ export interface TaskProgressEvent {
     percent: number;
     timestamp: number;
 }
+

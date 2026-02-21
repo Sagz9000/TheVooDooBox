@@ -1,0 +1,60 @@
+# ExtensionDetox Configuration
+# Aligned with TheVooDooBox infrastructure
+
+ai:
+  # llama.cpp on VooDooBox AI server (AMD 7800XT)
+  inference_url: "http://192.168.50.98:11434"
+  embedding_url: "http://192.168.50.98:11435"
+  model: "llama-server"
+  # OpenAI-compatible endpoint
+  chat_endpoint: "/v1/chat/completions"
+  max_tokens: 4096
+  temperature: 0.1
+
+marketplace:
+  api_url: "https://marketplace.visualstudio.com/_apis/public/gallery/extensionquery"
+  # flags=950 = IncludeVersions(1) + IncludeFiles(2) + IncludeCategoryAndTags(4) +
+  #              IncludeStatistics(256) + IncludeLatestVersionOnly(512) +
+  #              Unpublished(8192 not included)
+  query_flags: 950
+  rate_limit_delay_seconds: 2.0
+  max_retries: 3
+  backoff_factor: 2.0
+
+blocklist:
+  # Microsoft official removed packages list
+  url: "https://raw.githubusercontent.com/microsoft/vsmarketplace/main/RemovedPackages.md"
+  sync_interval_hours: 24
+
+database:
+  path: "./data/extensiondetox.db"
+
+storage:
+  vsix_dir: "./data/vsix_archive"
+  retention_days: 30
+  max_vsix_size_mb: 500
+
+virustotal:
+  # Reuse TheVooDooBox API key via env var
+  api_key_env: "VIRUSTOTAL_API_KEY"
+
+proxmox:
+  url: "https://192.168.50.200:8006"
+  user: "root@pam"
+  token_id: "MalwareLab"
+  token_secret_env: "PROXMOX_TOKEN_SECRET"
+  gold_image_vmid: null  # Set after Gold Image is created
+  target_node: null       # Auto-detect or set manually
+
+scoring:
+  # Weights for composite risk score (must sum to 1.0)
+  ai_vibe_weight: 0.35
+  static_analysis_weight: 0.25
+  behavioral_weight: 0.25
+  trust_signal_weight: 0.15
+
+typosquatting:
+  # Levenshtein distance threshold for flagging
+  max_distance: 2
+  # Path to curated popular extensions list
+  popular_extensions_file: "./rules/popular_extensions.txt"
