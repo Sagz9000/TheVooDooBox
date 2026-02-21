@@ -83,11 +83,16 @@ class ScrapeRequest(BaseModel):
 async def scrape_marketplace(req: ScrapeRequest):
     """Trigger the marketplace scraper to discover new/updated extensions."""
     try:
-        from utils.scraper.marketplace_scraper import scrape_marketplace
+        from utils.scraper.marketplace_scraper import MarketplaceScraper
         from db.models import get_connection
 
         conn = get_connection()
-        count = scrape_marketplace(conn, max_pages=req.max_pages, sort_by=req.sort_by)
+        scraper = MarketplaceScraper(conn)
+        count = scraper.discover_and_store(max_pages=req.max_pages, page_size=50)
+        
+        # Also trigger a small batch of downloads for any newly queued extensions
+        scraper.download_queued(limit=10)
+        
         return {"status": "complete", "extensions_discovered": count}
 
     except Exception as e:
