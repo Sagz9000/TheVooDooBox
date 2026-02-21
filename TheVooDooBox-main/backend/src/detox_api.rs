@@ -5,7 +5,7 @@
 // PostgreSQL database. Also proxies scan/scrape requests to the Python
 // detox-bouncer sidecar container.
 
-use actix_web::{get, post, web, HttpResponse};
+use actix_web::{get, post, delete, web, HttpResponse};
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Pool, Postgres};
 use std::sync::Arc;
