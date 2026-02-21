@@ -8,9 +8,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     Shield, Activity, AlertTriangle, Search, CheckCircle,
     Clock, RefreshCw, ChevronRight, Package, Eye,
-    Zap, Database, BarChart3, Crosshair
+    Zap, Database, BarChart3, Crosshair, Play
 } from 'lucide-react';
-import { voodooApi, type DetoxDashboardStats, type DetoxExtension } from './voodooApi';
+import { voodooApi, type DetoxDashboardStats, type DetoxExtension, type ViewModel } from './voodooApi';
+import SubmissionModal, { type SubmissionData } from './SubmissionModal';
+import ExtensionDetailDrawer from './ExtensionDetailDrawer';
 
 // ── Risk Badge ──────────────────────────────────────────────────────────────
 
@@ -115,20 +117,30 @@ function RiskRing({ clean, flagged, pending }: { clean: number; flagged: number;
 export default function DetoxDashboard() {
     const [stats, setStats] = useState<DetoxDashboardStats | null>(null);
     const [extensions, setExtensions] = useState<DetoxExtension[]>([]);
+    const [vms, setVms] = useState<ViewModel[]>([]);
     const [filter, setFilter] = useState<string>('');
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
     const [scanning, setScanning] = useState(false);
     const [manualScanId, setManualScanId] = useState('');
 
+    // Sandbox Modal State
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [selectedExtForSandbox, setSelectedExtForSandbox] = useState<DetoxExtension | null>(null);
+
+    // Detail Drawer State
+    const [drawerExtId, setDrawerExtId] = useState<number | null>(null);
+
     const loadData = useCallback(async () => {
         try {
-            const [dashStats, extList] = await Promise.all([
+            const [dashStats, extList, vmList] = await Promise.all([
                 voodooApi.fetchDetoxDashboard(),
                 voodooApi.fetchDetoxExtensions(filter || undefined),
+                voodooApi.fetchVms(),
             ]);
             setStats(dashStats);
             setExtensions(extList);
+            setVms(vmList);
         } catch (e) {
             console.error('[Detox] Failed to load data:', e);
         } finally {
@@ -164,6 +176,31 @@ export default function DetoxDashboard() {
             console.error('[Detox] Failed manual scan:', err);
         } finally {
             setScanning(false);
+        }
+    };
+
+    const openSandboxModal = (ext: DetoxExtension, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        setSelectedExtForSandbox(ext);
+        setIsModalOpen(true);
+    };
+
+    const handleSandboxSubmit = async (data: SubmissionData & { vmid?: number, node?: string }) => {
+        if (!selectedExtForSandbox) return;
+        try {
+            await voodooApi.sendDetoxToSandbox(
+                selectedExtForSandbox.extension_id,
+                selectedExtForSandbox.version,
+                data.duration,
+                data.mode,
+                data.vmid,
+                data.node,
+                data.ai_strategy
+            );
+            await loadData(); // Refresh UI to show state change
+        } catch (err) {
+            console.error('[Detox] Sandbox submission failed:', err);
+            alert(`Failed to submit to sandbox: ${err}`);
         }
     };
 
@@ -296,6 +333,7 @@ export default function DetoxDashboard() {
                                     <th className="text-center p-3">State</th>
                                     <th className="text-center p-3">Risk</th>
                                     <th className="text-right p-3">Updated</th>
+                                    <th className="text-right p-3">Action</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -308,7 +346,11 @@ export default function DetoxDashboard() {
                                     </tr>
                                 ) : (
                                     filtered.map(ext => (
-                                        <tr key={ext.id} className="border-b border-gray-900/50 hover:bg-gray-900/50 transition-colors cursor-pointer group">
+                                        <tr
+                                            key={ext.id}
+                                            onClick={() => setDrawerExtId(ext.id)}
+                                            className="border-b border-gray-900/50 hover:bg-gray-900/50 transition-colors cursor-pointer group"
+                                        >
                                             <td className="p-3">
                                                 <div className="flex items-center gap-2">
                                                     <Package size={14} className="text-gray-600 group-hover:text-brand-400 transition-colors" />
@@ -328,6 +370,16 @@ export default function DetoxDashboard() {
                                                     <ChevronRight size={12} className="opacity-0 group-hover:opacity-100 text-brand-400 transition-opacity" />
                                                 </div>
                                             </td>
+                                            <td className="p-3 text-right">
+                                                <button
+                                                    onClick={(e) => openSandboxModal(ext, e)}
+                                                    disabled={ext.latest_state === 'detonating' || ext.latest_state === 'scanning'}
+                                                    title={ext.latest_state === 'detonating' ? "Already detonating" : "Send to Sandbox"}
+                                                    className="p-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 rounded transition-colors disabled:opacity-30 disabled:hover:bg-brand-500/10"
+                                                >
+                                                    <Play size={14} className="ml-0.5" />
+                                                </button>
+                                            </td>
                                         </tr>
                                     ))
                                 )}
@@ -336,6 +388,26 @@ export default function DetoxDashboard() {
                     </div>
                 </div>
             </div>
+
+            {selectedExtForSandbox && (
+                <SubmissionModal
+                    isOpen={isModalOpen}
+                    onClose={() => setIsModalOpen(false)}
+                    onSubmit={handleSandboxSubmit}
+                    vms={vms}
+                    vsixData={{
+                        extension_id: selectedExtForSandbox.extension_id,
+                        version: selectedExtForSandbox.version,
+                        display_name: selectedExtForSandbox.display_name || selectedExtForSandbox.extension_id,
+                        risk_score: selectedExtForSandbox.risk_score
+                    }}
+                />
+            )}
+
+            <ExtensionDetailDrawer
+                extensionId={drawerExtId}
+                onClose={() => setDrawerExtId(null)}
+            />
         </div>
     );
 }

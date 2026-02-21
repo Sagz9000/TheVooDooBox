@@ -34,7 +34,9 @@ ExtensionDetox provides a dedicated **Mission Control Dashboard** (`DetoxDashboa
 The dashboard features:
 - **Risk Distribution Ring:** A visual representation of the current queue (Clean, Flagged, Pending).
 - **Stat Cards:** High-level metrics tracking total extensions, clean/flagged counts, and the average risk score.
-- **Extension Table:** A sortable, filterable list of all tracked extensions showing their version, install count, state, and risk score.
+- **Extension Table:** A sortable, filterable list of all tracked extensions showing their version, install count, state, and risk score. Clicking any row opens the **Extension Detail Drawer**.
+- **Extension Detail Drawer:** A slide-out panel (`ExtensionDetailDrawer.tsx`) that provides a granular breakdown of an extension's threat report, including YARA findings, neural AI reasoning logic, and full raw JSON findings.
+- **Dynamic Sandbox Submission:** Selecting "Send to Sandbox" from the row actions opens a `SubmissionModal` tailored for VSIX submissions, enabling deployment into Proxmox VMs for behavioral analysis.
 - **Live Scrape Trigger:** A button to manually trigger a marketplace scraping run.
 
 ## API Endpoints
@@ -50,8 +52,9 @@ The dashboard features:
 The Rust backend proxies these requests and provides direct database access via the `detox_api` module:
 - `GET /api/detox/dashboard` - Dashboard metrics.
 - `GET /api/detox/extensions` - List of extensions (filterable by state).
-- `GET /api/detox/extensions/{id}` - Detailed view of a single extension.
+- `GET /api/detox/extension/{id}` - Detailed view of a single extension including scan history and raw findings.
 - `POST /api/detox/scan` - Proxies scan requests to the bouncer.
+- `POST /api/detox/sandbox` - Submits a VSIX to the sandbox orchestration queue.
 - `GET /api/detox/blocklist` - Retrieves the current blocklist.
 
 ## Database Schema (Inline)

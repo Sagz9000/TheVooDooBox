@@ -8,19 +8,22 @@ interface SubmissionModalProps {
     onSubmit: (data: SubmissionData & { vmid?: number, node?: string }) => void;
     vms: ViewModel[];
     preSelected?: { node: string, vmid: number };
+    vsixData?: { extension_id: string; version: string; display_name: string; risk_score: number | null };
 }
 
 export interface SubmissionData {
-    type: 'file' | 'url';
+    type: 'file' | 'url' | 'vsix';
     file?: File;
     url?: string;
+    vsix_extension_id?: string;
+    vsix_version?: string;
     duration: number; // in minutes
     mode: 'quick' | 'deep';
     ai_strategy?: string; // 'global' | 'hybrid' | 'local_only' | 'cloud_only'
 }
 
-export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSelected }: SubmissionModalProps) {
-    const [submissionType, setSubmissionType] = useState<'file' | 'url'>('file');
+export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSelected, vsixData }: SubmissionModalProps) {
+    const [submissionType, setSubmissionType] = useState<'file' | 'url' | 'vsix'>(vsixData ? 'vsix' : 'file');
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
     const [urlInput, setUrlInput] = useState('');
     const [duration, setDuration] = useState(5);
@@ -37,7 +40,13 @@ export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSel
         } else if (isOpen) {
             setSelectedVm(null); // Default to Auto-select
         }
-    }, [isOpen, preSelected]);
+
+        if (isOpen && vsixData) {
+            setSubmissionType('vsix');
+        } else if (isOpen) {
+            setSubmissionType('file');
+        }
+    }, [isOpen, preSelected, vsixData]);
 
     if (!isOpen) return null;
 
@@ -75,11 +84,17 @@ export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSel
             alert('Please enter a URL to analyze');
             return;
         }
+        if (submissionType === 'vsix' && !vsixData) {
+            alert('Missing extension metadata');
+            return;
+        }
 
         onSubmit({
             type: submissionType,
             file: selectedFile || undefined,
             url: urlInput || undefined,
+            vsix_extension_id: vsixData?.extension_id,
+            vsix_version: vsixData?.version,
             duration,
             mode: analysisMode,
             ai_strategy: aiStrategy !== 'global' ? aiStrategy : undefined,
@@ -120,33 +135,62 @@ export default function SubmissionModal({ isOpen, onClose, onSubmit, vms, preSel
                 {/* Body */}
                 <div className="p-4 md:p-6 space-y-6 overflow-y-auto flex-1 custom-scrollbar min-h-0">
                     {/* Submission Type Toggle */}
-                    <div>
-                        <label className="text-[9px] md:text-[10px] text-security-muted font-black uppercase tracking-widest mb-3 block">
-                            Target Acquisition
-                        </label>
-                        <div className="flex gap-4">
-                            <button
-                                onClick={() => setSubmissionType('file')}
-                                className={`flex-1 p-4 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${submissionType === 'file'
-                                    ? 'bg-brand-500/10 border-brand-500 text-brand-500 shadow-[0_0_20px_rgba(59,130,246,0.1)]'
-                                    : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
-                                    }`}
-                            >
-                                <Upload size={24} />
-                                <div className="text-[10px] md:text-xs font-black uppercase tracking-widest">Local Upload</div>
-                            </button>
-                            <button
-                                onClick={() => setSubmissionType('url')}
-                                className={`flex-1 p-4 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${submissionType === 'url'
-                                    ? 'bg-brand-500/10 border-brand-500 text-brand-500 shadow-[0_0_20px_rgba(59,130,246,0.1)]'
-                                    : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
-                                    }`}
-                            >
-                                <Globe size={24} />
-                                <div className="text-[10px] md:text-xs font-black uppercase tracking-widest">URL Analysis</div>
-                            </button>
+                    {!vsixData ? (
+                        <div>
+                            <label className="text-[9px] md:text-[10px] text-security-muted font-black uppercase tracking-widest mb-3 block">
+                                Target Acquisition
+                            </label>
+                            <div className="flex gap-4">
+                                <button
+                                    onClick={() => setSubmissionType('file')}
+                                    className={`flex-1 p-4 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${submissionType === 'file'
+                                        ? 'bg-brand-500/10 border-brand-500 text-brand-500 shadow-[0_0_20px_rgba(59,130,246,0.1)]'
+                                        : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
+                                        }`}
+                                >
+                                    <Upload size={24} />
+                                    <div className="text-[10px] md:text-xs font-black uppercase tracking-widest">Local Upload</div>
+                                </button>
+                                <button
+                                    onClick={() => setSubmissionType('url')}
+                                    className={`flex-1 p-4 rounded-lg border-2 transition-all flex flex-col items-center justify-center gap-2 ${submissionType === 'url'
+                                        ? 'bg-brand-500/10 border-brand-500 text-brand-500 shadow-[0_0_20px_rgba(59,130,246,0.1)]'
+                                        : 'bg-security-panel border-security-border text-security-muted hover:border-security-muted'
+                                        }`}
+                                >
+                                    <Globe size={24} />
+                                    <div className="text-[10px] md:text-xs font-black uppercase tracking-widest">URL Analysis</div>
+                                </button>
+                            </div>
                         </div>
-                    </div>
+                    ) : (
+                        <div className="animate-in fade-in slide-in-from-top-1 duration-200">
+                            <label className="text-[9px] md:text-[10px] text-security-muted font-black uppercase tracking-widest mb-3 block">
+                                Selected Extension Payload
+                            </label>
+                            <div className="p-4 rounded-lg border-2 border-brand-500 bg-brand-500/10 flex items-center justify-between">
+                                <div className="flex items-center gap-3">
+                                    <Zap size={24} className="text-brand-500 shrink-0" />
+                                    <div className="flex flex-col min-w-0">
+                                        <div className="text-white font-black truncate text-sm">
+                                            {vsixData.display_name}
+                                        </div>
+                                        <div className="text-[10px] text-security-muted font-mono mt-1">
+                                            {vsixData.extension_id} v{vsixData.version}
+                                        </div>
+                                    </div>
+                                </div>
+                                {vsixData.risk_score !== null && (
+                                    <div className="shrink-0 flex flex-col items-end">
+                                        <div className={`text-lg font-black ${vsixData.risk_score >= 0.4 ? 'text-red-500' : 'text-brand-500'}`}>
+                                            {(vsixData.risk_score * 100).toFixed(0)}%
+                                        </div>
+                                        <div className="text-[8px] text-security-muted uppercase tracking-widest font-black">Risk Score</div>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
 
                     {/* File Upload Zone */}
                     {submissionType === 'file' && (

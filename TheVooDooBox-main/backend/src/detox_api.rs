@@ -7,7 +7,12 @@
 
 use actix_web::{get, post, web, HttpResponse};
 use serde::{Deserialize, Serialize};
-use sqlx::{Pool, Postgres, FromRow};
+use sqlx::{FromRow, Pool, Postgres};
+use std::sync::Arc;
+use chrono::Utc;
+
+use crate::progress_stream::ProgressBroadcaster;
+use crate::{orchestrate_sandbox, AgentManager, AIManager};
 
 // ── Data Types ──────────────────────────────────────────────────────────────
 
@@ -44,6 +49,7 @@ pub struct DetoxScanHistoryRow {
     pub risk_score: Option<f64>,
     pub composite_score: Option<f64>,
     pub findings_json: Option<serde_json::Value>,
+    pub raw_ai_response: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -167,7 +173,7 @@ pub async fn detox_extension_detail(
         Ok(Some(extension)) => {
             let scans = sqlx::query_as::<_, DetoxScanHistoryRow>(
                 "SELECT id, scan_type, started_at, completed_at, risk_score, \
-                 composite_score, findings_json \
+                 composite_score, findings_json, raw_ai_response \
                  FROM detox_scan_history WHERE extension_db_id = $1 \
                  ORDER BY started_at DESC",
             )
@@ -244,3 +250,108 @@ pub async fn detox_blocklist(pool: web::Data<Pool<Postgres>>) -> HttpResponse {
         "total": count.0,
     }))
 }
+
+// ── Sandbox Submission ──────────────────────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct DetoxSandboxRequest {
+    pub extension_id: String,
+    pub version: String,
+    pub vmid: Option<u64>,
+    pub node: Option<String>,
+    pub duration_minutes: Option<u64>,
+    pub analysis_mode: Option<String>,
+    pub ai_strategy: Option<String>,
+}
+
+#[post("/api/detox/sandbox")]
+pub async fn detox_submit_sandbox(
+    pool: web::Data<Pool<Postgres>>,
+    manager: web::Data<Arc<AgentManager>>,
+    ai_manager: web::Data<AIManager>,
+    client: web::Data<crate::proxmox::ProxmoxClient>,
+    progress: web::Data<Arc<ProgressBroadcaster>>,
+    body: web::Json<DetoxSandboxRequest>,
+) -> HttpResponse {
+    let ext = match sqlx::query_as::<_, crate::detox_api::DetoxExtensionRow>(
+        "SELECT * FROM detox_extensions WHERE extension_id = $1 AND version = $2"
+    )
+    .bind(&body.extension_id)
+    .bind(&body.version)
+    .fetch_optional(pool.get_ref())
+    .await {
+        Ok(Some(row)) => row,
+        Ok(None) => return HttpResponse::NotFound().body("Extension/version not found in DB"),
+        Err(e) => {
+            let err_str = format!("DB Error: {}", e);
+            return HttpResponse::InternalServerError().body(err_str);
+        }
+    };
+
+    let filename = format!("{}_{}.vsix", body.extension_id, body.version);
+    let vsix_dir = std::env::var("VSIX_ARCHIVE_DIR").unwrap_or_else(|_| "/vsix_archive".to_string());
+    let filepath = format!("{}/{}", vsix_dir, filename);
+
+    if !std::path::Path::new(&filepath).exists() {
+        eprintln!("[DETOX-API] Warning: VSIX file {} not found on disk at {}, queueing anyway", filename, filepath);
+    }
+
+    let created_at = Utc::now().timestamp_millis();
+    let task_id = created_at.to_string();
+
+    let _ = sqlx::query(
+        "INSERT INTO tasks (id, filename, original_filename, file_hash, status, created_at, sandbox_id, file_path) \
+         VALUES ($1, $2, $3, '', 'Queued', $4, $5, $6)"
+    )
+    .bind(&task_id)
+    .bind(&filename)
+    .bind(&filename)
+    .bind(created_at)
+    .bind(body.vmid.map(|id| id.to_string()))
+    .bind(&filepath)
+    .execute(pool.get_ref())
+    .await;
+
+    let _ = sqlx::query(
+        "UPDATE detox_extensions SET latest_state = 'detonating' WHERE id = $1"
+    )
+    .bind(ext.id)
+    .execute(pool.get_ref())
+    .await;
+
+    let host_ip = std::env::var("HOST_IP").unwrap_or_else(|_| "192.168.50.11".to_string());
+    let download_url = format!("http://{}:8080/vsix_archive/{}", host_ip, filename);
+
+    let client_clone = client.get_ref().clone();
+    let manager_clone = manager.get_ref().clone();
+    let pool_clone = pool.get_ref().clone();
+    let ai_manager_clone = ai_manager.get_ref().clone();
+    let duration = body.duration_minutes.unwrap_or(5) * 60;
+    let progress_clone = progress.get_ref().clone();
+    let task_id_clone = task_id.clone();
+
+    actix_web::rt::spawn(async move {
+        orchestrate_sandbox(
+            client_clone,
+            manager_clone,
+            pool_clone,
+            ai_manager_clone,
+            task_id_clone,
+            download_url,
+            filename,
+            duration,
+            body.vmid,
+            body.node.clone(),
+            false,
+            "vsix".to_string(),
+            progress_clone,
+        ).await;
+    });
+
+    HttpResponse::Ok().json(serde_json::json!({
+        "status": "queued",
+        "message": "Extension added to sandbox queue",
+        "task_id": task_id
+    }))
+}
+

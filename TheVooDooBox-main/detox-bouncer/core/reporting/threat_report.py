@@ -364,13 +364,7 @@ class ThreatReportGenerator:
             behavioral_score=report.behavioral_score,
             trust_score=report.trust_signal_score,
             composite_score=report.composite_score,
-            findings_json=json.dumps({
-                "critical": len(report.critical_findings),
-                "high": len(report.high_findings),
-                "medium": len(report.medium_findings),
-                "info": len(report.info_findings),
-                "verdict": report.verdict,
-            }),
+            findings_json=report.to_json(),
         )
 
 

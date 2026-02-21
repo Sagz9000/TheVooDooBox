@@ -587,6 +587,15 @@ export const voodooApi = {
         return resp.json();
     },
 
+    fetchDetoxExtensionDetail: async (id: number): Promise<DetoxExtensionDetail> => {
+        const resp = await fetch(`${BASE_URL}/api/detox/extension/${id}`);
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Failed to fetch extension detail: ${errText}`);
+        }
+        return await resp.json();
+    },
+
     triggerDetoxScan: async (extensionId: string, version?: string): Promise<void> => {
         const resp = await fetch(`${BASE_URL}/api/detox/scan`, {
             method: 'POST',
@@ -595,6 +604,34 @@ export const voodooApi = {
         });
         if (!resp.ok) throw new Error("Failed to trigger Detox scan");
     },
+
+    sendDetoxToSandbox: async (
+        extensionId: string,
+        version: string,
+        durationMinutes: number,
+        analysisMode: string,
+        vmid?: number,
+        node?: string,
+        aiStrategy?: string
+    ): Promise<void> => {
+        const resp = await fetch(`${BASE_URL}/api/detox/sandbox`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                extension_id: extensionId,
+                version,
+                duration_minutes: durationMinutes,
+                analysis_mode: analysisMode,
+                vmid,
+                node,
+                ai_strategy: aiStrategy
+            })
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Failed to send to sandbox: ${errText}`);
+        }
+    }
 };
 
 // ── ExtensionDetox Types ────────────────────────────────────────────────────
@@ -619,6 +656,22 @@ export interface DetoxExtension {
     latest_state: string | null;
     risk_score: number | null;
     updated_at: string | null;
+}
+
+export interface DetoxScanHistory {
+    id: number;
+    scan_type?: string;
+    started_at?: string;
+    completed_at?: string;
+    risk_score?: number;
+    composite_score?: number;
+    findings_json?: any;
+    raw_ai_response?: string;
+}
+
+export interface DetoxExtensionDetail {
+    extension: DetoxExtension;
+    scans: DetoxScanHistory[];
 }
 
 export interface TaskProgressEvent {

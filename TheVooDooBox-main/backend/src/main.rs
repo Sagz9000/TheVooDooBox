@@ -730,7 +730,7 @@ async fn submit_sample(
     })))
 }
 
-async fn orchestrate_sandbox(
+pub async fn orchestrate_sandbox(
     client: proxmox::ProxmoxClient,
     manager: Arc<AgentManager>,
     pool: Pool<Postgres>,
@@ -900,7 +900,14 @@ async fn orchestrate_sandbox(
     progress.send_progress(&task_id, "running", "Monitoring telemetry collection", 50);
 
     // 5. Send Payload
-    let cmd = if is_url_task {
+    let cmd = if analysis_mode == "vsix" {
+        serde_json::json!({
+            "command": "INSTALL_VSIX",
+            "url": target_url,
+            "filename": original_filename,
+            "task_id": task_id
+        }).to_string()
+    } else if is_url_task {
         serde_json::json!({
             "command": "EXEC_URL",
             "url": target_url,
@@ -2842,6 +2849,7 @@ async fn main() -> std::io::Result<()> {
             .service(detox_api::detox_extension_detail)
             .service(detox_api::detox_trigger_scan)
             .service(detox_api::detox_blocklist)
+            .service(detox_api::detox_submit_sandbox)
             .service(actix_files::Files::new("/vsix_archive", "/vsix_archive").show_files_listing())
             .route("/ws", web::get().to(stream::ws_route))
             .route("/ws/progress", web::get().to(progress_stream::ws_progress_route))
