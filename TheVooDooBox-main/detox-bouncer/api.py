@@ -83,17 +83,33 @@ class ScrapeRequest(BaseModel):
 async def scrape_marketplace(req: ScrapeRequest):
     """Trigger the marketplace scraper to discover new/updated extensions."""
     try:
-        from utils.scraper.marketplace_scraper import MarketplaceScraper
+        from utils.scraper.marketplace_scraper import MarketplaceScraper, fetch_extension_metadata
+        from core.triage.pipeline import run_triage
         from db.models import get_connection
 
         conn = get_connection()
         scraper = MarketplaceScraper(conn)
         count = scraper.discover_and_store(max_pages=req.max_pages, page_size=50)
         
-        # Also trigger a small batch of downloads for any newly queued extensions
-        scraper.download_queued(limit=10)
+        # Trigger a small batch of downloads for any newly queued extensions
+        downloaded = scraper.download_queued(limit=10)
         
-        return {"status": "complete", "extensions_discovered": count}
+        triage_started = 0
+        # Automatically run triage on the downloaded extensions
+        for ext in downloaded:
+            try:
+                # Fetch metadata required for triage
+                meta = fetch_extension_metadata(ext["extension_id"])
+                if meta:
+                    run_triage(ext["vsix_path"], meta, conn)
+                    triage_started += 1
+                else:
+                    print(f"[BOUNCER] Warning: No metadata found for {ext['extension_id']} during auto-triage")
+            except Exception as e:
+                print(f"[BOUNCER] Error auto-triaging {ext['extension_id']}: {e}")
+                traceback.print_exc()
+
+        return {"status": "complete", "extensions_discovered": count, "triage_started": triage_started}
 
     except Exception as e:
         traceback.print_exc()

@@ -390,3 +390,40 @@ pub async fn detox_submit_sandbox(
     }))
 }
 
+// ── Delete Extension ────────────────────────────────────────────────────────
+
+#[delete("/api/detox/extension/{id}")]
+pub async fn detox_delete_extension(
+    path: web::Path<i32>,
+) -> HttpResponse {
+    let ext_id = path.into_inner();
+    
+    let bouncer_url = std::env::var("DETOX_BOUNCER_URL")
+        .unwrap_or_else(|_| "http://detox-bouncer:8000".to_string());
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    match client
+        .delete(format!("{}/purge/{}", bouncer_url, ext_id))
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body_text = resp.text().await.unwrap_or_default();
+            HttpResponse::build(actix_web::http::StatusCode::from_u16(status).unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR))
+                .content_type("application/json")
+                .body(body_text)
+        }
+        Err(e) => {
+            eprintln!("[DETOX-API] Bouncer purge proxy error: {}", e);
+            HttpResponse::ServiceUnavailable().json(serde_json::json!({
+                "error": format!("Bouncer unreachable: {}", e)
+            }))
+        }
+    }
+}
+

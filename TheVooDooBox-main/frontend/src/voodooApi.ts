@@ -644,6 +644,16 @@ export const voodooApi = {
             const errText = await resp.text();
             throw new Error(`Failed to send to sandbox: ${errText}`);
         }
+    },
+
+    purgeDetoxExtension: async (id: number): Promise<void> => {
+        const resp = await fetch(`${BASE_URL}/api/detox/extension/${id}`, {
+            method: 'DELETE'
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Failed to purge extension: ${errText}`);
+        }
     }
 };
 

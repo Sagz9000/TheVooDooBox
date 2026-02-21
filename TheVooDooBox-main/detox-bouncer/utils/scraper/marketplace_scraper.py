@@ -418,7 +418,7 @@ class MarketplaceScraper:
             target_path.unlink(missing_ok=True)
             return None
 
-    def download_queued(self, limit: int = 10) -> int:
+    def download_queued(self, limit: int = 10) -> list[dict]:
         """
         Download VSIX files for extensions in QUEUED state.
 
@@ -426,7 +426,11 @@ class MarketplaceScraper:
             limit: Max number of downloads per run
 
         Returns:
-            Number of successful downloads
+            List of successfully downloaded extensions, each a dict with:
+            - extension_id
+            - version
+            - vsix_path
+            - db_row (the full row from the database)
         """
         cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
@@ -436,14 +440,19 @@ class MarketplaceScraper:
         rows = cur.fetchall()
         cur.close()
 
-        downloaded = 0
+        downloaded_extensions = []
         for row in rows:
             path = self.download_vsix(row["extension_id"], row["version"])
             if path:
-                downloaded += 1
+                downloaded_extensions.append({
+                    "extension_id": row["extension_id"],
+                    "version": row["version"],
+                    "vsix_path": path,
+                    "db_row": dict(row),
+                })
 
-        logger.info(f"Downloaded {downloaded}/{len(rows)} queued extensions.")
-        return downloaded
+        logger.info(f"Downloaded {len(downloaded_extensions)}/{len(rows)} queued extensions.")
+        return downloaded_extensions
 
 
 # ──────────────────────────────────────────────

@@ -162,6 +162,19 @@ export default function DetoxDashboard() {
         }
     };
 
+    const handlePurge = async (id: number) => {
+        try {
+            setScanning(true);
+            await voodooApi.purgeDetoxExtension(id);
+            await loadData(); // Refresh UI to remove the row
+        } catch (err: any) {
+            console.error('[Detox] Purge failed:', err);
+            alert(`Failed to delete extension: ${err.message || err}`);
+        } finally {
+            setScanning(false);
+        }
+    };
+
     useEffect(() => {
         loadData();
         const interval = setInterval(loadData, 15000); // Poll every 15s
@@ -355,7 +368,7 @@ export default function DetoxDashboard() {
                                     <th className="text-center p-3">State</th>
                                     <th className="text-center p-3">Risk</th>
                                     <th className="text-right p-3">Updated</th>
-                                    <th className="text-right p-3">Action</th>
+                                    <th className="text-right p-3">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -393,14 +406,29 @@ export default function DetoxDashboard() {
                                                 </div>
                                             </td>
                                             <td className="p-3 text-right">
-                                                <button
-                                                    onClick={(e) => openSandboxModal(ext, e)}
-                                                    disabled={ext.latest_state === 'detonating' || ext.latest_state === 'scanning'}
-                                                    title={ext.latest_state === 'detonating' ? "Already detonating" : "Send to Sandbox"}
-                                                    className="p-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 rounded transition-colors disabled:opacity-30 disabled:hover:bg-brand-500/10"
-                                                >
-                                                    <Play size={14} className="ml-0.5" />
-                                                </button>
+                                                <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (window.confirm(`Are you sure you want to delete ${ext.extension_id} v${ext.version}? This will remove the VSIX file and all scan history.`)) {
+                                                                handlePurge(ext.id);
+                                                            }
+                                                        }}
+                                                        disabled={scanning}
+                                                        title="Delete Extension"
+                                                        className="p-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded transition-colors disabled:opacity-30 disabled:hover:bg-red-500/10"
+                                                    >
+                                                        <Trash2 size={14} />
+                                                    </button>
+                                                    <button
+                                                        onClick={(e) => openSandboxModal(ext, e)}
+                                                        disabled={ext.latest_state === 'detonating' || ext.latest_state === 'scanning'}
+                                                        title={ext.latest_state === 'detonating' ? "Already detonating" : "Send to Sandbox"}
+                                                        className="p-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-400 rounded transition-colors disabled:opacity-30 disabled:hover:bg-brand-500/10"
+                                                    >
+                                                        <Play size={14} className="ml-0.5" />
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))
