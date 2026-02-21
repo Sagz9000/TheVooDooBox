@@ -18,6 +18,7 @@ from typing import Optional
 
 import requests
 import yaml
+import psycopg2.extras
 
 # Resolve paths relative to project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -403,11 +404,12 @@ class MarketplaceScraper:
 
             # Update DB with hash
             if ext_row:
-                self.conn.execute(
-                    "UPDATE extensions SET vsix_hash_sha256 = ? WHERE id = ?",
+                cur = self.conn.cursor()
+                cur.execute(
+                    "UPDATE detox_extensions SET vsix_hash_sha256 = %s WHERE id = %s",
                     (vsix_hash, ext_row["id"]),
                 )
-                self.conn.commit()
+                cur.close()
 
             return str(target_path)
 
@@ -426,10 +428,13 @@ class MarketplaceScraper:
         Returns:
             Number of successful downloads
         """
-        rows = self.conn.execute(
-            "SELECT * FROM extensions WHERE scan_state = 'QUEUED' ORDER BY created_at LIMIT ?",
+        cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT * FROM detox_extensions WHERE scan_state = 'QUEUED' ORDER BY created_at LIMIT %s",
             (limit,),
-        ).fetchall()
+        )
+        rows = cur.fetchall()
+        cur.close()
 
         downloaded = 0
         for row in rows:

@@ -10,6 +10,7 @@ import logging
 import sys
 from pathlib import Path
 from typing import Optional
+import psycopg2.extras
 
 logger = logging.getLogger("ExtensionDetox.IOCCrossRef")
 
@@ -33,15 +34,18 @@ def crossref_iocs_for_extension(conn, extension_db_id: int) -> dict:
             - campaign_score: 0.0-1.0 likelihood of coordinated campaign
     """
     # Get all IOCs for this extension
-    iocs = conn.execute(
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
         """
         SELECT DISTINCT i.ioc_type, i.ioc_value
-        FROM iocs i
-        JOIN scan_history sh ON i.scan_history_id = sh.id
-        WHERE sh.extension_db_id = ?
+        FROM detox_iocs i
+        JOIN detox_scan_history sh ON i.scan_history_id = sh.id
+        WHERE sh.extension_db_id = %s
         """,
         (extension_db_id,),
-    ).fetchall()
+    )
+    iocs = cur.fetchall()
+    cur.close()
 
     if not iocs:
         return {"shared_iocs": [], "related_extensions": [], "campaign_score": 0.0}
@@ -54,18 +58,21 @@ def crossref_iocs_for_extension(conn, extension_db_id: int) -> dict:
         ioc_value = ioc["ioc_value"]
 
         # Find other extensions with the same IOC
-        others = conn.execute(
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
             """
             SELECT DISTINCT e.id, e.extension_id, e.version, e.scan_state,
                             i.ioc_type, i.context
-            FROM iocs i
-            JOIN scan_history sh ON i.scan_history_id = sh.id
-            JOIN extensions e ON sh.extension_db_id = e.id
-            WHERE i.ioc_value = ?
-              AND e.id != ?
+            FROM detox_iocs i
+            JOIN detox_scan_history sh ON i.scan_history_id = sh.id
+            JOIN detox_extensions e ON sh.extension_db_id = e.id
+            WHERE i.ioc_value = %s
+              AND e.id != %s
             """,
             (ioc_value, extension_db_id),
-        ).fetchall()
+        )
+        others = cur.fetchall()
+        cur.close()
 
         if others:
             shared_iocs.append({
@@ -110,29 +117,35 @@ def find_all_shared_infrastructure(conn) -> list[dict]:
         List of IOC clusters, each with the shared IOC value
         and the extensions involved.
     """
-    clusters = conn.execute(
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    cur.execute(
         """
         SELECT i.ioc_value, i.ioc_type, COUNT(DISTINCT sh.extension_db_id) as ext_count
-        FROM iocs i
-        JOIN scan_history sh ON i.scan_history_id = sh.id
+        FROM detox_iocs i
+        JOIN detox_scan_history sh ON i.scan_history_id = sh.id
         GROUP BY i.ioc_value, i.ioc_type
         HAVING ext_count > 1
         ORDER BY ext_count DESC
         """,
-    ).fetchall()
+    )
+    clusters = cur.fetchall()
+    cur.close()
 
     results = []
     for cluster in clusters:
-        extensions = conn.execute(
+        cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
             """
             SELECT DISTINCT e.extension_id, e.version, e.scan_state
-            FROM iocs i
-            JOIN scan_history sh ON i.scan_history_id = sh.id
-            JOIN extensions e ON sh.extension_db_id = e.id
-            WHERE i.ioc_value = ?
+            FROM detox_iocs i
+            JOIN detox_scan_history sh ON i.scan_history_id = sh.id
+            JOIN detox_extensions e ON sh.extension_db_id = e.id
+            WHERE i.ioc_value = %s
             """,
             (cluster["ioc_value"],),
-        ).fetchall()
+        )
+        extensions = cur.fetchall()
+        cur.close()
 
         results.append({
             "ioc_type": cluster["ioc_type"],

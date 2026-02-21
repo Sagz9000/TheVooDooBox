@@ -13,7 +13,8 @@ import sys
 from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Dict, List, Optional
+import psycopg2.extras
 
 logger = logging.getLogger("ExtensionDetox.ThreatReport")
 
@@ -135,12 +136,15 @@ class ThreatReportGenerator:
         report = ThreatReport()
         report.report_timestamp = datetime.now(timezone.utc).isoformat()
 
-        # ── Load extension data from DB ────────────────
-        ext = self.conn.execute(
-            "SELECT * FROM extensions WHERE id = ?",
+        # ── Extension info ─────────────────────────────
+        cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+        cur.execute(
+            "SELECT * FROM detox_extensions WHERE id = %s",
             (extension_db_id,),
-        ).fetchone()
-
+        )
+        ext = cur.fetchone()
+        cur.close()
+        
         if not ext:
             logger.error(f"Extension {extension_db_id} not found in DB")
             report.verdict = "ERROR"
@@ -156,10 +160,13 @@ class ThreatReportGenerator:
 
         # ── Publisher info ─────────────────────────────
         if ext["publisher_id"]:
-            pub = self.conn.execute(
-                "SELECT * FROM publishers WHERE id = ?",
+            cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                "SELECT * FROM detox_publishers WHERE id = %s",
                 (ext["publisher_id"],),
-            ).fetchone()
+            )
+            pub = cur.fetchone()
+            cur.close()
             if pub:
                 report.publisher_name = pub["publisher_name"]
                 report.publisher_verified = bool(pub["is_domain_verified"])
@@ -168,10 +175,13 @@ class ThreatReportGenerator:
         from db.models import is_blocklisted
         report.is_blocklisted = is_blocklisted(self.conn, report.extension_id)
         if report.is_blocklisted:
-            bl = self.conn.execute(
-                "SELECT * FROM blocklist WHERE extension_id = ?",
+            cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                "SELECT * FROM detox_blocklist WHERE extension_id = %s",
                 (report.extension_id,),
-            ).fetchone()
+            )
+            bl = cur.fetchone()
+            cur.close()
             if bl:
                 report.blocklist_type = bl["removal_type"] or ""
 
