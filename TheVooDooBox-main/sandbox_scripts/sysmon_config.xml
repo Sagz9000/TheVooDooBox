@@ -10,6 +10,11 @@
         <Image condition="is">C:\Windows\System32\csrss.exe</Image>
         <Image condition="is">C:\Windows\System32\wininit.exe</Image>
       </ProcessCreate>
+      <ProcessCreate onmatch="include">
+        <!-- ExtensionDetox: Monitor VS Code and Extension Host -->
+        <Image condition="contains">code.exe</Image>
+        <Image condition="contains">extensionhost</Image>
+      </ProcessCreate>
     </RuleGroup>
 
     <!-- Event ID 2: File Creation Time Changed (Timestomping) -->
@@ -23,6 +28,11 @@
     <!-- Event ID 3: Network Connection -->
     <RuleGroup name="" groupRelation="or">
       <NetworkConnect onmatch="exclude" />
+      <NetworkConnect onmatch="include">
+        <!-- ExtensionDetox: Track connections from VS Code processes -->
+        <Image condition="contains">code.exe</Image>
+        <Image condition="contains">extensionhost</Image>
+      </NetworkConnect>
     </RuleGroup>
 
     <!-- Event ID 7: Image Load (DLL Injection / Hijacking) -->
