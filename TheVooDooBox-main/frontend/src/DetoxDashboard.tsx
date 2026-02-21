@@ -148,20 +148,6 @@ export default function DetoxDashboard() {
         }
     }, [filter]);
 
-    const handleScrape = async () => {
-        try {
-            setScanning(true);
-            const res = await voodooApi.triggerDetoxScrape(2); // Scrape up to 2 pages initially
-            alert(`Scrape complete! Discovered ${res.extensions_discovered} extensions.`);
-            await loadData();
-        } catch (err) {
-            console.error('[Detox] Scrape failed:', err);
-            alert(`Scrape failed: ${err}`);
-        } finally {
-            setScanning(false);
-        }
-    };
-
     const handlePurge = async (id: number) => {
         try {
             setScanning(true);
@@ -184,8 +170,12 @@ export default function DetoxDashboard() {
     const triggerScrape = async () => {
         setScanning(true);
         try {
-            await voodooApi.triggerDetoxScan('__scrape__');
+            const res = await voodooApi.triggerDetoxScrape(2);
+            alert(`Scrape complete! Discovered ${res.extensions_discovered} extensions.`);
             await loadData();
+        } catch (err) {
+            console.error('[Detox] Scrape failed:', err);
+            alert(`Scrape failed: ${err}`);
         } finally {
             setScanning(false);
         }
@@ -322,14 +312,6 @@ export default function DetoxDashboard() {
                             Extension Queue
                         </h3>
                         <div className="flex items-center gap-2">
-                            <button
-                                onClick={handleScrape}
-                                disabled={scanning}
-                                className="mr-4 px-3 py-1 bg-brand-600 hover:bg-brand-500 disabled:opacity-50 text-white rounded text-xs transition-colors flex items-center gap-2"
-                            >
-                                <RefreshCw size={12} className={scanning ? "animate-spin" : ""} />
-                                {scanning ? 'Scraping...' : 'Scrape Marketplace'}
-                            </button>
                             {/* Filters */}
                             {['', 'pending', 'clean', 'flagged'].map(f => (
                                 <button
