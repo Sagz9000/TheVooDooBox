@@ -4,11 +4,11 @@
 // React port of the standalone Mission Control UI, styled with TheVooDooBox's
 // Tailwind tokens (voodoo-*, threat-*, brand-*).
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import {
     Shield, Activity, AlertTriangle, Search, CheckCircle,
     Clock, RefreshCw, ChevronRight, Package, Eye,
-    Zap, Database, BarChart3
+    Zap, Database, BarChart3, Crosshair
 } from 'lucide-react';
 import { voodooApi, type DetoxDashboardStats, type DetoxExtension } from './voodooApi';
 
@@ -119,6 +119,7 @@ export default function DetoxDashboard() {
     const [searchTerm, setSearchTerm] = useState('');
     const [loading, setLoading] = useState(true);
     const [scanning, setScanning] = useState(false);
+    const [manualScanId, setManualScanId] = useState('');
 
     const loadData = useCallback(async () => {
         try {
@@ -151,6 +152,21 @@ export default function DetoxDashboard() {
         }
     };
 
+    const handleManualScan = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!manualScanId.trim()) return;
+        setScanning(true);
+        try {
+            await voodooApi.triggerDetoxScan(manualScanId.trim());
+            setManualScanId('');
+            await loadData();
+        } catch (err) {
+            console.error('[Detox] Failed manual scan:', err);
+        } finally {
+            setScanning(false);
+        }
+    };
+
     const filtered = extensions.filter(ext =>
         !searchTerm ||
         ext.extension_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -168,7 +184,7 @@ export default function DetoxDashboard() {
     return (
         <div className="h-full overflow-y-auto p-6 space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
                 <div className="flex items-center gap-3">
                     <Shield className="text-brand-400" size={28} />
                     <div>
@@ -176,14 +192,35 @@ export default function DetoxDashboard() {
                         <p className="text-xs text-gray-500">VS Code Extension Triage Engine</p>
                     </div>
                 </div>
-                <button
-                    onClick={triggerScrape}
-                    disabled={scanning}
-                    className="flex items-center gap-2 px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-sm transition-colors disabled:opacity-50"
-                >
-                    <RefreshCw size={14} className={scanning ? 'animate-spin' : ''} />
-                    {scanning ? 'Scanning...' : 'Scrape Marketplace'}
-                </button>
+
+                <div className="flex flex-col sm:flex-row items-center gap-3 w-full md:w-auto">
+                    <form onSubmit={handleManualScan} className="flex flex-1 sm:flex-none gap-2">
+                        <input
+                            type="text"
+                            placeholder="Extension ID (e.g. ms-python.python)"
+                            value={manualScanId}
+                            onChange={(e) => setManualScanId(e.target.value)}
+                            className="bg-voodoo-panel border border-voodoo-border rounded-lg px-3 py-1.5 text-sm text-gray-300 font-mono focus:outline-none focus:border-brand-500 w-full sm:w-64"
+                        />
+                        <button
+                            type="submit"
+                            disabled={scanning || !manualScanId.trim()}
+                            className="flex items-center justify-center gap-2 px-3 py-1.5 bg-voodoo-panel border border-voodoo-border hover:border-brand-500 text-brand-400 rounded-lg text-sm transition-colors disabled:opacity-50"
+                        >
+                            <Crosshair size={14} className={scanning && manualScanId ? 'animate-pulse text-[#39ff14]' : ''} />
+                            Scan
+                        </button>
+                    </form>
+
+                    <button
+                        onClick={triggerScrape}
+                        disabled={scanning}
+                        className="flex items-center justify-center gap-2 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-sm transition-colors disabled:opacity-50 whitespace-nowrap"
+                    >
+                        <RefreshCw size={14} className={scanning && !manualScanId ? 'animate-spin' : ''} />
+                        {scanning && !manualScanId ? 'Scanning...' : 'Scrape Marketplace'}
+                    </button>
+                </div>
             </div>
 
             {/* Stats Row */}
