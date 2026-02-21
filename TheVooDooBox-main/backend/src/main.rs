@@ -2848,6 +2848,7 @@ async fn main() -> std::io::Result<()> {
             .service(detox_api::detox_extensions)
             .service(detox_api::detox_extension_detail)
             .service(detox_api::detox_trigger_scan)
+            .service(detox_api::detox_trigger_scrape)
             .service(detox_api::detox_blocklist)
             .service(detox_api::detox_submit_sandbox)
             .service(actix_files::Files::new("/vsix_archive", "/vsix_archive").show_files_listing())

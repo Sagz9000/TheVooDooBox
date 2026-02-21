@@ -237,6 +237,41 @@ pub async fn detox_trigger_scan(body: web::Json<ScanTriggerRequest>) -> HttpResp
     }
 }
 
+// ── Trigger Scrape (proxy to bouncer) ───────────────────────────────────────
+
+#[post("/api/detox/scrape")]
+pub async fn detox_trigger_scrape() -> HttpResponse {
+    let bouncer_url = std::env::var("DETOX_BOUNCER_URL")
+        .unwrap_or_else(|_| "http://detox-bouncer:8000".to_string());
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    // By default, bouncer expects JSON body for scrape requests (max_pages, sort_by). Empty obj falls back to defaults.
+    match client
+        .post(format!("{}/scrape", bouncer_url))
+        .json(&serde_json::json!({}))
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body_text = resp.text().await.unwrap_or_default();
+            HttpResponse::build(actix_web::http::StatusCode::from_u16(status).unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR))
+                .content_type("application/json")
+                .body(body_text)
+        }
+        Err(e) => {
+            eprintln!("[DETOX-API] Bouncer scrape proxy error: {}", e);
+            HttpResponse::ServiceUnavailable().json(serde_json::json!({
+                "error": format!("Bouncer unreachable: {}", e)
+            }))
+        }
+    }
+}
+
 // ── Blocklist ───────────────────────────────────────────────────────────────
 
 #[get("/api/detox/blocklist")]

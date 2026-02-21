@@ -605,6 +605,19 @@ export const voodooApi = {
         if (!resp.ok) throw new Error("Failed to trigger Detox scan");
     },
 
+    triggerDetoxScrape: async (maxPages: number = 2): Promise<{ status: string, extensions_discovered: number }> => {
+        const resp = await fetch(`${BASE_URL}/api/detox/scrape`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ max_pages: maxPages, sort_by: "UpdatedDate" })
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Failed to trigger Detox scrape: ${errText}`);
+        }
+        return await resp.json();
+    },
+
     sendDetoxToSandbox: async (
         extensionId: string,
         version: string,
