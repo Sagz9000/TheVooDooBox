@@ -8,7 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     Shield, Activity, AlertTriangle, Search, CheckCircle,
     Clock, RefreshCw, ChevronRight, Package, Eye,
-    Zap, Database, BarChart3, Crosshair, Play
+    Zap, Database, BarChart3, Crosshair, Play, Trash2
 } from 'lucide-react';
 import { voodooApi, type DetoxDashboardStats, type DetoxExtension, type ViewModel } from './voodooApi';
 import SubmissionModal, { type SubmissionData } from './SubmissionModal';
