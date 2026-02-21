@@ -245,6 +245,21 @@ class MarketplaceScraper:
 
         return results
 
+    def fetch_extension_metadata(self, extension_id: str) -> Optional[dict]:
+        """
+        Fetch complete metadata for a single extension by its ID.
+        """
+        try:
+            self._rate_limit()
+            resp = self.query_extensions(search_text=extension_id, page_size=1)
+            results = self.parse_extension_results(resp)
+            if results and results[0]["extension_id"].lower() == extension_id.lower():
+                return results[0]
+            return None
+        except Exception as e:
+            logger.error(f"Failed to fetch metadata for {extension_id}: {e}")
+            return None
+
     def discover_and_store(
         self,
         search_text: str = "",

@@ -40,19 +40,21 @@ async def scan_extension(req: ScanRequest):
     YARA, Semgrep, deobfuscation, and AI Vibe Check.
     """
     try:
-        from utils.scraper.marketplace_scraper import fetch_extension_metadata, download_vsix
+        from utils.scraper.marketplace_scraper import MarketplaceScraper
         from core.triage.pipeline import run_triage
         from db.models import get_connection
 
         conn = get_connection()
+        scraper = MarketplaceScraper(conn)
 
         # 1. Fetch metadata from marketplace
-        meta = fetch_extension_metadata(req.extension_id)
+        meta = scraper.fetch_extension_metadata(req.extension_id)
         if not meta:
             raise HTTPException(status_code=404, detail=f"Extension '{req.extension_id}' not found on marketplace")
 
         # 2. Download VSIX
-        vsix_path = download_vsix(meta, conn)
+        version_to_download = req.version or meta.get("version", "latest")
+        vsix_path = scraper.download_vsix(req.extension_id, version_to_download)
         if not vsix_path:
             raise HTTPException(status_code=500, detail="Failed to download VSIX")
 
@@ -83,7 +85,7 @@ class ScrapeRequest(BaseModel):
 async def scrape_marketplace(req: ScrapeRequest):
     """Trigger the marketplace scraper to discover new/updated extensions."""
     try:
-        from utils.scraper.marketplace_scraper import MarketplaceScraper, fetch_extension_metadata
+        from utils.scraper.marketplace_scraper import MarketplaceScraper
         from core.triage.pipeline import run_triage
         from db.models import get_connection
 
@@ -99,7 +101,7 @@ async def scrape_marketplace(req: ScrapeRequest):
         for ext in downloaded:
             try:
                 # Fetch metadata required for triage
-                meta = fetch_extension_metadata(ext["extension_id"])
+                meta = scraper.fetch_extension_metadata(ext["extension_id"])
                 if meta:
                     run_triage(ext["vsix_path"], meta, conn)
                     triage_started += 1
