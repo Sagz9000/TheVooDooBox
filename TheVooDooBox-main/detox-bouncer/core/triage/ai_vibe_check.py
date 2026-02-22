@@ -278,6 +278,11 @@ class AIVibeChecker:
         summaries = []
         raw_responses = []
 
+        MAX_CHUNKS = 30 # Hard limit to prevent hours-long scans on bloated extensions
+        if len(chunks) > MAX_CHUNKS:
+            logger.warning(f"  Truncating {len(chunks)} chunks down to {MAX_CHUNKS} to prevent infinite scan processing.")
+            chunks = chunks[:MAX_CHUNKS]
+
         for i, chunk in enumerate(chunks):
             chunk_name = f"{filename} (chunk {i + 1}/{len(chunks)})"
             logger.info(f"  Analyzing {chunk_name}...")
@@ -312,64 +317,73 @@ class AIVibeChecker:
             "raw_response": "\n\n".join(raw_responses),
         }
 
-    def analyze_vsix(self, vsix_path: str) -> dict:
+    def analyze_vsix(self, vsix_path: str, yara_result: object = None) -> dict:
         """
-        Extract and analyze the main entry point(s) from a VSIX archive.
+        Extract and analyze the most suspicious entry points from a VSIX archive.
+        If yara_result is provided, prioritizes files with YARA hits.
 
         Returns:
             Combined AI analysis result.
         """
         try:
             with zipfile.ZipFile(vsix_path, 'r') as zf:
-                # Find package.json to determine entry point
-                pkg_data = None
-                for candidate in ["extension/package.json", "package.json"]:
-                    try:
-                        pkg_data = json.loads(zf.read(candidate).decode("utf-8"))
-                        break
-                    except (KeyError, json.JSONDecodeError):
-                        continue
-
-                if not pkg_data:
-                    return self._fallback_response("No package.json found")
-
-                # Determine entry points
-                entry_files = []
-                main = pkg_data.get("main", "")
-                browser = pkg_data.get("browser", "")
-                
-                potential_mains = []
-                if main: potential_mains.append(main)
-                if browser: potential_mains.append(browser)
-                
-                for start_file in potential_mains:
-                    # Clean the path
-                    clean = start_file[2:] if start_file.startswith("./") else start_file
-                    
-                    # Add variations to check
-                    variations = [
-                        f"extension/{clean}",
-                        clean,
-                        f"extension/{clean}.js",
-                        f"{clean}.js",
-                        f"extension/{clean}/index.js",
-                        f"{clean}/index.js"
-                    ]
-                    entry_files.extend(variations)
-
-                available = set(zf.namelist())
+                available_files = set(zf.namelist())
                 targets = []
                 seen_targets = set()
                 
-                for f in entry_files:
-                    if f in available and f not in seen_targets:
-                        targets.append(f)
-                        seen_targets.add(f)
+                # 1. SMART TARGETING: Prioritize files with YARA hits
+                if yara_result and hasattr(yara_result, "findings"):
+                    for finding in yara_result.findings:
+                        suspicious_file = finding.get("file_path")
+                        if suspicious_file and suspicious_file.endswith(".js"):
+                            if suspicious_file in available_files and suspicious_file not in seen_targets:
+                                targets.append(suspicious_file)
+                                seen_targets.add(suspicious_file)
+                                logger.info(f"AI Smart Target: Prioritizing YARA hit in {suspicious_file}")
+
+                # 2. FALLBACK TARGETING: Look for package.json main entry points
+                if not targets:
+                    pkg_data = None
+                    for candidate in ["extension/package.json", "package.json"]:
+                        try:
+                            pkg_data = json.loads(zf.read(candidate).decode("utf-8"))
+                            break
+                        except (KeyError, json.JSONDecodeError):
+                            continue
+
+                    if not pkg_data:
+                        return self._fallback_response("No package.json found and no YARA hits targets")
+
+                    # Determine entry points
+                    entry_files = []
+                    main = pkg_data.get("main", "")
+                    browser = pkg_data.get("browser", "")
+                    
+                    potential_mains = []
+                    if main: potential_mains.append(main)
+                    if browser: potential_mains.append(browser)
+                    
+                    for start_file in potential_mains:
+                        clean = start_file[2:] if start_file.startswith("./") else start_file
+                        variations = [
+                            f"extension/{clean}",
+                            clean,
+                            f"extension/{clean}.js",
+                            f"{clean}.js",
+                            f"extension/{clean}/index.js",
+                            f"{clean}/index.js"
+                        ]
+                        entry_files.extend(variations)
+
+                    for f in entry_files:
+                        if f in available_files and f not in seen_targets:
+                            targets.append(f)
+                            seen_targets.add(f)
 
                 if not targets:
-                    return self._fallback_response(f"Entry point not found: {main or browser}")
+                    return self._fallback_response("No valid Javascript entry points or YARA targets found")
 
-                # Analyze each entry point
+                # Analyze the targeted entry points
                 all_results = []
                 for target in targets[:2]:  # Max 2 entry points
                     source = zf.read(target).decode("utf-8", errors="replace")
@@ -414,7 +428,7 @@ class AIVibeChecker:
             return self._fallback_response(str(e))
 
 
-def vibe_check_vsix(vsix_path: str, config: dict = None) -> dict:
+def vibe_check_vsix(vsix_path: str, config: dict = None, yara_result: object = None) -> dict:
     """Convenience function to run AI Vibe Check on a VSIX."""
     checker = AIVibeChecker(config)
-    return checker.analyze_vsix(vsix_path)
+    return checker.analyze_vsix(vsix_path, yara_result=yara_result)

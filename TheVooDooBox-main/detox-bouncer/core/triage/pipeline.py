@@ -168,7 +168,7 @@ class TriagePipeline:
             try:
                 from core.triage.ai_vibe_check import AIVibeChecker
                 ai = AIVibeChecker(self.config)
-                ai_res = ai.analyze_vsix(vsix_path)
+                ai_res = ai.analyze_vsix(vsix_path, yara_result=result.yara_result)
                 result.ai_result = ai_res
                 result.ai_risk = ai_res.get("risk_score", 0.0)
                 logger.info(
