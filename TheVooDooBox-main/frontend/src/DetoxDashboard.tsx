@@ -296,12 +296,12 @@ export default function DetoxDashboard() {
     };
 
     const sortedAndFiltered = extensions
-        .filter(ext =>
+        .filter((ext: DetoxExtension) =>
             !searchTerm ||
             ext.extension_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
             (ext.display_name || '').toLowerCase().includes(searchTerm.toLowerCase())
         )
-        .sort((a, b) => {
+        .sort((a: DetoxExtension, b: DetoxExtension) => {
             let valA: any = 0;
             let valB: any = 0;
 
@@ -443,7 +443,7 @@ export default function DetoxDashboard() {
                         </h3>
                         <div className="flex items-center gap-2">
                             {/* Filters */}
-                            {['', 'pending', 'clean', 'flagged'].map(f => (
+                            {['', 'pending', 'clean', 'flagged'].map((f: string) => (
                                 <button
                                     key={f}
                                     onClick={() => setFilter(f)}
@@ -534,7 +534,7 @@ export default function DetoxDashboard() {
                                         </td>
                                     </tr>
                                 ) : (
-                                    sortedAndFiltered.map(ext => (
+                                    sortedAndFiltered.map((ext: DetoxExtension) => (
                                         <tr
                                             key={ext.id}
                                             onClick={() => setDrawerExtId(ext.id)}
