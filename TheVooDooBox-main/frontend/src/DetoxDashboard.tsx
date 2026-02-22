@@ -134,7 +134,7 @@ export default function DetoxDashboard() {
     const [loading, setLoading] = useState(true);
     const [scanning, setScanning] = useState(false);
     const [manualScanId, setManualScanId] = useState('');
-    const [sortField, setSortField] = useState<'size' | 'updated' | 'published'>('updated');
+    const [sortField, setSortField] = useState<'extension' | 'version' | 'size' | 'installs' | 'state' | 'risk' | 'published' | 'updated'>('updated');
     const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
     // Sandbox Modal State
@@ -286,7 +286,7 @@ export default function DetoxDashboard() {
         }
     };
 
-    const handleSort = (field: 'size' | 'updated' | 'published') => {
+    const handleSort = (field: typeof sortField) => {
         if (sortField === field) {
             setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
         } else {
@@ -302,17 +302,37 @@ export default function DetoxDashboard() {
             (ext.display_name || '').toLowerCase().includes(searchTerm.toLowerCase())
         )
         .sort((a, b) => {
-            let valA = 0;
-            let valB = 0;
+            let valA: any = 0;
+            let valB: any = 0;
+
             if (sortField === 'size') {
                 valA = a.vsix_size_bytes || 0;
                 valB = b.vsix_size_bytes || 0;
             } else if (sortField === 'published') {
                 valA = a.published_date ? new Date(a.published_date).getTime() : 0;
                 valB = b.published_date ? new Date(b.published_date).getTime() : 0;
-            } else {
+            } else if (sortField === 'updated') {
                 valA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
                 valB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+            } else if (sortField === 'installs') {
+                valA = a.install_count || 0;
+                valB = b.install_count || 0;
+            } else if (sortField === 'risk') {
+                valA = a.risk_score || 0;
+                valB = b.risk_score || 0;
+            } else if (sortField === 'extension') {
+                valA = (a.display_name || a.extension_id).toLowerCase();
+                valB = (b.display_name || b.extension_id).toLowerCase();
+            } else if (sortField === 'version') {
+                valA = a.version;
+                valB = b.version;
+            } else if (sortField === 'state') {
+                valA = (a.latest_state || 'pending').toLowerCase();
+                valB = (b.latest_state || 'pending').toLowerCase();
+            }
+
+            if (typeof valA === 'string' && typeof valB === 'string') {
+                return sortOrder === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA);
             }
             return sortOrder === 'asc' ? valA - valB : valB - valA;
         });
@@ -454,17 +474,42 @@ export default function DetoxDashboard() {
                         <table className="w-full text-xs">
                             <thead className="sticky top-0 bg-voodoo-panel border-b border-voodoo-border">
                                 <tr className="text-gray-500 uppercase tracking-wider">
-                                    <th className="text-left p-3">Extension</th>
-                                    <th className="text-left p-3">Version</th>
+                                    <th
+                                        className="text-left p-3 cursor-pointer hover:text-white transition-colors"
+                                        onClick={() => handleSort('extension')}
+                                    >
+                                        Extension {sortField === 'extension' && (sortOrder === 'asc' ? '↑' : '↓')}
+                                    </th>
+                                    <th
+                                        className="text-left p-3 cursor-pointer hover:text-white transition-colors"
+                                        onClick={() => handleSort('version')}
+                                    >
+                                        Version {sortField === 'version' && (sortOrder === 'asc' ? '↑' : '↓')}
+                                    </th>
                                     <th
                                         className="text-right p-3 cursor-pointer hover:text-white transition-colors flex items-center justify-end gap-1"
                                         onClick={() => handleSort('size')}
                                     >
                                         Size {sortField === 'size' && (sortOrder === 'asc' ? '↑' : '↓')}
                                     </th>
-                                    <th className="text-center p-3">Installs</th>
-                                    <th className="text-center p-3">State</th>
-                                    <th className="text-center p-3">Risk</th>
+                                    <th
+                                        className="text-center p-3 cursor-pointer hover:text-white transition-colors"
+                                        onClick={() => handleSort('installs')}
+                                    >
+                                        Installs {sortField === 'installs' && (sortOrder === 'asc' ? '↑' : '↓')}
+                                    </th>
+                                    <th
+                                        className="text-center p-3 cursor-pointer hover:text-white transition-colors"
+                                        onClick={() => handleSort('state')}
+                                    >
+                                        State {sortField === 'state' && (sortOrder === 'asc' ? '↑' : '↓')}
+                                    </th>
+                                    <th
+                                        className="text-center p-3 cursor-pointer hover:text-white transition-colors"
+                                        onClick={() => handleSort('risk')}
+                                    >
+                                        Risk {sortField === 'risk' && (sortOrder === 'asc' ? '↑' : '↓')}
+                                    </th>
                                     <th
                                         className="text-right p-3 cursor-pointer hover:text-white transition-colors"
                                         onClick={() => handleSort('published')}

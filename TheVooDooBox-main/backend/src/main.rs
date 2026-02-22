@@ -2790,13 +2790,13 @@ async fn main() -> std::io::Result<()> {
     tokio::spawn(start_tcp_listener(broadcaster, agent_manager, pool));
 
     // --- Background Extension Auto-Discovery ---
-    // Runs every 6 hours to discover newly published extensions
+    // Runs every 30 minutes to discover newly published extensions
     tokio::spawn(async move {
-        let mut interval = tokio::time::interval(std::time::Duration::from_secs(6 * 60 * 60));
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(30 * 60));
         let client = reqwest::Client::new();
         loop {
             interval.tick().await;
-            println!("[DETOX] Running 6-hour auto-discovery for new extensions...");
+            println!("[DETOX] Running 30-minute auto-discovery for new extensions...");
             let payload = serde_json::json!({
                 "search_text": "",
                 "max_pages": 5,
