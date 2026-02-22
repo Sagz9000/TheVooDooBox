@@ -69,7 +69,7 @@ class AIVibeChecker:
         """Rough token count estimation."""
         return len(text) // self.CHARS_PER_TOKEN
 
-    def _chunk_source(self, source: str, max_chunk_tokens: int = 3000) -> list[str]:
+    def _chunk_source(self, source: str, max_chunk_tokens: int = 2000) -> list[str]:
         """
         Split source code into chunks that fit within the model's context.
 
@@ -149,6 +149,15 @@ class AIVibeChecker:
 
         except requests.exceptions.Timeout:
             msg = "AI request timed out"
+            logger.error(msg)
+            return self._fallback_response(msg)
+
+        except requests.exceptions.HTTPError as http_err:
+            status_code = http_err.response.status_code if http_err.response is not None else "Unknown"
+            if status_code == 400:
+                msg = f"AI server returned 400 (Bad Request). This usually means the input chunk + requested response ({self.max_tokens} tokens) exceeds the AI's context window (num_ctx). Try reducing chunk sizes or increasing num_ctx for the model."
+            else:
+                msg = f"AI call failed with status {status_code}: {http_err}"
             logger.error(msg)
             return self._fallback_response(msg)
 
