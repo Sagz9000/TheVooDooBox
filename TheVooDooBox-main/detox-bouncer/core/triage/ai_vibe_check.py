@@ -278,13 +278,15 @@ class AIVibeChecker:
                 entry_files = []
                 main = pkg_data.get("main", "")
                 if main:
-                    entry_files.append(f"extension/{main}")
-                    entry_files.append(main)
+                    clean_main = main[2:] if main.startswith("./") else main
+                    entry_files.append(f"extension/{clean_main}")
+                    entry_files.append(clean_main)
 
                 browser = pkg_data.get("browser", "")
                 if browser:
-                    entry_files.append(f"extension/{browser}")
-                    entry_files.append(browser)
+                    clean_browser = browser[2:] if browser.startswith("./") else browser
+                    entry_files.append(f"extension/{clean_browser}")
+                    entry_files.append(clean_browser)
 
                 available = set(zf.namelist())
                 targets = [f for f in entry_files if f in available]
