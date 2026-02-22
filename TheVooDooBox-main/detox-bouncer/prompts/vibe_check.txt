@@ -33,8 +33,8 @@ Your task is to perform a static "Vibe Check" on the provided JavaScript/TypeScr
 
 ## Response Format
 
-Respond with a JSON object:
-```json
+Respond with ONLY a raw JSON object. Do NOT wrap it in markdown blockticks (` ```json `). Do NOT include any conversational filler. Your entire response must be strictly parseable by `JSON.parse()`.
+
 {
   "risk_score": 0.0-1.0,
   "confidence": 0.0-1.0,
@@ -50,6 +50,5 @@ Respond with a JSON object:
   ],
   "summary": "One paragraph explaining your overall assessment."
 }
-```
 
-Be precise. Do not hallucinate findings. If the code is genuinely benign, say so. If you are uncertain, set confidence lower and explain why.
+Be precise. Do not hallucinate findings. If the code is genuinely benign, say so. If you are uncertain, set confidence lower and explain why. Output ONLY the JSON.
