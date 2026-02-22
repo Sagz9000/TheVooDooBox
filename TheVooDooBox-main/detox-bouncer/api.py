@@ -81,19 +81,40 @@ async def scan_extension(req: ScanRequest):
         if not vsix_path:
             raise HTTPException(status_code=500, detail="Failed to download VSIX")
 
-        # 4. Run triage pipeline
+        # Look up DB row for state tracking
+        from db.models import get_extension, update_scan_state
+        ext_row = get_extension(conn, req.extension_id, meta.get("version", "latest"))
+        ext_db_id = ext_row["id"] if ext_row else None
+
+        # 4. Mark as scanning
+        if ext_db_id:
+            update_scan_state(conn, ext_db_id, "STATIC_SCANNING")
+            conn.commit()
+            print(f"[BOUNCER] ► Scanning {req.extension_id}...")
+
+        # 5. Run triage pipeline
         config = scraper.config
         triage_result = triage_vsix(vsix_path, config=config)
 
-        # 5. Generate threat report and persist to DB
+        # 6. Update state and risk_score based on verdict
+        if ext_db_id:
+            final_state = "FLAGGED" if triage_result.verdict in ("SUSPICIOUS", "MALICIOUS") else "CLEAN"
+            update_scan_state(conn, ext_db_id, final_state)
+            # Persist risk_score to detox_extensions
+            cur = conn.cursor()
+            cur.execute(
+                "UPDATE detox_extensions SET risk_score = %s WHERE id = %s",
+                (triage_result.composite_risk, ext_db_id),
+            )
+            cur.close()
+            conn.commit()
+            print(f"[BOUNCER] ✓ {req.extension_id}: {final_state} (risk={triage_result.composite_risk:.2f})")
+
+        # 7. Generate threat report and persist to DB
         try:
-            from db.models import get_extension
-            ext_row = get_extension(conn, req.extension_id, meta.get("version", "latest"))
-            if ext_row:
+            if ext_db_id:
                 report_gen = ThreatReportGenerator(conn, config)
-                report = report_gen.generate(ext_row["id"], triage_result=triage_result)
-            else:
-                print(f"[BOUNCER] Warning: Could not find DB row for {req.extension_id} to generate report")
+                report = report_gen.generate(ext_db_id, triage_result=triage_result)
         except Exception as report_err:
             print(f"[BOUNCER] Warning: Threat report generation failed: {report_err}")
             traceback.print_exc()
@@ -139,14 +160,36 @@ async def scrape_marketplace(req: ScrapeRequest):
         # Automatically run triage on the downloaded extensions
         for ext in downloaded:
             try:
+                from db.models import get_extension, update_scan_state
+                ext_row = get_extension(conn, ext["extension_id"], ext["version"])
+                ext_db_id = ext_row["id"] if ext_row else None
+
+                # Mark as scanning
+                if ext_db_id:
+                    update_scan_state(conn, ext_db_id, "STATIC_SCANNING")
+                    conn.commit()
+                    print(f"[BOUNCER] ► Auto-triaging {ext['extension_id']}...")
+
                 triage_result = triage_vsix(ext["vsix_path"], config=config)
+
+                # Update state and risk score
+                if ext_db_id:
+                    final_state = "FLAGGED" if triage_result.verdict in ("SUSPICIOUS", "MALICIOUS") else "CLEAN"
+                    update_scan_state(conn, ext_db_id, final_state)
+                    cur = conn.cursor()
+                    cur.execute(
+                        "UPDATE detox_extensions SET risk_score = %s WHERE id = %s",
+                        (triage_result.composite_risk, ext_db_id),
+                    )
+                    cur.close()
+                    conn.commit()
+                    print(f"[BOUNCER] ✓ {ext['extension_id']}: {final_state} (risk={triage_result.composite_risk:.2f})")
+
                 # Generate threat report
                 try:
-                    from db.models import get_extension
-                    ext_row = get_extension(conn, ext["extension_id"], ext["version"])
-                    if ext_row:
+                    if ext_db_id:
                         report_gen = ThreatReportGenerator(conn, config)
-                        report_gen.generate(ext_row["id"], triage_result=triage_result)
+                        report_gen.generate(ext_db_id, triage_result=triage_result)
                 except Exception as report_err:
                     print(f"[BOUNCER] Warning: Report generation failed for {ext['extension_id']}: {report_err}")
                 triage_started += 1

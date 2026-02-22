@@ -208,6 +208,8 @@ def update_scan_state(conn, extension_db_id: int, new_state: str):
     latest_map = {
         "CLEAN": "clean", "WHITELISTED": "clean",
         "FLAGGED": "flagged",
+        "STATIC_SCANNING": "scanning", "DOWNLOADING": "scanning",
+        "DETONATING": "detonating",
     }
     latest = latest_map.get(new_state, "pending")
 
