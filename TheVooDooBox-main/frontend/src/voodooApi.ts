@@ -692,6 +692,16 @@ export const voodooApi = {
             const errText = await resp.text();
             throw new Error(`Failed to purge all Detox data: ${errText || resp.statusText}`);
         }
+    },
+
+    killDetoxProcessing: async (): Promise<void> => {
+        const resp = await fetch(`${BASE_URL}/api/detox/kill`, {
+            method: 'POST'
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Failed to trigger Detox kill switch: ${errText || resp.statusText}`);
+        }
     }
 };
 

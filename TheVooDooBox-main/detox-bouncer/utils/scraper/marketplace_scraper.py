@@ -266,6 +266,7 @@ class MarketplaceScraper:
         max_pages: int = 5,
         page_size: int = 50,
         sort_by: int = 4, # 4 = PublishedDate
+        stop_check: callable = None,
     ) -> int:
         """
         Discover extensions from the Marketplace and store them in the DB.
@@ -287,6 +288,8 @@ class MarketplaceScraper:
         total_processed = 0
 
         for page in range(1, max_pages + 1):
+            if stop_check and stop_check():
+                break
             logger.info(f"Querying Marketplace page {page}/{max_pages}...")
 
             try:

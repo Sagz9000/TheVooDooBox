@@ -8,7 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
     Shield, Activity, AlertTriangle, Search, CheckCircle,
     Clock, RefreshCw, ChevronRight, Package, Eye,
-    Zap, Database, BarChart3, Crosshair, Play, Trash2
+    Zap, Database, BarChart3, Crosshair, Play, Trash2, XOctagon
 } from 'lucide-react';
 import { voodooApi, type DetoxDashboardStats, type DetoxExtension, type ViewModel } from './voodooApi';
 import SubmissionModal, { type SubmissionData } from './SubmissionModal';
@@ -276,6 +276,9 @@ export default function DetoxDashboard() {
         setScanning(true);
         try {
             await voodooApi.purgeAllDetoxData();
+            // Force clear local state for immediate feedback
+            setExtensions([]);
+            setStats(prev => prev ? { ...prev, total_extensions: 0, clean: 0, flagged: 0, pending: 0, avg_risk_score: 0 } : null);
             alert("Detox database wiped successfully.");
             await loadData();
         } catch (err) {
@@ -283,6 +286,18 @@ export default function DetoxDashboard() {
             alert(`Purge failed: ${err}`);
         } finally {
             setScanning(false);
+        }
+    };
+
+    const handleKillProcessing = async () => {
+        if (!window.confirm("Stop all active Detox scraping and triage?")) return;
+        try {
+            await voodooApi.killDetoxProcessing();
+            alert("Kill signal sent to Detox Bouncer.");
+            await loadData();
+        } catch (err) {
+            console.error('[Detox] Kill switch failed:', err);
+            alert(`Failed to stop processing: ${err}`);
         }
     };
 
@@ -393,6 +408,15 @@ export default function DetoxDashboard() {
                     >
                         <Crosshair size={14} className={scanning && !manualScanId ? 'animate-pulse text-[#39ff14]' : ''} />
                         Scan Pending
+                    </button>
+
+                    <button
+                        onClick={handleKillProcessing}
+                        title="Kill active processes"
+                        className="flex items-center justify-center gap-2 px-3 py-1.5 bg-red-900/20 border border-red-500/50 hover:bg-red-500/20 text-red-500 rounded-lg text-sm transition-colors"
+                    >
+                        <XOctagon size={14} />
+                        Stop
                     </button>
 
                     <button

@@ -531,3 +531,38 @@ pub async fn detox_purge_all() -> HttpResponse {
     }
 }
 
+// ── Kill Switch (proxy to bouncer) ──────────────────────────────────────────
+
+#[post("/api/detox/kill")]
+pub async fn detox_kill_processing() -> HttpResponse {
+    let bouncer_url = std::env::var("DETOX_BOUNCER_URL")
+        .unwrap_or_else(|_| "http://detox-bouncer:8000".to_string());
+
+    println!("[DETOX-API] ☢ TRIGGERING KILL SWITCH at {}", bouncer_url);
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    match client
+        .post(format!("{}/kill", bouncer_url))
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body_text = resp.text().await.unwrap_or_default();
+            HttpResponse::build(actix_web::http::StatusCode::from_u16(status).unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR))
+                .content_type("application/json")
+                .body(body_text)
+        }
+        Err(e) => {
+            eprintln!("[DETOX-API] Bouncer kill proxy error: {}", e);
+            HttpResponse::ServiceUnavailable().json(serde_json::json!({
+                "error": format!("Bouncer unreachable: {}", e)
+            }))
+        }
+    }
+}
+

@@ -13,6 +13,16 @@ from typing import Optional
 
 app = FastAPI(title="ExtensionDetox Bouncer", version="1.0.0")
 
+# ── Global Control ──
+STOP_SIGNAL = False
+
+def check_stop():
+    global STOP_SIGNAL
+    if STOP_SIGNAL:
+        print("[BOUNCER] 🛑 Received STOP_SIGNAL. Halting operations.")
+        return True
+    return False
+
 # ── Startup ──────────────────────────────────────────────────────────────────
 @app.on_event("startup")
 async def startup():
@@ -163,6 +173,8 @@ class ScrapeRequest(BaseModel):
 @app.post("/scrape")
 async def scrape_marketplace(req: ScrapeRequest):
     """Trigger the marketplace scraper to discover new/updated extensions."""
+    global STOP_SIGNAL
+    STOP_SIGNAL = False # Reset on new request
     try:
         from utils.scraper.marketplace_scraper import MarketplaceScraper
         from core.triage.pipeline import triage_vsix
@@ -186,7 +198,8 @@ async def scrape_marketplace(req: ScrapeRequest):
             search_text=req.search_text,
             max_pages=req.max_pages, 
             page_size=50,
-            sort_by=sort_int
+            sort_by=sort_int,
+            stop_check=check_stop
         )
         
         # No longer triggering downloads or triage here. 
@@ -204,6 +217,8 @@ class ScanPendingRequest(BaseModel):
 @app.post("/scan-pending")
 async def scan_pending(req: ScanPendingRequest):
     """Fetch queued extensions, download them, and run them through triage."""
+    global STOP_SIGNAL
+    STOP_SIGNAL = False # Reset on new request
     try:
         from utils.scraper.marketplace_scraper import MarketplaceScraper
         from core.triage.pipeline import triage_vsix
@@ -219,6 +234,9 @@ async def scan_pending(req: ScanPendingRequest):
         
         triage_started = 0
         for ext in downloaded:
+            if check_stop():
+                break
+                
             try:
                 from db.models import get_extension, update_scan_state
                 ext_row = get_extension(conn, ext["extension_id"], ext["version"])
@@ -285,6 +303,15 @@ async def sync_blocklist():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@app.post("/kill")
+async def kill_processing():
+    """Immediately stop any active scraping or scan-pending tasks."""
+    global STOP_SIGNAL
+    STOP_SIGNAL = True
+    print("[BOUNCER] ☢ STOP_SIGNAL BROADCAST")
+    return {"status": "stopping"}
+
+
 # ── Global Purge ─────────────────────────────────────────────────────────────
 @app.delete("/purge/all")
 async def purge_all_data():
@@ -301,6 +328,15 @@ async def purge_all_data():
 
         # 2. Delete all extensions
         cur.execute("DELETE FROM detox_extensions")
+        
+        # 3. Delete all publishers
+        cur.execute("DELETE FROM detox_publishers")
+        
+        # Reset IDs
+        cur.execute("ALTER SEQUENCE detox_extensions_id_seq RESTART WITH 1")
+        cur.execute("ALTER SEQUENCE detox_scan_history_id_seq RESTART WITH 1")
+        cur.execute("ALTER SEQUENCE detox_publishers_id_seq RESTART WITH 1")
+        
         conn.commit()
         cur.close()
 
