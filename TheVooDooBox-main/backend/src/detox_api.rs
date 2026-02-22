@@ -295,7 +295,9 @@ pub struct DetoxSandboxRequest {
     pub vmid: Option<u64>,
     pub node: Option<String>,
     pub duration_minutes: Option<u64>,
+    #[allow(dead_code)]
     pub analysis_mode: Option<String>,
+    #[allow(dead_code)]
     pub ai_strategy: Option<String>,
 }
 
