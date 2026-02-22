@@ -63,6 +63,8 @@ async def scan_extension(req: ScanRequest):
         meta = scraper.fetch_extension_metadata(req.extension_id)
         if not meta:
             raise HTTPException(status_code=404, detail=f"Extension '{req.extension_id}' not found on marketplace")
+            
+        resolved_ext_id = meta.get("extension_id", req.extension_id)
 
         # 2. Upsert extension into DB so triage has a row to update
         from db.models import upsert_extension, upsert_publisher
@@ -75,7 +77,7 @@ async def scan_extension(req: ScanRequest):
         )
         upsert_extension(
             conn,
-            extension_id=req.extension_id,
+            extension_id=resolved_ext_id,
             version=meta.get("version", "latest"),
             display_name=meta.get("display_name", ""),
             short_desc=meta.get("short_desc", ""),
@@ -88,26 +90,26 @@ async def scan_extension(req: ScanRequest):
 
         # 3. Download VSIX
         version_to_download = req.version or meta.get("version", "latest")
-        vsix_path = scraper.download_vsix(req.extension_id, version_to_download, allow_heavyweight=req.force)
+        vsix_path = scraper.download_vsix(resolved_ext_id, version_to_download, allow_heavyweight=req.force)
         
         if not vsix_path:
             # Check if it failed because it was too large
             from db.models import get_extension
-            ext_row = get_extension(conn, req.extension_id, version_to_download)
+            ext_row = get_extension(conn, resolved_ext_id, version_to_download)
             if ext_row and ext_row.get("scan_state") == "HEAVYWEIGHT":
                 raise HTTPException(status_code=413, detail="Extension is >20MB. Use force=true to download.")
             raise HTTPException(status_code=500, detail="Failed to download VSIX")
 
         # Look up DB row for state tracking
         from db.models import get_extension, update_scan_state
-        ext_row = get_extension(conn, req.extension_id, meta.get("version", "latest"))
+        ext_row = get_extension(conn, resolved_ext_id, meta.get("version", "latest"))
         ext_db_id = ext_row["id"] if ext_row else None
 
         # 4. Mark as scanning
         if ext_db_id:
             update_scan_state(conn, ext_db_id, "STATIC_SCANNING")
             conn.commit()
-            print(f"[BOUNCER] ► Scanning {req.extension_id}...")
+            print(f"[BOUNCER] ► Scanning {resolved_ext_id}...")
 
         # 5. Run triage pipeline
         config = scraper.config
@@ -139,11 +141,11 @@ async def scan_extension(req: ScanRequest):
             )
             cur.close()
             conn.commit()
-            print(f"[BOUNCER] ✓ {req.extension_id}: {final_state} (risk={final_risk:.2f})")
+            print(f"[BOUNCER] ✓ {resolved_ext_id}: {final_state} (risk={final_risk:.2f})")
 
         return {
             "status": "complete",
-            "extension_id": req.extension_id,
+            "extension_id": resolved_ext_id,
             "risk_score": triage_result.composite_risk,
             "verdict": triage_result.verdict,
             "findings_count": triage_result.total_findings,
