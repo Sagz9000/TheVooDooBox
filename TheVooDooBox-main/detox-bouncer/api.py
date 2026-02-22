@@ -285,6 +285,44 @@ async def sync_blocklist():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+# ── Global Purge ─────────────────────────────────────────────────────────────
+@app.delete("/purge/all")
+async def purge_all_data():
+    """Wipe all extension records, scan history, and archived VSIX files."""
+    try:
+        from db.models import get_connection
+        import shutil
+
+        conn = get_connection()
+        cur = conn.cursor()
+
+        # 1. Delete scan history
+        cur.execute("DELETE FROM detox_scan_history")
+
+        # 2. Delete all extensions
+        cur.execute("DELETE FROM detox_extensions")
+        conn.commit()
+        cur.close()
+
+        # 3. Wipe the VSIX archive directory
+        vsix_dir = "/app/data/vsix_archive"
+        if os.path.exists(vsix_dir):
+            for filename in os.listdir(vsix_dir):
+                file_path = os.path.join(vsix_dir, filename)
+                try:
+                    if os.path.isfile(file_path):
+                        os.unlink(file_path)
+                except Exception as e:
+                    print(f"[BOUNCER] Error deleting {file_path}: {e}")
+
+        print("[BOUNCER] ☢ GLOBAL PURGE COMPLETE")
+        return {"status": "all_purged"}
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 # ── Purge Extension ──────────────────────────────────────────────────────────
 @app.delete("/purge/{ext_id}")
 async def purge_extension(ext_id: int):
@@ -323,40 +361,6 @@ async def purge_extension(ext_id: int):
 
     except HTTPException:
         raise
-    except Exception as e:
-        traceback.print_exc()
-@app.delete("/purge/all")
-async def purge_all_data():
-    """Wipe all extension records, scan history, and archived VSIX files."""
-    try:
-        from db.models import get_connection
-        import shutil
-
-        conn = get_connection()
-        cur = conn.cursor()
-
-        # 1. Delete scan history
-        cur.execute("DELETE FROM detox_scan_history")
-
-        # 2. Delete all extensions
-        cur.execute("DELETE FROM detox_extensions")
-        conn.commit()
-        cur.close()
-
-        # 3. Wipe the VSIX archive directory
-        vsix_dir = "/app/data/vsix_archive"
-        if os.path.exists(vsix_dir):
-            for filename in os.listdir(vsix_dir):
-                file_path = os.path.join(vsix_dir, filename)
-                try:
-                    if os.path.isfile(file_path):
-                        os.unlink(file_path)
-                except Exception as e:
-                    print(f"[BOUNCER] Error deleting {file_path}: {e}")
-
-        print("[BOUNCER] ☢ GLOBAL PURGE COMPLETE")
-        return {"status": "all_purged"}
-
     except Exception as e:
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
