@@ -7,9 +7,10 @@ these endpoints to trigger scans, scrapes, and blocklist syncs.
 
 import os
 import traceback
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, BackgroundTasks
 from pydantic import BaseModel
 from typing import Optional
+from starlette.concurrency import run_in_threadpool
 
 app = FastAPI(title="ExtensionDetox Bouncer", version="1.0.0")
 
@@ -110,14 +111,14 @@ async def scan_extension(req: ScanRequest):
 
         # 5. Run triage pipeline
         config = scraper.config
-        triage_result = triage_vsix(vsix_path, config=config)
+        triage_result = await run_in_threadpool(triage_vsix, vsix_path, config=config)
 
         # 6. Generate threat report (which calculates final composite score and verdict)
         report = None
         try:
             if ext_db_id:
                 report_gen = ThreatReportGenerator(conn, config)
-                report = report_gen.generate(ext_db_id, triage_result=triage_result)
+                report = await run_in_threadpool(report_gen.generate, ext_db_id, triage_result=triage_result)
         except Exception as report_err:
             print(f"[BOUNCER] Warning: Threat report generation failed: {report_err}")
             traceback.print_exc()
@@ -139,15 +140,6 @@ async def scan_extension(req: ScanRequest):
             cur.close()
             conn.commit()
             print(f"[BOUNCER] ✓ {req.extension_id}: {final_state} (risk={final_risk:.2f})")
-
-        # 7. Generate threat report and persist to DB
-        try:
-            if ext_db_id:
-                report_gen = ThreatReportGenerator(conn, config)
-                report = report_gen.generate(ext_db_id, triage_result=triage_result)
-        except Exception as report_err:
-            print(f"[BOUNCER] Warning: Threat report generation failed: {report_err}")
-            traceback.print_exc()
 
         return {
             "status": "complete",
@@ -194,7 +186,8 @@ async def scrape_marketplace(req: ScrapeRequest):
         }
         sort_int = sort_map.get(req.sort_by, 4)  # Default PublishedDate
 
-        count = scraper.discover_and_store(
+        count = await run_in_threadpool(
+            scraper.discover_and_store,
             search_text=req.search_text,
             max_pages=req.max_pages, 
             page_size=50,
@@ -230,7 +223,7 @@ async def scan_pending(req: ScanPendingRequest):
         config = scraper.config
         
         # Download up to `limit` extensions that are in QUEUED state
-        downloaded = scraper.download_queued(limit=req.limit)
+        downloaded = await run_in_threadpool(scraper.download_queued, limit=req.limit)
         
         triage_started = 0
         for ext in downloaded:
@@ -248,14 +241,14 @@ async def scan_pending(req: ScanPendingRequest):
                     conn.commit()
                     print(f"[BOUNCER] ► Auto-triaging {ext['extension_id']}...")
 
-                triage_result = triage_vsix(ext["vsix_path"], config=config)
+                triage_result = await run_in_threadpool(triage_vsix, ext["vsix_path"], config=config)
 
                 # Generate threat report FIRST (which calculates final composite score and verdict)
                 report = None
                 try:
                     if ext_db_id:
                         report_gen = ThreatReportGenerator(conn, config)
-                        report = report_gen.generate(ext_db_id, triage_result=triage_result)
+                        report = await run_in_threadpool(report_gen.generate, ext_db_id, triage_result=triage_result)
                 except Exception as report_err:
                     print(f"[BOUNCER] Warning: Report generation failed for {ext['extension_id']}: {report_err}")
                 
