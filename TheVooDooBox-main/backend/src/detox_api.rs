@@ -208,6 +208,8 @@ pub async fn detox_trigger_scan(body: web::Json<ScanTriggerRequest>) -> HttpResp
     let bouncer_url = std::env::var("DETOX_BOUNCER_URL")
         .unwrap_or_else(|_| "http://detox-bouncer:8000".to_string());
 
+    println!("[DETOX-API] Triggering scan for {} at {}", body.extension_id, bouncer_url);
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
         .build()
@@ -255,6 +257,8 @@ pub async fn detox_trigger_scan_pending(body: web::Json<ScanPendingRequest>) -> 
     let bouncer_url = std::env::var("DETOX_BOUNCER_URL")
         .unwrap_or_else(|_| "http://detox-bouncer:8000".to_string());
 
+    println!("[DETOX-API] Triggering scan-pending (limit {:?}) at {}", body.limit, bouncer_url);
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
         .build()
@@ -299,6 +303,8 @@ pub struct ScrapeRequest {
 pub async fn detox_trigger_scrape(body: web::Json<ScrapeRequest>) -> HttpResponse {
     let bouncer_url = std::env::var("DETOX_BOUNCER_URL")
         .unwrap_or_else(|_| "http://detox-bouncer:8000".to_string());
+
+    println!("[DETOX-API] Triggering scrape at {}", bouncer_url);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(300))

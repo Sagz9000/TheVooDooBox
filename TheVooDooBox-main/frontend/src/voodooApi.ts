@@ -606,7 +606,10 @@ export const voodooApi = {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
         });
-        if (!resp.ok) throw new Error("Failed to trigger Detox scan");
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Failed to trigger Detox scan: ${errText || resp.statusText}`);
+        }
     },
 
     triggerDetoxScrape: async (
@@ -625,7 +628,7 @@ export const voodooApi = {
         });
         if (!resp.ok) {
             const errText = await resp.text();
-            throw new Error(`Failed to trigger Detox scrape: ${errText}`);
+            throw new Error(`Failed to trigger Detox scrape: ${errText || resp.statusText}`);
         }
         return await resp.json();
     },
@@ -638,7 +641,7 @@ export const voodooApi = {
         });
         if (!resp.ok) {
             const errText = await resp.text();
-            throw new Error(`Failed to trigger Detox scan-pending: ${errText}`);
+            throw new Error(`Failed to trigger Detox scan-pending: ${errText || resp.statusText}`);
         }
         return await resp.json();
     },
