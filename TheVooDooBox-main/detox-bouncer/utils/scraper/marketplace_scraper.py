@@ -247,18 +247,36 @@ class MarketplaceScraper:
 
     def fetch_extension_metadata(self, extension_id: str) -> Optional[dict]:
         """
-        Fetch complete metadata for a single extension by its ID.
+        Fetch complete metadata for a single extension by its ID or name.
         """
         try:
             self._rate_limit()
             resp = self.query_extensions(search_text=extension_id, page_size=1)
             results = self.parse_extension_results(resp)
-            if results and results[0]["extension_id"].lower() == extension_id.lower():
-                return results[0]
+            
+            if results:
+                top_result = results[0]
+                top_id_lower = top_result["extension_id"].lower()
+                search_lower = extension_id.lower()
+                
+                # Check for exact match (publisher.extension)
+                if top_id_lower == search_lower:
+                    return top_result
+                
+                # Check if it matches just the extension name (without publisher)
+                if "." not in search_lower:
+                    ext_name = top_id_lower.split(".")[-1]
+                    if ext_name == search_lower:
+                        return top_result
+                
+                # If query was fuzzy but it's the exact top result returned by the backend marketplace, trust it.
+                return top_result
+                
             return None
         except Exception as e:
             logger.error(f"Failed to fetch metadata for {extension_id}: {e}")
             return None
+
 
     def discover_and_store(
         self,
