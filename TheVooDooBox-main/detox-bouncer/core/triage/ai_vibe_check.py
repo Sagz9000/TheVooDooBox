@@ -278,7 +278,7 @@ class AIVibeChecker:
         summaries = []
         raw_responses = []
 
-        MAX_CHUNKS = 30 # Hard limit to prevent hours-long scans on bloated extensions
+        MAX_CHUNKS = 5 # Hard limit to prevent hours-long scans on bloated extensions
         if len(chunks) > MAX_CHUNKS:
             logger.warning(f"  Truncating {len(chunks)} chunks down to {MAX_CHUNKS} to prevent infinite scan processing.")
             chunks = chunks[:MAX_CHUNKS]
