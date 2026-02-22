@@ -2,13 +2,14 @@
 # Aligned with TheVooDooBox infrastructure
 
 ai:
-  # llama.cpp on VooDooBox AI server (AMD 7800XT)
+  # Ollama on VooDooBox AI server (AMD 7800XT 16GB VRAM)
   inference_url: "http://192.168.50.98:11434"
   embedding_url: "http://192.168.50.98:11435"
-  model: "llama-server"
-  # OpenAI-compatible endpoint
-  chat_endpoint: "/v1/chat/completions"
+  model: "deepseek-coder:14b"
+  # Ollama native endpoint (supports num_ctx via options)
+  chat_endpoint: "/api/chat"
   max_tokens: 2048
+  num_ctx: 16384   # 16K sweet spot for 14B on 16GB VRAM
   temperature: 0.1
 
 marketplace:
