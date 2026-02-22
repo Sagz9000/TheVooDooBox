@@ -161,6 +161,20 @@ export default function DetoxDashboard() {
         }
     };
 
+    const handleRescan = async (ext: DetoxExtension, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        try {
+            setScanning(true);
+            await voodooApi.triggerDetoxScan(ext.extension_id, ext.version);
+            await loadData();
+        } catch (err: any) {
+            console.error('[Detox] Rescan failed:', err);
+            alert(`Rescan failed: ${err.message || err}`);
+        } finally {
+            setScanning(false);
+        }
+    };
+
     useEffect(() => {
         loadData();
         const interval = setInterval(loadData, 15000); // Poll every 15s
@@ -389,6 +403,14 @@ export default function DetoxDashboard() {
                                             </td>
                                             <td className="p-3 text-right">
                                                 <div className="flex items-center justify-end gap-2">
+                                                    <button
+                                                        onClick={(e) => handleRescan(ext, e)}
+                                                        disabled={scanning || ext.latest_state === 'scanning'}
+                                                        title="Re-run Static Analysis"
+                                                        className="p-1.5 bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-400 rounded transition-colors disabled:opacity-30 disabled:hover:bg-cyan-500/10"
+                                                    >
+                                                        <RefreshCw size={14} className={ext.latest_state === 'scanning' ? 'animate-spin' : ''} />
+                                                    </button>
                                                     <button
                                                         onClick={(e) => {
                                                             e.stopPropagation();

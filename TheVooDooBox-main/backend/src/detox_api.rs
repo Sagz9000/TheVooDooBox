@@ -22,7 +22,7 @@ pub struct DetoxDashboardStats {
     pub clean: i64,
     pub flagged: i64,
     pub pending: i64,
-    pub avg_risk_score: f64,
+    pub avg_risk_score: Option<f32>,
     pub blocklist_count: i64,
 }
 
@@ -36,7 +36,7 @@ pub struct DetoxExtensionRow {
     pub install_count: Option<i32>,
     pub scan_state: Option<String>,
     pub latest_state: Option<String>,
-    pub risk_score: Option<f64>,
+    pub risk_score: Option<f32>,
     pub updated_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
@@ -46,8 +46,8 @@ pub struct DetoxScanHistoryRow {
     pub scan_type: Option<String>,
     pub started_at: Option<chrono::DateTime<chrono::Utc>>,
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub risk_score: Option<f64>,
-    pub composite_score: Option<f64>,
+    pub risk_score: Option<f32>,
+    pub composite_score: Option<f32>,
     pub findings_json: Option<serde_json::Value>,
     pub raw_ai_response: Option<String>,
 }
@@ -93,8 +93,8 @@ pub async fn detox_dashboard(pool: web::Data<Pool<Postgres>>) -> HttpResponse {
     .await
     .unwrap_or((0,));
 
-    let avg_risk: (Option<f64>,) = sqlx::query_as(
-        "SELECT AVG(risk_score) FROM detox_scan_history WHERE risk_score IS NOT NULL",
+    let avg_risk: (Option<f32>,) = sqlx::query_as(
+        "SELECT AVG(risk_score)::REAL FROM detox_extensions WHERE risk_score IS NOT NULL",
     )
     .fetch_one(pool.get_ref())
     .await
@@ -110,7 +110,7 @@ pub async fn detox_dashboard(pool: web::Data<Pool<Postgres>>) -> HttpResponse {
         clean: clean.0,
         flagged: flagged.0,
         pending: pending.0,
-        avg_risk_score: avg_risk.0.unwrap_or(0.0),
+        avg_risk_score: avg_risk.0,
         blocklist_count: blocklist.0,
     })
 }
