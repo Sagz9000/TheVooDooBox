@@ -34,6 +34,8 @@ pub struct DetoxExtensionRow {
     pub display_name: Option<String>,
     pub short_desc: Option<String>,
     pub install_count: Option<i32>,
+    pub vsix_size_bytes: Option<i64>,
+    pub published_date: Option<String>,
     pub scan_state: Option<String>,
     pub latest_state: Option<String>,
     pub risk_score: Option<f32>,
@@ -125,7 +127,7 @@ pub async fn detox_extensions(
     let rows = if let Some(ref state) = query.state {
         sqlx::query_as::<_, DetoxExtensionRow>(
             "SELECT id, extension_id, version, display_name, short_desc, install_count, \
-             scan_state, latest_state, risk_score, updated_at \
+             vsix_size_bytes, published_date, scan_state, latest_state, risk_score, updated_at \
              FROM detox_extensions WHERE latest_state = $1 \
              ORDER BY updated_at DESC LIMIT 200",
         )
@@ -135,7 +137,7 @@ pub async fn detox_extensions(
     } else {
         sqlx::query_as::<_, DetoxExtensionRow>(
             "SELECT id, extension_id, version, display_name, short_desc, install_count, \
-             scan_state, latest_state, risk_score, updated_at \
+             vsix_size_bytes, published_date, scan_state, latest_state, risk_score, updated_at \
              FROM detox_extensions ORDER BY updated_at DESC LIMIT 200",
         )
         .fetch_all(pool.get_ref())
@@ -162,7 +164,7 @@ pub async fn detox_extension_detail(
 
     let ext = sqlx::query_as::<_, DetoxExtensionRow>(
         "SELECT id, extension_id, version, display_name, short_desc, install_count, \
-         scan_state, latest_state, risk_score, updated_at \
+         vsix_size_bytes, published_date, scan_state, latest_state, risk_score, updated_at \
          FROM detox_extensions WHERE id = $1",
     )
     .bind(ext_id)
@@ -198,6 +200,7 @@ pub async fn detox_extension_detail(
 pub struct ScanTriggerRequest {
     pub extension_id: String,
     pub version: Option<String>,
+    pub force: Option<bool>,
 }
 
 #[post("/api/detox/scan")]
@@ -210,10 +213,13 @@ pub async fn detox_trigger_scan(body: web::Json<ScanTriggerRequest>) -> HttpResp
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
 
-    let scan_body = serde_json::json!({
+    let mut scan_body = serde_json::json!({
         "extension_id": body.extension_id,
         "version": body.version,
     });
+    if let Some(f) = body.force {
+        scan_body["force"] = serde_json::json!(f);
+    }
 
     match client
         .post(format!("{}/scan", bouncer_url))
@@ -237,10 +243,15 @@ pub async fn detox_trigger_scan(body: web::Json<ScanTriggerRequest>) -> HttpResp
     }
 }
 
-// ── Trigger Scrape (proxy to bouncer) ───────────────────────────────────────
+// ── Trigger Scan Pending (proxy to bouncer) ─────────────────────────────────
 
-#[post("/api/detox/scrape")]
-pub async fn detox_trigger_scrape() -> HttpResponse {
+#[derive(Deserialize)]
+pub struct ScanPendingRequest {
+    pub limit: Option<i32>,
+}
+
+#[post("/api/detox/scan-pending")]
+pub async fn detox_trigger_scan_pending(body: web::Json<ScanPendingRequest>) -> HttpResponse {
     let bouncer_url = std::env::var("DETOX_BOUNCER_URL")
         .unwrap_or_else(|_| "http://detox-bouncer:8000".to_string());
 
@@ -249,10 +260,60 @@ pub async fn detox_trigger_scrape() -> HttpResponse {
         .build()
         .unwrap_or_else(|_| reqwest::Client::new());
 
-    // By default, bouncer expects JSON body for scrape requests (max_pages, sort_by). Empty obj falls back to defaults.
+    let scan_body = serde_json::json!({
+        "limit": body.limit.unwrap_or(10),
+    });
+
+    match client
+        .post(format!("{}/scan-pending", bouncer_url))
+        .json(&scan_body)
+        .send()
+        .await
+    {
+        Ok(resp) => {
+            let status = resp.status().as_u16();
+            let body_text = resp.text().await.unwrap_or_default();
+            HttpResponse::build(actix_web::http::StatusCode::from_u16(status).unwrap_or(actix_web::http::StatusCode::INTERNAL_SERVER_ERROR))
+                .content_type("application/json")
+                .body(body_text)
+        }
+        Err(e) => {
+            eprintln!("[DETOX-API] Bouncer proxy error (scan-pending): {}", e);
+            HttpResponse::ServiceUnavailable().json(serde_json::json!({
+                "error": format!("Bouncer unreachable: {}", e)
+            }))
+        }
+    }
+}
+
+// ── Trigger Scrape (proxy to bouncer) ───────────────────────────────────────
+
+#[derive(Deserialize)]
+pub struct ScrapeRequest {
+    pub search_text: Option<String>,
+    pub max_pages: Option<i32>,
+    pub sort_by: Option<String>,
+}
+
+#[post("/api/detox/scrape")]
+pub async fn detox_trigger_scrape(body: web::Json<ScrapeRequest>) -> HttpResponse {
+    let bouncer_url = std::env::var("DETOX_BOUNCER_URL")
+        .unwrap_or_else(|_| "http://detox-bouncer:8000".to_string());
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new());
+
+    let scrape_body = serde_json::json!({
+        "search_text": body.search_text.clone().unwrap_or_default(),
+        "max_pages": body.max_pages.unwrap_or(5),
+        "sort_by": body.sort_by.clone().unwrap_or_else(|| "PublishedDate".to_string()),
+    });
+
     match client
         .post(format!("{}/scrape", bouncer_url))
-        .json(&serde_json::json!({}))
+        .json(&scrape_body)
         .send()
         .await
     {

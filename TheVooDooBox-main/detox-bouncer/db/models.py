@@ -60,6 +60,7 @@ def init_db():
             display_name TEXT,
             short_desc TEXT,
             vsix_hash_sha256 TEXT,
+            vsix_size_bytes BIGINT,
             published_date TEXT,
             last_updated TEXT,
             install_count INTEGER DEFAULT 0,
@@ -131,6 +132,7 @@ def init_db():
     # Migrations: Ensure raw_ai_response exists (for existing deployments)
     try:
         cur.execute("ALTER TABLE detox_scan_history ADD COLUMN IF NOT EXISTS raw_ai_response TEXT;")
+        cur.execute("ALTER TABLE detox_extensions ADD COLUMN IF NOT EXISTS vsix_size_bytes BIGINT;")
         conn.commit()
     except Exception as e:
         conn.rollback() # Table might not exist yet if it's a first run, which is fine
@@ -206,7 +208,7 @@ def update_scan_state(conn, extension_db_id: int, new_state: str):
     valid_states = {
         "QUEUED", "DOWNLOADING", "STATIC_SCANNING", "STATIC_COMPLETE",
         "DETONATING", "DETONATION_COMPLETE", "REPORTED",
-        "CLEAN", "FLAGGED", "WHITELISTED",
+        "CLEAN", "FLAGGED", "WHITELISTED", "HEAVYWEIGHT",
     }
     if new_state not in valid_states:
         raise ValueError(f"Invalid scan state: {new_state}")
@@ -218,6 +220,7 @@ def update_scan_state(conn, extension_db_id: int, new_state: str):
         "FLAGGED": "flagged",
         "STATIC_SCANNING": "scanning", "DOWNLOADING": "scanning",
         "DETONATING": "detonating",
+        "HEAVYWEIGHT": "heavyweight",
     }
     latest = latest_map.get(new_state, "pending")
 

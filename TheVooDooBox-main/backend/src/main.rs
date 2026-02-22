@@ -2789,6 +2789,27 @@ async fn main() -> std::io::Result<()> {
 
     tokio::spawn(start_tcp_listener(broadcaster, agent_manager, pool));
 
+    // --- Background Extension Auto-Discovery ---
+    // Runs every 6 hours to discover newly published extensions
+    tokio::spawn(async move {
+        let mut interval = tokio::time::interval(std::time::Duration::from_secs(6 * 60 * 60));
+        let client = reqwest::Client::new();
+        loop {
+            interval.tick().await;
+            println!("[DETOX] Running 6-hour auto-discovery for new extensions...");
+            let payload = serde_json::json!({
+                "search_text": "",
+                "max_pages": 5,
+                "sort_by": "PublishedDate"
+            });
+            let _ = client
+                .post("http://127.0.0.1:8080/api/detox/scrape")
+                .json(&payload)
+                .send()
+                .await;
+        }
+    });
+
     println!("Starting Hyper-Bridge server on 0.0.0.0:8080");
 
     use actix_cors::Cors;
@@ -2854,6 +2875,7 @@ async fn main() -> std::io::Result<()> {
             .service(detox_api::detox_extension_detail)
             .service(detox_api::detox_trigger_scan)
             .service(detox_api::detox_trigger_scrape)
+            .service(detox_api::detox_trigger_scan_pending)
             .service(detox_api::detox_blocklist)
             .service(detox_api::detox_submit_sandbox)
             .service(actix_files::Files::new("/vsix_archive", "/vsix_archive").show_files_listing())

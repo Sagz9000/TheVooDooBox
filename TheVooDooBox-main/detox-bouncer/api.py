@@ -27,10 +27,10 @@ async def health():
     return {"status": "ok", "service": "detox-bouncer"}
 
 
-# ── Scan Request ─────────────────────────────────────────────────────────────
 class ScanRequest(BaseModel):
     extension_id: str                # Marketplace extension ID, e.g. "ms-python.python"
     version: Optional[str] = None    # Specific version, or None for latest
+    force: bool = False              # If true, overrides the 20MB heavyweight limit
 
 @app.post("/scan")
 async def scan_extension(req: ScanRequest):
@@ -77,8 +77,14 @@ async def scan_extension(req: ScanRequest):
 
         # 3. Download VSIX
         version_to_download = req.version or meta.get("version", "latest")
-        vsix_path = scraper.download_vsix(req.extension_id, version_to_download)
+        vsix_path = scraper.download_vsix(req.extension_id, version_to_download, allow_heavyweight=req.force)
+        
         if not vsix_path:
+            # Check if it failed because it was too large
+            from db.models import get_extension
+            ext_row = get_extension(conn, req.extension_id, version_to_download)
+            if ext_row and ext_row.get("scan_state") == "HEAVYWEIGHT":
+                raise HTTPException(status_code=413, detail="Extension is >20MB. Use force=true to download.")
             raise HTTPException(status_code=500, detail="Failed to download VSIX")
 
         # Look up DB row for state tracking
@@ -150,8 +156,9 @@ async def scan_extension(req: ScanRequest):
 
 # ── Marketplace Scraper ──────────────────────────────────────────────────────
 class ScrapeRequest(BaseModel):
+    search_text: str = ""
     max_pages: int = 5
-    sort_by: str = "UpdatedDate"
+    sort_by: str = "PublishedDate"
 
 @app.post("/scrape")
 async def scrape_marketplace(req: ScrapeRequest):
@@ -165,13 +172,52 @@ async def scrape_marketplace(req: ScrapeRequest):
         conn = get_connection()
         scraper = MarketplaceScraper(conn)
         config = scraper.config
-        count = scraper.discover_and_store(max_pages=req.max_pages, page_size=50)
         
-        # Trigger a small batch of downloads for any newly queued extensions
-        downloaded = scraper.download_queued(limit=10)
+        # Map sort string to Marketplace API sort_by int
+        sort_map = {
+            "PublishedDate": 4,
+            "UpdatedDate": 8,
+            "InstallCount": 10,
+            "Rating": 12
+        }
+        sort_int = sort_map.get(req.sort_by, 4)  # Default PublishedDate
+
+        count = scraper.discover_and_store(
+            search_text=req.search_text,
+            max_pages=req.max_pages, 
+            page_size=50,
+            sort_by=sort_int
+        )
+        
+        # No longer triggering downloads or triage here. 
+        # /scrape is now strictly for discovery and queuing.
+        return {"status": "complete", "extensions_discovered": count}
+
+    except Exception as e:
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+
+# ── Bulk Scan Pending ────────────────────────────────────────────────────────
+class ScanPendingRequest(BaseModel):
+    limit: int = 10
+
+@app.post("/scan-pending")
+async def scan_pending(req: ScanPendingRequest):
+    """Fetch queued extensions, download them, and run them through triage."""
+    try:
+        from utils.scraper.marketplace_scraper import MarketplaceScraper
+        from core.triage.pipeline import triage_vsix
+        from core.reporting.threat_report import ThreatReportGenerator
+        from db.models import get_connection
+
+        conn = get_connection()
+        scraper = MarketplaceScraper(conn)
+        config = scraper.config
+        
+        # Download up to `limit` extensions that are in QUEUED state
+        downloaded = scraper.download_queued(limit=req.limit)
         
         triage_started = 0
-        # Automatically run triage on the downloaded extensions
         for ext in downloaded:
             try:
                 from db.models import get_extension, update_scan_state
@@ -215,7 +261,7 @@ async def scrape_marketplace(req: ScrapeRequest):
                 print(f"[BOUNCER] Error auto-triaging {ext['extension_id']}: {e}")
                 traceback.print_exc()
 
-        return {"status": "complete", "extensions_discovered": count, "triage_started": triage_started}
+        return {"status": "complete", "triage_started": triage_started}
 
     except Exception as e:
         traceback.print_exc()

@@ -596,24 +596,49 @@ export const voodooApi = {
         return await resp.json();
     },
 
-    triggerDetoxScan: async (extensionId: string, version?: string): Promise<void> => {
+    triggerDetoxScan: async (extensionId: string, version?: string, force?: boolean): Promise<void> => {
+        const payload: any = { extension_id: extensionId };
+        if (version) payload.version = version;
+        if (force !== undefined) payload.force = force;
+
         const resp = await fetch(`${BASE_URL}/api/detox/scan`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ extension_id: extensionId, version }),
+            body: JSON.stringify(payload),
         });
         if (!resp.ok) throw new Error("Failed to trigger Detox scan");
     },
 
-    triggerDetoxScrape: async (maxPages: number = 2): Promise<{ status: string, extensions_discovered: number }> => {
+    triggerDetoxScrape: async (
+        searchText: string = "",
+        maxPages: number = 5,
+        sortBy: string = "PublishedDate"
+    ): Promise<{ status: string, extensions_discovered: number }> => {
         const resp = await fetch(`${BASE_URL}/api/detox/scrape`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ max_pages: maxPages, sort_by: "UpdatedDate" })
+            body: JSON.stringify({
+                search_text: searchText,
+                max_pages: maxPages,
+                sort_by: sortBy
+            })
         });
         if (!resp.ok) {
             const errText = await resp.text();
             throw new Error(`Failed to trigger Detox scrape: ${errText}`);
+        }
+        return await resp.json();
+    },
+
+    triggerDetoxScanPending: async (limit: number = 10): Promise<{ status: string, triage_started: number }> => {
+        const resp = await fetch(`${BASE_URL}/api/detox/scan-pending`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ limit })
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Failed to trigger Detox scan-pending: ${errText}`);
         }
         return await resp.json();
     },
@@ -675,6 +700,8 @@ export interface DetoxExtension {
     display_name: string | null;
     short_desc: string | null;
     install_count: number | null;
+    vsix_size_bytes: number | null;
+    published_date: string | null;
     scan_state: string | null;
     latest_state: string | null;
     risk_score: number | null;

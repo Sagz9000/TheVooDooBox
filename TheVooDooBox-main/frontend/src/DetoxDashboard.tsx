@@ -14,6 +14,15 @@ import { voodooApi, type DetoxDashboardStats, type DetoxExtension, type ViewMode
 import SubmissionModal, { type SubmissionData } from './SubmissionModal';
 import ExtensionDetailDrawer from './ExtensionDetailDrawer';
 
+function formatBytes(bytes: number | null | undefined): string {
+    if (bytes == null || isNaN(bytes)) return '—';
+    if (bytes === 0) return '0 B';
+    const k = 1024;
+    const sizes = ['B', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
 // ── Risk Badge ──────────────────────────────────────────────────────────────
 
 function RiskBadge({ score }: { score: number | null }) {
@@ -38,11 +47,13 @@ function StateBadge({ state }: { state: string | null }) {
         clean: 'bg-emerald-500/20 text-emerald-400',
         flagged: 'bg-red-500/20 text-red-400',
         pending: 'bg-amber-500/20 text-amber-400',
+        heavyweight: 'bg-purple-500/20 text-purple-400',
     };
     const icons: Record<string, React.ReactNode> = {
         clean: <CheckCircle size={12} />,
         flagged: <AlertTriangle size={12} />,
         pending: <Clock size={12} />,
+        heavyweight: <Database size={12} />,
     };
     return (
         <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs ${styles[s] || styles.pending}`}>
@@ -123,6 +134,8 @@ export default function DetoxDashboard() {
     const [loading, setLoading] = useState(true);
     const [scanning, setScanning] = useState(false);
     const [manualScanId, setManualScanId] = useState('');
+    const [sortField, setSortField] = useState<'size' | 'updated' | 'published'>('updated');
+    const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
 
     // Sandbox Modal State
     const [isModalOpen, setIsModalOpen] = useState(false);
@@ -130,6 +143,12 @@ export default function DetoxDashboard() {
 
     // Detail Drawer State
     const [drawerExtId, setDrawerExtId] = useState<number | null>(null);
+
+    // Custom Scrape Modal State
+    const [scrapeModalOpen, setScrapeModalOpen] = useState(false);
+    const [scrapeSearchText, setScrapeSearchText] = useState('');
+    const [scrapeSortBy, setScrapeSortBy] = useState('PublishedDate');
+    const [scrapeMaxPages, setScrapeMaxPages] = useState(5);
 
     const loadData = useCallback(async () => {
         try {
@@ -182,9 +201,10 @@ export default function DetoxDashboard() {
     }, [loadData]);
 
     const triggerScrape = async () => {
+        setScrapeModalOpen(false);
         setScanning(true);
         try {
-            const res = await voodooApi.triggerDetoxScrape(2);
+            const res = await voodooApi.triggerDetoxScrape(scrapeSearchText, scrapeMaxPages, scrapeSortBy);
             alert(`Scrape complete! Discovered ${res.extensions_discovered} extensions.`);
             await loadData();
         } catch (err) {
@@ -195,12 +215,26 @@ export default function DetoxDashboard() {
         }
     };
 
+    const triggerScanPending = async () => {
+        setScanning(true);
+        try {
+            const res = await voodooApi.triggerDetoxScanPending(10);
+            alert(`Started triage on ${res.triage_started} pending extensions.`);
+            await loadData();
+        } catch (err) {
+            console.error('[Detox] Scan Pending failed:', err);
+            alert(`Scan Pending failed: ${err}`);
+        } finally {
+            setScanning(false);
+        }
+    };
+
     const handleManualScan = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!manualScanId.trim()) return;
         setScanning(true);
         try {
-            await voodooApi.triggerDetoxScan(manualScanId.trim());
+            await voodooApi.triggerDetoxScan(manualScanId.trim(), undefined, true); // force=true to bypass 20MB limit
             setManualScanId('');
             await loadData();
         } catch (err) {
@@ -235,11 +269,36 @@ export default function DetoxDashboard() {
         }
     };
 
-    const filtered = extensions.filter(ext =>
-        !searchTerm ||
-        ext.extension_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (ext.display_name || '').toLowerCase().includes(searchTerm.toLowerCase())
-    );
+    const handleSort = (field: 'size' | 'updated' | 'published') => {
+        if (sortField === field) {
+            setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortField(field);
+            setSortOrder('desc');
+        }
+    };
+
+    const sortedAndFiltered = extensions
+        .filter(ext =>
+            !searchTerm ||
+            ext.extension_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            (ext.display_name || '').toLowerCase().includes(searchTerm.toLowerCase())
+        )
+        .sort((a, b) => {
+            let valA = 0;
+            let valB = 0;
+            if (sortField === 'size') {
+                valA = a.vsix_size_bytes || 0;
+                valB = b.vsix_size_bytes || 0;
+            } else if (sortField === 'published') {
+                valA = a.published_date ? new Date(a.published_date).getTime() : 0;
+                valB = b.published_date ? new Date(b.published_date).getTime() : 0;
+            } else {
+                valA = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+                valB = b.updated_at ? new Date(b.updated_at).getTime() : 0;
+            }
+            return sortOrder === 'asc' ? valA - valB : valB - valA;
+        });
 
     if (loading) {
         return (
@@ -273,6 +332,7 @@ export default function DetoxDashboard() {
                         <button
                             type="submit"
                             disabled={scanning || !manualScanId.trim()}
+                            title="Force Scan (Bypasses 20MB limit)"
                             className="flex items-center justify-center gap-2 px-3 py-1.5 bg-voodoo-panel border border-voodoo-border hover:border-brand-500 text-brand-400 rounded-lg text-sm transition-colors disabled:opacity-50"
                         >
                             <Crosshair size={14} className={scanning && manualScanId ? 'animate-pulse text-[#39ff14]' : ''} />
@@ -281,12 +341,21 @@ export default function DetoxDashboard() {
                     </form>
 
                     <button
-                        onClick={triggerScrape}
+                        onClick={() => setScrapeModalOpen(true)}
+                        disabled={scanning}
+                        className="flex items-center justify-center gap-2 px-4 py-1.5 bg-voodoo-panel border border-brand-500/50 hover:bg-brand-500/10 text-brand-400 rounded-lg text-sm transition-colors disabled:opacity-50 whitespace-nowrap"
+                    >
+                        <RefreshCw size={14} className={scanning && !manualScanId ? 'animate-spin' : ''} />
+                        Scrape Marketplace
+                    </button>
+
+                    <button
+                        onClick={triggerScanPending}
                         disabled={scanning}
                         className="flex items-center justify-center gap-2 px-4 py-1.5 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-sm transition-colors disabled:opacity-50 whitespace-nowrap"
                     >
-                        <RefreshCw size={14} className={scanning && !manualScanId ? 'animate-spin' : ''} />
-                        {scanning && !manualScanId ? 'Scanning...' : 'Scrape Marketplace'}
+                        <Crosshair size={14} className={scanning && !manualScanId ? 'animate-pulse text-[#39ff14]' : ''} />
+                        Scan Pending
                     </button>
                 </div>
             </div>
@@ -360,23 +429,40 @@ export default function DetoxDashboard() {
                                 <tr className="text-gray-500 uppercase tracking-wider">
                                     <th className="text-left p-3">Extension</th>
                                     <th className="text-left p-3">Version</th>
+                                    <th
+                                        className="text-right p-3 cursor-pointer hover:text-white transition-colors flex items-center justify-end gap-1"
+                                        onClick={() => handleSort('size')}
+                                    >
+                                        Size {sortField === 'size' && (sortOrder === 'asc' ? '↑' : '↓')}
+                                    </th>
                                     <th className="text-center p-3">Installs</th>
                                     <th className="text-center p-3">State</th>
                                     <th className="text-center p-3">Risk</th>
-                                    <th className="text-right p-3">Updated</th>
+                                    <th
+                                        className="text-right p-3 cursor-pointer hover:text-white transition-colors"
+                                        onClick={() => handleSort('published')}
+                                    >
+                                        Published {sortField === 'published' && (sortOrder === 'asc' ? '↑' : '↓')}
+                                    </th>
+                                    <th
+                                        className="text-right p-3 cursor-pointer hover:text-white transition-colors"
+                                        onClick={() => handleSort('updated')}
+                                    >
+                                        Updated {sortField === 'updated' && (sortOrder === 'asc' ? '↑' : '↓')}
+                                    </th>
                                     <th className="text-right p-3">Actions</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {filtered.length === 0 ? (
+                                {sortedAndFiltered.length === 0 ? (
                                     <tr>
-                                        <td colSpan={6} className="text-center p-8 text-gray-600">
+                                        <td colSpan={10} className="text-center p-8 text-gray-600">
                                             <Zap size={24} className="mx-auto mb-2 opacity-30" />
                                             No extensions found. Scrape the marketplace to begin.
                                         </td>
                                     </tr>
                                 ) : (
-                                    filtered.map(ext => (
+                                    sortedAndFiltered.map(ext => (
                                         <tr
                                             key={ext.id}
                                             onClick={() => setDrawerExtId(ext.id)}
@@ -392,9 +478,13 @@ export default function DetoxDashboard() {
                                                 </div>
                                             </td>
                                             <td className="p-3 font-mono text-gray-400">{ext.version}</td>
+                                            <td className="p-3 text-right text-gray-400 font-mono">{formatBytes(ext.vsix_size_bytes)}</td>
                                             <td className="p-3 text-center text-gray-400">{(ext.install_count || 0).toLocaleString()}</td>
                                             <td className="p-3 text-center"><StateBadge state={ext.latest_state} /></td>
                                             <td className="p-3 text-center"><RiskBadge score={ext.risk_score} /></td>
+                                            <td className="p-3 text-right text-gray-500 text-[10px]">
+                                                {ext.published_date ? new Date(ext.published_date).toLocaleDateString() : '—'}
+                                            </td>
                                             <td className="p-3 text-right text-gray-600">
                                                 <div className="flex items-center justify-end gap-1">
                                                     {ext.updated_at ? new Date(ext.updated_at).toLocaleDateString() : '—'}
@@ -442,6 +532,69 @@ export default function DetoxDashboard() {
                     </div>
                 </div>
             </div>
+
+            {/* Custom Scrape Modal */}
+            {scrapeModalOpen && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+                    <div className="bg-voodoo-panel border border-voodoo-border rounded-xl shadow-2xl w-full max-w-md p-6 space-y-5">
+                        <h2 className="text-lg font-bold text-white flex items-center gap-2">
+                            <RefreshCw size={18} className="text-brand-400" />
+                            Custom Marketplace Scrape
+                        </h2>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="block text-xs text-gray-400 mb-1">Search Term (empty = all new extensions)</label>
+                                <input
+                                    type="text"
+                                    value={scrapeSearchText}
+                                    onChange={e => setScrapeSearchText(e.target.value)}
+                                    placeholder="e.g. python, theme, linter..."
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-brand-500 outline-none"
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-400 mb-1">Sort By</label>
+                                <select
+                                    value={scrapeSortBy}
+                                    onChange={e => setScrapeSortBy(e.target.value)}
+                                    className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-white focus:border-brand-500 outline-none appearance-none"
+                                >
+                                    <option value="PublishedDate">Published Date (Newest First)</option>
+                                    <option value="UpdatedDate">Updated Date</option>
+                                    <option value="InstallCount">Install Count</option>
+                                    <option value="Rating">Rating</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs text-gray-400 mb-1">Page Depth ({scrapeMaxPages} pages × 50 extensions = ~{scrapeMaxPages * 50})</label>
+                                <input
+                                    type="range"
+                                    min={1}
+                                    max={20}
+                                    value={scrapeMaxPages}
+                                    onChange={e => setScrapeMaxPages(parseInt(e.target.value))}
+                                    className="w-full accent-brand-500"
+                                />
+                            </div>
+                        </div>
+                        <div className="flex items-center justify-end gap-3 pt-2">
+                            <button
+                                onClick={() => setScrapeModalOpen(false)}
+                                className="px-4 py-2 bg-gray-800 hover:bg-gray-700 text-gray-300 rounded-lg text-sm transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={triggerScrape}
+                                className="px-4 py-2 bg-brand-600 hover:bg-brand-500 text-white rounded-lg text-sm transition-colors flex items-center gap-2"
+                            >
+                                <RefreshCw size={14} />
+                                Start Scrape
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {selectedExtForSandbox && (
                 <SubmissionModal

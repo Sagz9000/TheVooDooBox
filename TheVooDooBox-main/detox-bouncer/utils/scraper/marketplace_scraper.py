@@ -265,6 +265,7 @@ class MarketplaceScraper:
         search_text: str = "",
         max_pages: int = 5,
         page_size: int = 50,
+        sort_by: int = 4, # 4 = PublishedDate
     ) -> int:
         """
         Discover extensions from the Marketplace and store them in the DB.
@@ -293,6 +294,7 @@ class MarketplaceScraper:
                     search_text=search_text,
                     page_number=page,
                     page_size=page_size,
+                    sort_by=sort_by,
                 )
             except RuntimeError as e:
                 logger.error(f"Failed to query page {page}: {e}")
@@ -346,16 +348,17 @@ class MarketplaceScraper:
     # VSIX Download
     # ──────────────────────────────────────────
 
-    def download_vsix(self, extension_id: str, version: str) -> Optional[str]:
+    def download_vsix(self, extension_id: str, version: str, allow_heavyweight: bool = False) -> Optional[str]:
         """
         Download the .vsix archive for an extension.
 
         Args:
             extension_id: e.g., "ms-python.python"
             version: Specific version string
+            allow_heavyweight: If True, bypass the 20MB size limit
 
         Returns:
-            Path to the downloaded .vsix file, or None on failure.
+            Path to the downloaded .vsix file, or None on failure (or if skipped).
         """
         from db.models import get_extension, update_scan_state, hash_file_sha256
 
@@ -392,13 +395,24 @@ class MarketplaceScraper:
             self._rate_limit()
             resp = self._request_with_backoff("GET", url, stream=True)
 
-            # Check Content-Length for zip-bomb protection
+            # Check Content-Length for size protection
             content_length = int(resp.headers.get("Content-Length", 0))
-            max_bytes = self.max_vsix_size_mb * 1024 * 1024
-            if content_length > max_bytes:
+            max_bytes = 20 * 1024 * 1024  # 20MB limit
+
+            # If it's already larger than 20MB and we aren't forcing the download, skip it
+            if content_length > max_bytes and not allow_heavyweight:
                 logger.warning(
-                    f"VSIX too large ({content_length / 1024 / 1024:.1f}MB > {self.max_vsix_size_mb}MB). Skipping."
+                    f"VSIX exceeds 20MB ({content_length / 1024 / 1024:.1f}MB). Flagging as HEAVYWEIGHT."
                 )
+                if ext_row:
+                    update_scan_state(self.conn, ext_row["id"], "HEAVYWEIGHT")
+                    # Update DB with known size immediately
+                    cur = self.conn.cursor()
+                    cur.execute(
+                        "UPDATE detox_extensions SET vsix_size_bytes = %s WHERE id = %s",
+                        (content_length, ext_row["id"])
+                    )
+                    cur.close()
                 return None
 
             # Stream download
@@ -406,25 +420,39 @@ class MarketplaceScraper:
             with open(target_path, "wb") as f:
                 for chunk in resp.iter_content(chunk_size=8192):
                     downloaded += len(chunk)
-                    if downloaded > max_bytes:
-                        logger.warning("VSIX exceeded max size during download. Aborting.")
+                    if downloaded > max_bytes and not allow_heavyweight:
+                        logger.warning("VSIX exceeded 20MB limit during download stream. Aborting and flagging as HEAVYWEIGHT.")
                         f.close()
                         target_path.unlink(missing_ok=True)
+                        if ext_row:
+                            update_scan_state(self.conn, ext_row["id"], "HEAVYWEIGHT")
+                            # We at least know it's >20MB
+                            cur = self.conn.cursor()
+                            cur.execute(
+                                "UPDATE detox_extensions SET vsix_size_bytes = %s WHERE id = %s",
+                                (downloaded, ext_row["id"])
+                            )
+                            cur.close()
                         return None
                     f.write(chunk)
 
             # Hash the downloaded file
             vsix_hash = hash_file_sha256(str(target_path))
-            logger.info(f"Downloaded: {safe_name} (SHA256: {vsix_hash[:16]}...)")
+            
+            # File size is now the actual downloaded bytes
+            final_size_bytes = downloaded
+            
+            logger.info(f"Downloaded: {safe_name} (SHA256: {vsix_hash[:16]}..., Size: {final_size_bytes / 1024 / 1024:.1f}MB)")
 
-            # Update DB with hash
+            # Update DB with hash and size
             if ext_row:
                 cur = self.conn.cursor()
                 cur.execute(
-                    "UPDATE detox_extensions SET vsix_hash_sha256 = %s WHERE id = %s",
-                    (vsix_hash, ext_row["id"]),
+                    "UPDATE detox_extensions SET vsix_hash_sha256 = %s, vsix_size_bytes = %s WHERE id = %s",
+                    (vsix_hash, final_size_bytes, ext_row["id"]),
                 )
                 cur.close()
+                self.conn.commit()
 
             return str(target_path)
 
