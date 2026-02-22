@@ -206,7 +206,7 @@ def upsert_extension(
 def update_scan_state(conn, extension_db_id: int, new_state: str):
     """Transition an extension's scan state."""
     valid_states = {
-        "QUEUED", "DOWNLOADING", "STATIC_SCANNING", "STATIC_COMPLETE",
+        "QUEUED", "DOWNLOADING", "STATIC_SCANNING", "STATIC_SCANNED", "STATIC_COMPLETE",
         "DETONATING", "DETONATION_COMPLETE", "REPORTED",
         "CLEAN", "FLAGGED", "WHITELISTED", "HEAVYWEIGHT",
     }
@@ -219,6 +219,7 @@ def update_scan_state(conn, extension_db_id: int, new_state: str):
         "CLEAN": "clean", "WHITELISTED": "clean",
         "FLAGGED": "flagged",
         "STATIC_SCANNING": "scanning", "DOWNLOADING": "scanning",
+        "STATIC_SCANNED": "scanning",
         "DETONATING": "detonating",
         "HEAVYWEIGHT": "heavyweight",
     }
