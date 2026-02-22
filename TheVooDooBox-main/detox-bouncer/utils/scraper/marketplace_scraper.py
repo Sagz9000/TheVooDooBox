@@ -477,7 +477,7 @@ class MarketplaceScraper:
         """
         cur = self.conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
         cur.execute(
-            "SELECT * FROM detox_extensions WHERE scan_state = 'QUEUED' ORDER BY created_at LIMIT %s",
+            "SELECT * FROM detox_extensions WHERE scan_state = 'QUEUED' ORDER BY published_date DESC, created_at DESC LIMIT %s",
             (limit,),
         )
         rows = cur.fetchall()

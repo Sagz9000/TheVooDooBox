@@ -2807,6 +2807,16 @@ async fn main() -> std::io::Result<()> {
                 .json(&payload)
                 .send()
                 .await;
+
+            println!("[DETOX] Discovery complete. Triggering auto-triage for 20 latest extensions...");
+            let scan_payload = serde_json::json!({
+                "limit": 20
+            });
+            let _ = client
+                .post("http://127.0.0.1:8080/api/detox/scan-pending")
+                .json(&scan_payload)
+                .send()
+                .await;
         }
     });
 
