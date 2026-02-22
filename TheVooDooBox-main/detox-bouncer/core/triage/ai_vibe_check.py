@@ -334,7 +334,7 @@ class AIVibeChecker:
                 # 1. SMART TARGETING: Prioritize files with YARA hits
                 if yara_result and hasattr(yara_result, "findings"):
                     for finding in yara_result.findings:
-                        suspicious_file = finding.get("file_path")
+                        suspicious_file = getattr(finding, "file_path", None)
                         if suspicious_file and suspicious_file.endswith(".js"):
                             if suspicious_file in available_files and suspicious_file not in seen_targets:
                                 targets.append(suspicious_file)
