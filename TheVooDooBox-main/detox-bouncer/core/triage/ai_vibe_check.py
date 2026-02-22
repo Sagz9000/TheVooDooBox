@@ -157,29 +157,31 @@ class AIVibeChecker:
             # Reconstruct streamed chunks
             content = ""
             try:
-                # Add strict timeout to the iterator to prevent socket deadlocks
+                # Iterate over the live Server-Sent Events stream
                 for raw_chunk in resp.iter_lines(decode_unicode=False):
                     if not raw_chunk:
+                        # Ignore keep-alive blank lines
                         continue
                     
-                    chunk_str = raw_chunk.decode("utf-8")
-                    if chunk_str.startswith("data: "):
-                        chunk_str = chunk_str[6:]
+                    chunk_str = raw_chunk.decode("utf-8").strip()
                     
-                    if chunk_str.strip() == "[DONE]":
+                    if not chunk_str.startswith("data: "):
+                        continue
+                        
+                    chunk_str = chunk_str[6:] # Strip "data: "
+                    
+                    if chunk_str == "[DONE]":
                         break
                         
                     try:
                         chunk_data = json.loads(chunk_str)
                         delta = chunk_data.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                        content += delta
-                        
-                        # Emergency fast-break if we detect JSON has closed naturally
-                        if content.strip().endswith("}") and '"verdict"' in content:
-                            break
+                        if delta:
+                            content += delta
                             
                     except json.JSONDecodeError:
                         continue
+                        
             except requests.exceptions.Timeout:
                 logger.warning(f"Stream read timed out for {filename}, but attempting to parse captured content anyway.")
             except Exception as e:
