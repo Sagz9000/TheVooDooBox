@@ -57,11 +57,10 @@ class AIVibeChecker:
         ai_cfg = self.config.get("ai", {})
 
         self.base_url = ai_cfg.get("inference_url", "http://192.168.50.98:11434")
-        self.chat_endpoint = ai_cfg.get("chat_endpoint", "/api/chat")  # Ollama native endpoint
-        self.model = ai_cfg.get("model", "deepseek-coder:14b")
+        self.chat_endpoint = ai_cfg.get("chat_endpoint", "/v1/chat/completions")
+        self.model = ai_cfg.get("model", "llama-server")
         self.max_tokens = ai_cfg.get("max_tokens", 2048)
         self.temperature = ai_cfg.get("temperature", 0.1)
-        self.num_ctx = ai_cfg.get("num_ctx", 16384)  # 16K sweet spot for 14B on 16GB VRAM
 
         self.system_prompt = load_system_prompt()
         self.session = requests.Session()
@@ -114,33 +113,30 @@ class AIVibeChecker:
             f"```javascript\n{source_code}\n```"
         )
 
-        # Use Ollama native /api/chat format — this is the ONLY way to control num_ctx
+        # OpenAI-compatible format (used by llama.cpp llama-server)
         payload = {
             "model": self.model,
             "messages": [
                 {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": user_message},
             ],
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
             "stream": False,
-            "options": {
-                "temperature": self.temperature,
-                "num_ctx": self.num_ctx,        # THIS is what actually controls the context window
-                "num_predict": self.max_tokens,  # Ollama's equivalent of max_tokens
-            },
         }
 
         try:
             resp = self.session.post(
                 url,
                 json=payload,
-                timeout=180,  # Longer timeout for 16K context
+                timeout=180,
                 headers={"Content-Type": "application/json"},
             )
             resp.raise_for_status()
             data = resp.json()
 
-            # Ollama native format: response is in data["message"]["content"]
-            content = data.get("message", {}).get("content", "")
+            # OpenAI-compatible format
+            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
             # Parse JSON from the response (may be wrapped in markdown code blocks)
             parsed = self._parse_ai_response(content)
