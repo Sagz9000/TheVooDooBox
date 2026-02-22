@@ -141,7 +141,7 @@ class AIVibeChecker:
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
             "stream": True,
-            "stop": ["<｜end of sentence｜>", "```", "}\n\n", "<｜tool calls begin｜>"],
+            "stop": ["<｜end of sentence｜>", "<｜tool calls begin｜>"],
         }
 
         try:
