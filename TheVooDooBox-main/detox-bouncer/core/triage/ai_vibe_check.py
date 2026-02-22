@@ -69,7 +69,7 @@ class AIVibeChecker:
         """Rough token count estimation."""
         return len(text) // self.CHARS_PER_TOKEN
 
-    def _chunk_source(self, source: str, max_chunk_tokens: int = 10000) -> list[str]:
+    def _chunk_source(self, source: str, max_chunk_tokens: int = 4000) -> list[str]:
         """
         Split source code into chunks that fit within the model's context.
 

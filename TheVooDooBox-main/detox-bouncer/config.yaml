@@ -8,7 +8,7 @@ ai:
   model: "llama-server"
   # OpenAI-compatible endpoint (llama.cpp native)
   chat_endpoint: "/v1/chat/completions"
-  max_tokens: 2048
+  max_tokens: 1024
   temperature: 0.1
 
 marketplace:
