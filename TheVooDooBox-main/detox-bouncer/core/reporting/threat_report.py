@@ -78,6 +78,7 @@ class ThreatReport:
     # Metadata
     report_timestamp: str = ""
     analysis_duration_seconds: float = 0.0
+    raw_ai_response: str = ""
 
     def to_dict(self) -> dict:
         """Serialize to dictionary."""
@@ -198,6 +199,7 @@ class ThreatReportGenerator:
             )
             report.escalated_to_chamber = triage_result.escalate_to_chamber
             report.escalation_reasons = triage_result.escalation_reasons
+            report.raw_ai_response = triage_result.ai_result.get("raw_response", "")
 
             # Categorize findings
             self._categorize_findings(report, triage_result)
@@ -375,6 +377,7 @@ class ThreatReportGenerator:
             trust_score=report.trust_signal_score,
             composite_score=report.composite_score,
             findings_json=report.to_json(),
+            raw_ai_response=report.raw_ai_response,
         )
 
 

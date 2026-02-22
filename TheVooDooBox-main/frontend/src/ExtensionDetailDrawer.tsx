@@ -106,7 +106,7 @@ export default function ExtensionDetailDrawer({ extensionId, onClose }: DrawerPr
                                 <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
                                     <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Risk Score</p>
                                     <p className={`text-lg font-bold font-mono ${(ext?.risk_score ?? 0) >= 0.7 ? 'text-red-400' :
-                                            (ext?.risk_score ?? 0) >= 0.4 ? 'text-amber-400' : 'text-emerald-400'
+                                        (ext?.risk_score ?? 0) >= 0.4 ? 'text-amber-400' : 'text-emerald-400'
                                         }`}>
                                         {ext?.risk_score?.toFixed(2) || '0.00'}
                                     </p>
@@ -128,8 +128,8 @@ export default function ExtensionDetailDrawer({ extensionId, onClose }: DrawerPr
                                         key={t.id}
                                         onClick={() => setActiveTab(t.id as any)}
                                         className={`flex items-center gap-2 px-4 py-2 border-b-2 text-sm transition-colors ${activeTab === t.id
-                                                ? 'border-brand-500 text-brand-400'
-                                                : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
+                                            ? 'border-brand-500 text-brand-400'
+                                            : 'border-transparent text-gray-400 hover:text-white hover:border-gray-600'
                                             }`}
                                     >
                                         <t.icon size={16} />
@@ -184,6 +184,50 @@ export default function ExtensionDetailDrawer({ extensionId, onClose }: DrawerPr
                                                 </div>
                                             </div>
                                         </div>
+
+                                        {/* Findings List */}
+                                        {(findings?.critical_findings?.length > 0 || findings?.high_findings?.length > 0 || findings?.medium_findings?.length > 0 || findings?.info_findings?.length > 0) && (
+                                            <div>
+                                                <h3 className="text-sm font-bold text-white mb-2">Detailed Findings</h3>
+                                                <div className="space-y-2">
+                                                    {[
+                                                        ...(findings?.critical_findings || []).map((f: any) => ({ ...f, _level: 'critical', _color: 'text-red-500', _bg: 'bg-red-500/10 border-red-500/20' })),
+                                                        ...(findings?.high_findings || []).map((f: any) => ({ ...f, _level: 'high', _color: 'text-amber-500', _bg: 'bg-amber-500/10 border-amber-500/20' })),
+                                                        ...(findings?.medium_findings || []).map((f: any) => ({ ...f, _level: 'medium', _color: 'text-yellow-500', _bg: 'bg-yellow-500/10 border-yellow-500/20' })),
+                                                        ...(findings?.info_findings || []).map((f: any) => ({ ...f, _level: 'info', _color: 'text-blue-500', _bg: 'bg-blue-500/10 border-blue-500/20' }))
+                                                    ].map((finding, idx) => (
+                                                        <div key={idx} className={`p-3 rounded-lg border ${finding._bg}`}>
+                                                            <div className="flex items-start justify-between gap-4">
+                                                                <div>
+                                                                    <div className="flex items-center gap-2 mb-1">
+                                                                        <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-black/30 ${finding._color}`}>
+                                                                            {finding._level}
+                                                                        </span>
+                                                                        <span className="font-mono text-sm text-white">{finding.check_name || finding.rule_id || 'Unknown Check'}</span>
+                                                                    </div>
+                                                                    <p className="text-sm text-gray-300">{finding.description}</p>
+
+                                                                    {finding.file_path && (
+                                                                        <div className="mt-2 text-xs font-mono text-gray-400 bg-black/20 p-1.5 rounded inline-block">
+                                                                            📄 {finding.file_path}
+                                                                            {finding.line_number && ` : L${finding.line_number}`}
+                                                                        </div>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+
+                                                            {finding.code_snippet && (
+                                                                <div className="mt-2 relative">
+                                                                    <pre className="text-[11px] font-mono text-gray-300 bg-[#0d1117] p-2 rounded border border-gray-800 overflow-x-auto">
+                                                                        {finding.code_snippet.trim()}
+                                                                    </pre>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
 

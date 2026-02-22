@@ -138,7 +138,9 @@ class AIVibeChecker:
             content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
 
             # Parse JSON from the response (may be wrapped in markdown code blocks)
-            return self._parse_ai_response(content)
+            parsed = self._parse_ai_response(content)
+            parsed["raw_response"] = content
+            return parsed
 
         except requests.exceptions.ConnectionError:
             logger.error(f"Cannot connect to AI server at {self.base_url}")
@@ -211,6 +213,7 @@ class AIVibeChecker:
         max_risk = 0.0
         verdicts = []
         summaries = []
+        raw_responses = []
 
         for i, chunk in enumerate(chunks):
             chunk_name = f"{filename} (chunk {i + 1}/{len(chunks)})"
@@ -224,6 +227,9 @@ class AIVibeChecker:
             verdicts.append(result.get("verdict", "UNKNOWN"))
             all_findings.extend(result.get("findings", []))
             summaries.append(result.get("summary", ""))
+            
+            if "raw_response" in result:
+                raw_responses.append(f"=== {chunk_name} ===\n{result['raw_response']}")
 
         # Aggregate: worst-case verdict
         if "MALICIOUS" in verdicts:
@@ -240,6 +246,7 @@ class AIVibeChecker:
             "findings": all_findings,
             "summary": " | ".join(summaries),
             "chunks_analyzed": len(chunks),
+            "raw_response": "\n\n".join(raw_responses),
         }
 
     def analyze_vsix(self, vsix_path: str) -> dict:
@@ -294,10 +301,13 @@ class AIVibeChecker:
 
                 merged_findings = []
                 max_risk = 0.0
+                raw_responses = []
                 for r in all_results:
                     merged_findings.extend(r.get("findings", []))
                     if r.get("risk_score", 0) > max_risk:
                         max_risk = r["risk_score"]
+                    if "raw_response" in r:
+                        raw_responses.append(r["raw_response"])
 
                 verdicts = [r.get("verdict", "UNKNOWN") for r in all_results]
                 if "MALICIOUS" in verdicts:
@@ -314,6 +324,7 @@ class AIVibeChecker:
                     "findings": merged_findings,
                     "summary": " | ".join(r.get("summary", "") for r in all_results),
                     "entry_points_analyzed": targets[:2],
+                    "raw_response": "\n\n".join(raw_responses),
                 }
 
         except zipfile.BadZipFile:
