@@ -140,7 +140,7 @@ class AIVibeChecker:
             ],
             "temperature": self.temperature,
             "max_tokens": self.max_tokens,
-            "stream": False,
+            "stream": True,
             "stop": ["<｜end of sentence｜>", "```", "}\n\n", "<｜tool calls begin｜>"],
         }
 
@@ -150,14 +150,31 @@ class AIVibeChecker:
                 json=payload,
                 timeout=180,
                 headers={"Content-Type": "application/json"},
+                stream=True,  # Stream to avoid blocking/buffer deadlocks
             )
             resp.raise_for_status()
-            data = resp.json()
+            
+            # Reconstruct streamed chunks
+            content = ""
+            for raw_chunk in resp.iter_lines():
+                if not raw_chunk:
+                    continue
+                
+                chunk_str = raw_chunk.decode("utf-8")
+                if chunk_str.startswith("data: "):
+                    chunk_str = chunk_str[6:]
+                
+                if chunk_str.strip() == "[DONE]":
+                    break
+                    
+                try:
+                    chunk_data = json.loads(chunk_str)
+                    delta = chunk_data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                    content += delta
+                except json.JSONDecodeError:
+                    continue
 
-            # OpenAI-compatible format
-            content = data.get("choices", [{}])[0].get("message", {}).get("content", "")
-
-            # Parse JSON from the response (may be wrapped in markdown code blocks)
+            # Parse JSON from the reconstructed response
             parsed = self._parse_ai_response(content)
             parsed["raw_response"] = content
             return parsed
