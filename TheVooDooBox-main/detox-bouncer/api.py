@@ -375,7 +375,7 @@ async def purge_extension(ext_id: int):
         version = row["version"]
 
         # 2. Delete scan history
-        cur.execute("DELETE FROM detox_scan_history WHERE extension_id = %s", (ext_id,))
+        cur.execute("DELETE FROM detox_scan_history WHERE extension_db_id = %s", (ext_id,))
 
         # 3. Delete the extension row
         cur.execute("DELETE FROM detox_extensions WHERE id = %s", (ext_id,))
