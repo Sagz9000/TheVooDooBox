@@ -113,7 +113,27 @@ async def scan_extension(req: ScanRequest):
 
         # 5. Run triage pipeline
         config = scraper.config
-        triage_result = await run_in_threadpool(triage_vsix, vsix_path, config=config)
+        
+        def make_pre_ai_callback(db_id):
+            def cb(partial_triage_result):
+                if not db_id: return
+                try:
+                    from core.reporting.threat_report import ThreatReportGenerator
+                    update_scan_state(conn, db_id, "STATIC_SCANNED")
+                    report_gen = ThreatReportGenerator(conn, config)
+                    report_gen.generate(db_id, triage_result=partial_triage_result)
+                    conn.commit()
+                    print(f"[BOUNCER] ◷ Intermediate report generated for {resolved_ext_id}")
+                except Exception as cb_err:
+                    print(f"[BOUNCER] Warning: Intermediate report failed: {cb_err}")
+            return cb
+
+        triage_result = await run_in_threadpool(
+            triage_vsix, 
+            vsix_path, 
+            config=config,
+            pre_ai_callback=make_pre_ai_callback(ext_db_id)
+        )
 
         # 6. Generate threat report (which calculates final composite score and verdict)
         report = None
