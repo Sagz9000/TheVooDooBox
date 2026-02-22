@@ -69,7 +69,7 @@ class AIVibeChecker:
         """Rough token count estimation."""
         return len(text) // self.CHARS_PER_TOKEN
 
-    def _chunk_source(self, source: str, max_chunk_tokens: int = 2000) -> list[str]:
+    def _chunk_source(self, source: str, max_chunk_tokens: int = 1200) -> list[str]:
         """
         Split source code into chunks that fit within the model's context.
 
@@ -120,8 +120,9 @@ class AIVibeChecker:
                 {"role": "user", "content": user_message},
             ],
             "temperature": self.temperature,
-            "max_tokens": self.max_tokens,
+            "max_tokens": min(self.max_tokens, 1000), # Cap output to 1000 to save context
             "stream": False,
+            "num_ctx": 4096, # Force llama.cpp (if supported via API) to try allocating 4K context
         }
 
         try:
