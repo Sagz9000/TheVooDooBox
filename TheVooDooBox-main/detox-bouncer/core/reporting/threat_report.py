@@ -331,6 +331,12 @@ class ThreatReportGenerator:
             + report.campaign_score * 0.1
         )
 
+        # AI Contextual Overide: If AI is highly confident it's clean (score < 0.2), 
+        # heavily suppress static noise unless VT or Blocklist says otherwise.
+        if report.ai_vibe_score < 0.2 and composite > 0.0:
+            # Reduce static noise by 40% if AI says it's clean
+            composite = composite * 0.6
+
         return min(composite, 1.0)
 
     def _determine_verdict(self, report: ThreatReport) -> str:
@@ -339,12 +345,19 @@ class ThreatReportGenerator:
             return "MALICIOUS"
         if report.vt_known_malicious and report.vt_detection_count >= 5:
             return "MALICIOUS"
+            
+        # If AI is very confident it's clean (< 0.2 risk) AND there are no CRITICAL findings,
+        # trust the AI's contextual understanding over the static noise.
+        if report.ai_vibe_score < 0.2 and len(report.critical_findings) == 0:
+            return "CLEAN"
+
         if report.composite_score >= 0.7:
             return "MALICIOUS"
         if report.composite_score >= 0.35:
             return "SUSPICIOUS"
         if len(report.critical_findings) > 0:
             return "SUSPICIOUS"
+            
         return "CLEAN"
 
     def _determine_confidence(self, report: ThreatReport) -> float:

@@ -96,19 +96,33 @@ async def scan_extension(req: ScanRequest):
         config = scraper.config
         triage_result = triage_vsix(vsix_path, config=config)
 
-        # 6. Update state and risk_score based on verdict
+        # 6. Generate threat report (which calculates final composite score and verdict)
+        report = None
+        try:
+            if ext_db_id:
+                report_gen = ThreatReportGenerator(conn, config)
+                report = report_gen.generate(ext_db_id, triage_result=triage_result)
+        except Exception as report_err:
+            print(f"[BOUNCER] Warning: Threat report generation failed: {report_err}")
+            traceback.print_exc()
+
+        # 7. Update state and risk_score based on the FINAL report verdict
+        final_risk = report.composite_score if report else triage_result.composite_risk
+        final_verdict = report.verdict if report else triage_result.verdict
+
         if ext_db_id:
-            final_state = "FLAGGED" if triage_result.verdict in ("SUSPICIOUS", "MALICIOUS") else "CLEAN"
+            final_state = "FLAGGED" if final_verdict in ("SUSPICIOUS", "MALICIOUS") else "CLEAN"
             update_scan_state(conn, ext_db_id, final_state)
+            
             # Persist risk_score to detox_extensions
             cur = conn.cursor()
             cur.execute(
                 "UPDATE detox_extensions SET risk_score = %s WHERE id = %s",
-                (triage_result.composite_risk, ext_db_id),
+                (final_risk, ext_db_id),
             )
             cur.close()
             conn.commit()
-            print(f"[BOUNCER] ✓ {req.extension_id}: {final_state} (risk={triage_result.composite_risk:.2f})")
+            print(f"[BOUNCER] ✓ {req.extension_id}: {final_state} (risk={final_risk:.2f})")
 
         # 7. Generate threat report and persist to DB
         try:
@@ -172,26 +186,30 @@ async def scrape_marketplace(req: ScrapeRequest):
 
                 triage_result = triage_vsix(ext["vsix_path"], config=config)
 
-                # Update state and risk score
+                # Generate threat report FIRST (which calculates final composite score and verdict)
+                report = None
+                try:
+                    if ext_db_id:
+                        report_gen = ThreatReportGenerator(conn, config)
+                        report = report_gen.generate(ext_db_id, triage_result=triage_result)
+                except Exception as report_err:
+                    print(f"[BOUNCER] Warning: Report generation failed for {ext['extension_id']}: {report_err}")
+                
+                # Update state and risk score based on the FINAL report verdict
+                final_risk = report.composite_score if report else triage_result.composite_risk
+                final_verdict = report.verdict if report else triage_result.verdict
+
                 if ext_db_id:
-                    final_state = "FLAGGED" if triage_result.verdict in ("SUSPICIOUS", "MALICIOUS") else "CLEAN"
+                    final_state = "FLAGGED" if final_verdict in ("SUSPICIOUS", "MALICIOUS") else "CLEAN"
                     update_scan_state(conn, ext_db_id, final_state)
                     cur = conn.cursor()
                     cur.execute(
                         "UPDATE detox_extensions SET risk_score = %s WHERE id = %s",
-                        (triage_result.composite_risk, ext_db_id),
+                        (final_risk, ext_db_id),
                     )
                     cur.close()
                     conn.commit()
-                    print(f"[BOUNCER] ✓ {ext['extension_id']}: {final_state} (risk={triage_result.composite_risk:.2f})")
-
-                # Generate threat report
-                try:
-                    if ext_db_id:
-                        report_gen = ThreatReportGenerator(conn, config)
-                        report_gen.generate(ext_db_id, triage_result=triage_result)
-                except Exception as report_err:
-                    print(f"[BOUNCER] Warning: Report generation failed for {ext['extension_id']}: {report_err}")
+                    print(f"[BOUNCER] ✓ {ext['extension_id']}: {final_state} (risk={final_risk:.2f})")
                 triage_started += 1
             except Exception as e:
                 print(f"[BOUNCER] Error auto-triaging {ext['extension_id']}: {e}")
