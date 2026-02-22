@@ -47,12 +47,16 @@ function StateBadge({ state }: { state: string | null }) {
         clean: 'bg-emerald-500/20 text-emerald-400',
         flagged: 'bg-red-500/20 text-red-400',
         pending: 'bg-amber-500/20 text-amber-400',
+        scanning: 'bg-cyan-500/20 text-cyan-400',
+        detonating: 'bg-brand-500/20 text-brand-400',
         heavyweight: 'bg-purple-500/20 text-purple-400',
     };
     const icons: Record<string, React.ReactNode> = {
         clean: <CheckCircle size={12} />,
         flagged: <AlertTriangle size={12} />,
         pending: <Clock size={12} />,
+        scanning: <RefreshCw size={12} className="animate-spin" />,
+        detonating: <Activity size={12} className="animate-pulse" />,
         heavyweight: <Database size={12} />,
     };
     return (

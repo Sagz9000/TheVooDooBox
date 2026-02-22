@@ -125,6 +125,9 @@ async def scan_extension(req: ScanRequest):
                     conn.commit()
                     print(f"[BOUNCER] ◷ Intermediate report generated for {resolved_ext_id}")
                 except Exception as cb_err:
+                    import traceback
+                    with open("data/error.log", "a") as f:
+                        f.write(traceback.format_exc() + "\n")
                     print(f"[BOUNCER] Warning: Intermediate report failed: {cb_err}")
             return cb
 
@@ -274,6 +277,9 @@ async def scan_pending(req: ScanPendingRequest):
                             conn.commit()
                             print(f"[BOUNCER] ◷ Intermediate report generated for {ext['extension_id']}")
                         except Exception as cb_err:
+                            import traceback
+                            with open("data/error.log", "a") as f:
+                                f.write(traceback.format_exc() + "\n")
                             print(f"[BOUNCER] Warning: Intermediate report failed: {cb_err}")
                     return cb
 

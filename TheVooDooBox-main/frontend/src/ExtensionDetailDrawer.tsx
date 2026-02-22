@@ -21,21 +21,37 @@ export default function ExtensionDetailDrawer({ extensionId, onClose }: DrawerPr
         }
 
         let mounted = true;
+        let pollTimeout: number | NodeJS.Timeout;
         setLoading(true);
         setError('');
 
-        voodooApi.fetchDetoxExtensionDetail(extensionId)
-            .then(data => {
-                if (mounted) setDetail(data);
-            })
-            .catch(err => {
-                if (mounted) setError(err.toString());
-            })
-            .finally(() => {
-                if (mounted) setLoading(false);
-            });
+        const fetchDetail = () => {
+            voodooApi.fetchDetoxExtensionDetail(extensionId)
+                .then(data => {
+                    if (mounted) {
+                        setDetail(data);
+                        setLoading(false);
 
-        return () => { mounted = false; };
+                        // If it's still scanning/pending, keep polling
+                        if (!['clean', 'flagged', 'detonation_complete', 'heavyweight'].includes(data.extension.latest_state)) {
+                            pollTimeout = setTimeout(fetchDetail, 5000);
+                        }
+                    }
+                })
+                .catch(err => {
+                    if (mounted) {
+                        setError(err.toString());
+                        setLoading(false);
+                    }
+                });
+        };
+
+        fetchDetail();
+
+        return () => {
+            mounted = false;
+            if (pollTimeout) clearTimeout(pollTimeout);
+        };
     }, [extensionId]);
 
     if (!extensionId) return null;
