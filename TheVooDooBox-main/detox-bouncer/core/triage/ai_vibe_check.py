@@ -148,7 +148,7 @@ class AIVibeChecker:
             resp = self.session.post(
                 url,
                 json=payload,
-                timeout=180,
+                timeout=(30, 240), # (connect timeout, read timeout) - prevent endless socket hang
                 headers={"Content-Type": "application/json"},
                 stream=True,  # Stream to avoid blocking/buffer deadlocks
             )
@@ -156,23 +156,34 @@ class AIVibeChecker:
             
             # Reconstruct streamed chunks
             content = ""
-            for raw_chunk in resp.iter_lines():
-                if not raw_chunk:
-                    continue
-                
-                chunk_str = raw_chunk.decode("utf-8")
-                if chunk_str.startswith("data: "):
-                    chunk_str = chunk_str[6:]
-                
-                if chunk_str.strip() == "[DONE]":
-                    break
+            try:
+                # Add strict timeout to the iterator to prevent socket deadlocks
+                for raw_chunk in resp.iter_lines(decode_unicode=False):
+                    if not raw_chunk:
+                        continue
                     
-                try:
-                    chunk_data = json.loads(chunk_str)
-                    delta = chunk_data.get("choices", [{}])[0].get("delta", {}).get("content", "")
-                    content += delta
-                except json.JSONDecodeError:
-                    continue
+                    chunk_str = raw_chunk.decode("utf-8")
+                    if chunk_str.startswith("data: "):
+                        chunk_str = chunk_str[6:]
+                    
+                    if chunk_str.strip() == "[DONE]":
+                        break
+                        
+                    try:
+                        chunk_data = json.loads(chunk_str)
+                        delta = chunk_data.get("choices", [{}])[0].get("delta", {}).get("content", "")
+                        content += delta
+                        
+                        # Emergency fast-break if we detect JSON has closed naturally
+                        if content.strip().endswith("}") and '"verdict"' in content:
+                            break
+                            
+                    except json.JSONDecodeError:
+                        continue
+            except requests.exceptions.Timeout:
+                logger.warning(f"Stream read timed out for {filename}, but attempting to parse captured content anyway.")
+            except Exception as e:
+                logger.error(f"Stream reading error for {filename}: {e}")
 
             # Parse JSON from the reconstructed response
             parsed = self._parse_ai_response(content)
