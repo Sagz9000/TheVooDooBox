@@ -277,22 +277,38 @@ class AIVibeChecker:
                 # Determine entry points
                 entry_files = []
                 main = pkg_data.get("main", "")
-                if main:
-                    clean_main = main[2:] if main.startswith("./") else main
-                    entry_files.append(f"extension/{clean_main}")
-                    entry_files.append(clean_main)
-
                 browser = pkg_data.get("browser", "")
-                if browser:
-                    clean_browser = browser[2:] if browser.startswith("./") else browser
-                    entry_files.append(f"extension/{clean_browser}")
-                    entry_files.append(clean_browser)
+                
+                potential_mains = []
+                if main: potential_mains.append(main)
+                if browser: potential_mains.append(browser)
+                
+                for start_file in potential_mains:
+                    # Clean the path
+                    clean = start_file[2:] if start_file.startswith("./") else start_file
+                    
+                    # Add variations to check
+                    variations = [
+                        f"extension/{clean}",
+                        clean,
+                        f"extension/{clean}.js",
+                        f"{clean}.js",
+                        f"extension/{clean}/index.js",
+                        f"{clean}/index.js"
+                    ]
+                    entry_files.extend(variations)
 
                 available = set(zf.namelist())
-                targets = [f for f in entry_files if f in available]
+                targets = []
+                seen_targets = set()
+                
+                for f in entry_files:
+                    if f in available and f not in seen_targets:
+                        targets.append(f)
+                        seen_targets.add(f)
 
                 if not targets:
-                    return self._fallback_response(f"Entry point not found: {main}")
+                    return self._fallback_response(f"Entry point not found: {main or browser}")
 
                 # Analyze each entry point
                 all_results = []
