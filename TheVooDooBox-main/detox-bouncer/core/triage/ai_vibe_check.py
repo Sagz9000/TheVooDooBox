@@ -49,8 +49,8 @@ class AIVibeChecker:
     - Fallback for unresponsive AI
     """
 
-    # Approximate characters per token for estimation (JS is dense, use 3)
-    CHARS_PER_TOKEN = 3
+    # Approximate characters per token for estimation (Minified JS is extremely dense, use 2)
+    CHARS_PER_TOKEN = 2
 
     def __init__(self, config: dict = None):
         self.config = config or load_config()
@@ -69,7 +69,7 @@ class AIVibeChecker:
         """Rough token count estimation."""
         return len(text) // self.CHARS_PER_TOKEN
 
-    def _chunk_source(self, source: str, max_chunk_tokens: int = 2000) -> list[str]:
+    def _chunk_source(self, source: str, max_chunk_tokens: int = 1500) -> list[str]:
         """
         Split source code into chunks that fit within the model's context.
 
