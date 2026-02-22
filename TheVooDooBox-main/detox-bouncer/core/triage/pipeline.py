@@ -70,14 +70,16 @@ class TriagePipeline:
     ESCALATION_THRESHOLD = 0.4
     AUTO_MALICIOUS_THRESHOLD = 0.8
 
-    def __init__(self, config: dict = None, skip_ai: bool = False):
+    def __init__(self, config: dict = None, skip_ai: bool = False, pre_ai_callback=None):
         """
         Args:
             config: Parsed config.yaml dict
             skip_ai: If True, skip the AI Vibe Check (for offline/testing)
+            pre_ai_callback: Optional callable passing the TriageResult before Step 4
         """
         self.config = config or {}
         self.skip_ai = skip_ai
+        self.pre_ai_callback = pre_ai_callback
 
         # Scoring weights from config
         scoring = self.config.get("scoring", {})
@@ -157,6 +159,13 @@ class TriagePipeline:
         except Exception as e:
             logger.error(f"  YARA scan failed: {e}")
             result.yara_risk = 0.0
+
+        # ── Optional: Fire Pre-AI Callback ─────────────
+        if self.pre_ai_callback:
+            try:
+                self.pre_ai_callback(result)
+            except Exception as e:
+                logger.error(f"  Pre-AI Callback failed: {e}")
 
         # ── Step 4: AI Vibe Check ──────────────────────
         if self.skip_ai:
@@ -239,7 +248,7 @@ class TriagePipeline:
         return result
 
 
-def triage_vsix(vsix_path: str, config: dict = None, skip_ai: bool = False) -> TriageResult:
+def triage_vsix(vsix_path: str, config: dict = None, skip_ai: bool = False, pre_ai_callback=None) -> TriageResult:
     """Convenience function to run the full triage pipeline."""
-    pipeline = TriagePipeline(config=config, skip_ai=skip_ai)
+    pipeline = TriagePipeline(config=config, skip_ai=skip_ai, pre_ai_callback=pre_ai_callback)
     return pipeline.run(vsix_path)
