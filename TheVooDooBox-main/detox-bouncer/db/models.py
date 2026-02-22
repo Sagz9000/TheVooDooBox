@@ -128,6 +128,14 @@ def init_db():
         )
     """)
 
+    # Migrations: Ensure raw_ai_response exists (for existing deployments)
+    try:
+        cur.execute("ALTER TABLE detox_scan_history ADD COLUMN IF NOT EXISTS raw_ai_response TEXT;")
+        conn.commit()
+    except Exception as e:
+        conn.rollback() # Table might not exist yet if it's a first run, which is fine
+        print(f"[BOUNCER-DB] Migration check skipped/failed: {e}")
+
     print("[BOUNCER-DB] All detox tables initialized.")
     cur.close()
 

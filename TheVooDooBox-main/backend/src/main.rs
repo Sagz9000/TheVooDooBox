@@ -2606,6 +2606,11 @@ async fn init_db() -> Pool<Postgres> {
         )"
     ).execute(&pool).await.expect("Failed to create detox_scan_history table");
 
+    // Migration: Ensure raw_ai_response exists for existing tables
+    let _ = sqlx::query("ALTER TABLE detox_scan_history ADD COLUMN IF NOT EXISTS raw_ai_response TEXT;")
+        .execute(&pool)
+        .await;
+
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS detox_blocklist (
             id SERIAL PRIMARY KEY,

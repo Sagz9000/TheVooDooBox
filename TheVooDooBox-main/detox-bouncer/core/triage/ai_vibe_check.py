@@ -143,16 +143,19 @@ class AIVibeChecker:
             return parsed
 
         except requests.exceptions.ConnectionError:
-            logger.error(f"Cannot connect to AI server at {self.base_url}")
-            return self._fallback_response("AI server unreachable")
+            msg = f"Cannot connect to AI server at {self.base_url}"
+            logger.error(msg)
+            return self._fallback_response(msg)
 
         except requests.exceptions.Timeout:
-            logger.error("AI request timed out")
-            return self._fallback_response("AI request timed out")
+            msg = "AI request timed out"
+            logger.error(msg)
+            return self._fallback_response(msg)
 
         except Exception as e:
-            logger.error(f"AI call failed: {e}")
-            return self._fallback_response(str(e))
+            msg = f"AI call failed: {e}"
+            logger.error(msg)
+            return self._fallback_response(msg)
 
     def _parse_ai_response(self, content: str) -> dict:
         """Parse JSON from the AI response, handling markdown code blocks."""
@@ -190,6 +193,7 @@ class AIVibeChecker:
             "findings": [],
             "summary": f"AI analysis unavailable: {reason}",
             "error": reason,
+            "raw_response": f"AI Vibe Check Fallback: {reason}. Check backend connectivity to {self.base_url}."
         }
 
     def analyze_source(self, source_code: str, filename: str = "extension.js") -> dict:
