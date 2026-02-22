@@ -680,7 +680,17 @@ export const voodooApi = {
         });
         if (!resp.ok) {
             const errText = await resp.text();
-            throw new Error(`Failed to purge extension: ${errText}`);
+            throw new Error(`Failed to purge extension: ${errText || resp.statusText}`);
+        }
+    },
+
+    purgeAllDetoxData: async (): Promise<void> => {
+        const resp = await fetch(`${BASE_URL}/api/detox/purge-all`, {
+            method: 'DELETE'
+        });
+        if (!resp.ok) {
+            const errText = await resp.text();
+            throw new Error(`Failed to purge all Detox data: ${errText || resp.statusText}`);
         }
     }
 };

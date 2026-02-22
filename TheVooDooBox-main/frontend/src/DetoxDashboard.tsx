@@ -269,6 +269,23 @@ export default function DetoxDashboard() {
         }
     };
 
+    const handlePurgeAll = async () => {
+        if (!window.confirm("☢ WARNING: This will PERMANENTLY delete ALL extension records, scan history, and archived VSIX files. Are you sure?")) {
+            return;
+        }
+        setScanning(true);
+        try {
+            await voodooApi.purgeAllDetoxData();
+            alert("Detox database wiped successfully.");
+            await loadData();
+        } catch (err) {
+            console.error('[Detox] Purge All failed:', err);
+            alert(`Purge failed: ${err}`);
+        } finally {
+            setScanning(false);
+        }
+    };
+
     const handleSort = (field: 'size' | 'updated' | 'published') => {
         if (sortField === field) {
             setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
@@ -356,6 +373,16 @@ export default function DetoxDashboard() {
                     >
                         <Crosshair size={14} className={scanning && !manualScanId ? 'animate-pulse text-[#39ff14]' : ''} />
                         Scan Pending
+                    </button>
+
+                    <button
+                        onClick={handlePurgeAll}
+                        disabled={scanning}
+                        className="flex items-center justify-center gap-2 px-4 py-1.5 bg-red-600/20 border border-red-500/50 hover:bg-red-500/20 text-red-400 rounded-lg text-sm transition-colors disabled:opacity-50 whitespace-nowrap"
+                        title="Wipe all data"
+                    >
+                        <Trash2 size={14} />
+                        Wipe
                     </button>
                 </div>
             </div>

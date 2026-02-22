@@ -2878,6 +2878,8 @@ async fn main() -> std::io::Result<()> {
             .service(detox_api::detox_trigger_scan_pending)
             .service(detox_api::detox_blocklist)
             .service(detox_api::detox_submit_sandbox)
+            .service(detox_api::detox_delete_extension)
+            .service(detox_api::detox_purge_all)
             .service(actix_files::Files::new("/vsix_archive", "/vsix_archive").show_files_listing())
             .route("/ws", web::get().to(stream::ws_route))
             .route("/ws/progress", web::get().to(progress_stream::ws_progress_route))
