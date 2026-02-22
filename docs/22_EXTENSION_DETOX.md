@@ -15,10 +15,11 @@ The ExtensionDetox pipeline is split into two phases: **The Bouncer** and **The 
 
 ### Phase 1: The Bouncer (Static Triage)
 The `detox-bouncer` container handles all static analysis prior to detonation:
-- **Scraper & Inventory:** Periodically scrapes the VS Code Marketplace (or processes uploaded VSIXs) to build an inventory of extensions and their metadata.
-- **YARA Scanning:** Scans the extracted VSIX contents using custom YARA rules to detect known malicious patterns, obfuscation techniques, or suspicious API calls (e.g., `child_process.exec`).
 - **Heuristic Analysis:** Analyzes the `package.json` for excessive permissions, missing repository links, or suspicious publisher metadata.
-- **Blocklist Sync:** Synchronizes with community-maintained blocklists to proactively flag known bad extensions.
+- **Blocklist Sync:** Synchronizes with community-maintained blocklists (e.g. Microsoft's marketplace blocklist) to proactively flag known bad extensions.
+- **Heavyweight Handling:** Automatically detects VSIX files exceeding 20MB. These are flagged as `HEAVYWEIGHT` and their analyses can be manually forced by operators to bypass standard safety limits.
+- **Auto-Discovery Engine:** A background task running every **30 minutes** that queries the marketplace for new extensions and queues them for static triage.
+
 
 ### Phase 2: The Chamber (Dynamic Detonation)
 If an extension requires deeper analysis, it is sent to the Proxmox sandbox:
@@ -34,10 +35,11 @@ ExtensionDetox provides a dedicated **Mission Control Dashboard** (`DetoxDashboa
 The dashboard features:
 - **Risk Distribution Ring:** A visual representation of the current queue (Clean, Flagged, Pending).
 - **Stat Cards:** High-level metrics tracking total extensions, clean/flagged counts, and the average risk score.
-- **Extension Table:** A sortable, filterable list of all tracked extensions showing their version, install count, state, and risk score. Clicking any row opens the **Extension Detail Drawer**.
-- **Extension Detail Drawer:** A slide-out panel (`ExtensionDetailDrawer.tsx`) that provides a granular breakdown of an extension's threat report, including YARA findings, neural AI reasoning logic, and full raw JSON findings.
+- **Extension Table:** A sortable, filterable list of all tracked extensions. Supports universal sorting across all columns (Risk, Installs, Size, Date). Clicking any row opens the **Extension Detail Drawer**.
+- **Extension Detail Drawer:** A slide-out panel (`ExtensionDetailDrawer.tsx`) that provides a granular breakdown of an extension's threat report, including YARA findings with syntax-highlighted code snippets, neural AI reasoning logic, and full raw JSON findings.
 - **Dynamic Sandbox Submission:** Selecting "Send to Sandbox" from the row actions opens a `SubmissionModal` tailored for VSIX submissions, enabling deployment into Proxmox VMs for behavioral analysis.
-- **Live Scrape Trigger:** A button to manually trigger a marketplace scraping run.
+- **Custom Scrape Trigger:** A button to trigger a marketplace scraping run with custom search terms, sort methods, and page depth.
+- **Global Wipe:** A "Wipe" button in the header to permanently clear the Detox database and VSIX archive for a clean environment state.
 
 ## API Endpoints
 
@@ -45,6 +47,9 @@ The dashboard features:
 - `GET /health` - Service health status.
 - `POST /scan` - Triggers static analysis for a specific extension.
 - `POST /scrape` - Triggers a marketplace scrape.
+- `POST /scan-pending` - Processes the queue of extensions awaiting triage.
+- `DELETE /purge/all` - Wipes all DB records and archived VSIX files.
+- `DELETE /purge/{ext_id}` - Deletes a specific extension.
 - `POST /blocklist/sync` - Forces a synchronization of the blocklist.
 - `GET /stats` - Retrieves high-level dashboard statistics.
 
@@ -54,6 +59,9 @@ The Rust backend proxies these requests and provides direct database access via 
 - `GET /api/detox/extensions` - List of extensions (filterable by state).
 - `GET /api/detox/extension/{id}` - Detailed view of a single extension including scan history and raw findings.
 - `POST /api/detox/scan` - Proxies scan requests to the bouncer.
+- `POST /api/detox/scrape` - Proxies custom scrape requests to the bouncer.
+- `POST /api/detox/scan-pending` - Proxies bulk triage requests.
+- `DELETE /api/detox/purge-all` - Proxies global wipe requests.
 - `POST /api/detox/sandbox` - Submits a VSIX to the sandbox orchestration queue.
 - `GET /api/detox/blocklist` - Retrieves the current blocklist.
 
