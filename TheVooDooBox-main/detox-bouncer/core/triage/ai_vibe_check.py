@@ -73,7 +73,7 @@ class AIVibeChecker:
         """
         Split source code into chunks that fit within the model's context.
 
-        Splits on function/class boundaries when possible.
+        Handles heavily minified JS where the entire file might be a single line.
         """
         max_chars = max_chunk_tokens * self.CHARS_PER_TOKEN
 
@@ -81,21 +81,39 @@ class AIVibeChecker:
             return [source]
 
         chunks = []
+        
+        # 1. First split by newlines as a preference to keep lines intact
         lines = source.split("\n")
-        current_chunk = []
-        current_size = 0
+        current_chunk = ""
 
         for line in lines:
             line_size = len(line) + 1  # +1 for newline
-            if current_size + line_size > max_chars and current_chunk:
-                chunks.append("\n".join(current_chunk))
-                current_chunk = []
-                current_size = 0
-            current_chunk.append(line)
-            current_size += line_size
+            
+            # If a single line is LARGER than the max chunk size (Minified JS)
+            # We must aggressively slice it into smaller pieces
+            if line_size > max_chars:
+                # Flush existing chunk if any
+                if current_chunk:
+                    chunks.append(current_chunk)
+                    current_chunk = ""
+                
+                # Slice the massive line into exact max_chars blocks
+                for i in range(0, len(line), max_chars):
+                    chunks.append(line[i:i+max_chars])
+                continue
+
+            # Standard line accumulation
+            if len(current_chunk) + line_size > max_chars and current_chunk:
+                chunks.append(current_chunk)
+                current_chunk = ""
+                
+            if current_chunk:
+                current_chunk += "\n" + line
+            else:
+                current_chunk = line
 
         if current_chunk:
-            chunks.append("\n".join(current_chunk))
+            chunks.append(current_chunk)
 
         return chunks
 
